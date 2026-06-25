@@ -18,8 +18,10 @@ public class MechRaid : ModuleRules
 			"StateTreeModule",
 			"GameplayStateTreeModule",
 			"UMG",
-			"Slate"
-		});
+			"Slate",
+			"CommonUI",
+			"CommonInput"
+        });
 
 		PrivateDependencyModuleNames.AddRange(new string[] { });
 
