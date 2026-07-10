@@ -10,7 +10,7 @@ file(GLOB_RECURSE SOURCES "src/*.cpp")
 add_executable(${PROJECT_NAME} ${SOURCES})
 
 target_include_directories(${PROJECT_NAME} PUBLIC
-        "${CMAKE_CURRENT_SOURCE_DIR}/include"           # 서버 자체 헤더 (include 폴더)
+        "${CMAKE_CURRENT_SOURCE_DIR}"           # 서버 자체 헤더 (include 폴더)
         "${CMAKE_CURRENT_SOURCE_DIR}/../Shared/include" # 공용 패킷 헤더 (Shared 폴더)
 )
 
