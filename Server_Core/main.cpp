@@ -1,48 +1,83 @@
-#include <iostream>
-#ifdef _WIN32
-  #include <winsock2.h>
-  #include <ws2tcpip.h>
+// ============================================================
+//  main.cpp
+//  역할: CoreServer 진입점 - IOCPServer 인스턴스 생성 및 구동
+// ============================================================
+
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
 #endif
 
-// CMake에서 설정한 Include Directory 덕분에 
-// ../Shared/include/ 경로를 쓰지 않아도 바로 인식되어야 합니다.
-#include "Packets.h" 
+#include <windows.h>
+#include <atomic>
+#include <memory>
 
-int main() {
-#ifdef _WIN32
+#include "Network/IOCPServer.h"
+#include "Utils/GLog.h"
+
+// ──────────────────────────────────────────────
+//  전역 서버 인스턴스 (Ctrl+C 핸들러에서 접근)
+// ──────────────────────────────────────────────
+static std::unique_ptr<IOCPServer> g_pServer;
+static std::atomic<bool>          g_bInterrupted{ false };
+
+// ──────────────────────────────────────────────
+//  Ctrl+C / 프로세스 종료 핸들러
+// ──────────────────────────────────────────────
+static BOOL WINAPI ConsoleCtrlHandler(DWORD dwCtrlType)
+{
+    switch (dwCtrlType)
+    {
+        case CTRL_C_EVENT:
+        case CTRL_BREAK_EVENT:
+        case CTRL_CLOSE_EVENT:
+        case CTRL_SHUTDOWN_EVENT:
+            GLog::Warn("Interrupt received. Initiating graceful shutdown...");
+            g_bInterrupted.store(true, std::memory_order_release);
+            if (g_pServer)
+                g_pServer->Shutdown();
+            return TRUE;  // TRUE: OS가 기본 핸들러를 호출하지 않음
+        default:
+            return FALSE;
+    }
+}
+
+// ──────────────────────────────────────────────
+//  진입점
+// ──────────────────────────────────────────────
+int main()
+{
     // Windows 콘솔 인코딩을 UTF-8로 설정 (한글 깨짐 방지)
-    SetConsoleOutputCP(CP_UTF8);
-#endif
-    std::cout << "========== [Server Core Build Test] ==========\n";
+    setvbuf(stdout, nullptr, _IONBF, 0);
 
-    // 1. 공용 패킷 헤더(#pragma pack) 검증
-    // 명세서에 오기로 78바이트라 적혀있으나, 실제 필드 합산 시 68바이트입니다.
-    std::cout << "[Test 1] FSyncTransformPacket Size: " 
-              << sizeof(FSyncTransformPacket) << " bytes (Expected: 68)\n";
+    GLog::Info("╔══════════════════════════════════════════╗");
+    GLog::Info("║       AI-XR Core Server  v0.1.0          ║");
+    GLog::Info("║   IOCP UDP Server  |  Port {}          ║", SERVER_PORT);
+    GLog::Info("╚══════════════════════════════════════════╝");
 
-    if (sizeof(FSyncTransformPacket) != 68) {
-        std::cerr << "[Error] 패킷 크기가 일치하지 않습니다! 메모리 패딩을 확인하세요.\n";
+    // ── Ctrl+C 핸들러 등록 ────────────────────
+    if (!::SetConsoleCtrlHandler(ConsoleCtrlHandler, TRUE))
+    {
+        GLog::Error("[Main] Failed to set console ctrl handler.");
         return -1;
     }
 
-    // 2. 윈도우 소켓(Winsock2) 라이브러리 링크 검증
-    // CMake의 target_link_libraries가 잘 작동했는지 확인합니다.
-    #ifdef _WIN32
-    WSADATA wsaData;
-    int wsaResult = WSAStartup(MAKEWORD(2, 2), &wsaData);
-    if (wsaResult == 0) {
-        std::cout << "[Test 2] Winsock2 (ws2_32) Initialized Successfully!\n";
-        WSACleanup();
-    } else {
-        std::cerr << "[Error] Winsock 초기화 실패! 라이브러리 링크를 확인하세요.\n";
+    // ── 서버 인스턴스 생성 & 시작 ─────────────
+    g_pServer = std::make_unique<IOCPServer>();
+
+    if (!g_pServer->Start(SERVER_PORT))
+    {
+        GLog::Error("[Main] Server failed to start. Exiting.");
         return -1;
     }
-    #else
-    std::cout << "[Test 2] Winsock2 (ws2_32) 검증은 Windows 전용입니다.\n";
-    #endif // _WIN32
 
-    std::cout << "==============================================\n";
-    std::cout << "모든 환경 세팅이 완벽합니다. 본격적인 개발을 시작하세요!\n";
+    // ── Main 스레드: 수신 루프 / Dispatcher 감독 ──
+    // Worker 스레드들이 IOCP 큐에서 완료 패킷을 처리하는 동안,
+    // Main 스레드는 RunRecvLoop 에서 1Hz 주기로 헬스 체크 등을 담당합니다.
+    g_pServer->RunRecvLoop();
 
+    // ── 정상 종료 경로 ─────────────────────────
+    // Ctrl+C 핸들러에서 Shutdown() 을 호출하므로
+    // RunRecvLoop 반환 후 추가 정리가 필요하면 여기에 작성합니다.
+    GLog::Info("[Main] Server exited cleanly.");
     return 0;
 }
