@@ -24,6 +24,7 @@
 #include "OculusXRHMD_DeferredDeletionQueue.h"
 #include "OculusXRStereoLayersFlagsSupplier.h"
 #include "GenerateMips.h"
+#include <limits>
 
 namespace OculusXRHMD
 {
@@ -1371,7 +1372,7 @@ namespace OculusXRHMD
 			{
 				OvrpLayerSubmit.LayerSubmitFlags |= ovrpLayerSubmitFlag_SpaceWarp;
 				OvrpLayerSubmit.EyeFov.MotionVectorDepthFar = Frame->NearClippingPlane / 100.f;
-				OvrpLayerSubmit.EyeFov.MotionVectorDepthNear = INFINITY;
+				OvrpLayerSubmit.EyeFov.MotionVectorDepthNear = std::numeric_limits<float>::infinity();
 				OvrpLayerSubmit.EyeFov.MotionVectorOffset = ovrpVector4f{ 0.0f, 0.0f, 0.0f, 0.0f };
 				OvrpLayerSubmit.EyeFov.MotionVectorScale = ovrpVector4f{ 1.0f, 1.0f, 1.0f, 1.0f };
 
