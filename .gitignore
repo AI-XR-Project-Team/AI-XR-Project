@@ -1,0 +1,30 @@
+# =========================
+# 언리얼 엔진 기본 무시 파일
+# =========================
+Binaries/
+Build/
+DerivedDataCache/
+Intermediate/
+Saved/
+
+# =========================
+# IDE 및 OS 설정 파일 무시
+# (Rider와 Visual Studio 충돌 방지)
+# =========================
+.vscode/
+.vs/
+.idea/
+*.sln
+*.suo
+*.xcworkspace
+*.DS_Store
+Thumbs.db
+
+# =========================
+# 언리얼 자동 생성 파일
+# (이 파일들은 Generate Project Files로 각자 생성해야 함)
+# =========================
+*.VC.db
+*.opendb
+*.sdf
+*.opensdf
