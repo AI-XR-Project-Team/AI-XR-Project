@@ -39,13 +39,34 @@ bool IOCPServer::Start(uint16_t port)
 
     m_bRunning.store(true, std::memory_order_release);
 
-    // ── Worker 스레드 풀 생성 ──────────────────
+    // ── I/O Worker(생산자) 스레드 풀 생성 ──────
     m_WorkerThreads.reserve(WORKER_THREAD_COUNT);
     for (uint32_t i = 0; i < WORKER_THREAD_COUNT; ++i)
     {
         m_WorkerThreads.emplace_back(&IOCPServer::WorkerThread, this);
     }
-    GLog::Info("[Server] {} Worker thread(s) started.", WORKER_THREAD_COUNT);
+    GLog::Info("[Server] {} I/O Worker thread(s) started.", WORKER_THREAD_COUNT);
+
+    // ── Logic(소비자) 큐 배열 + 스레드 풀 생성 ──
+    //   세션 어피니티: 큐/스레드를 LOGIC_THREAD_COUNT 만큼 1:1 로 만들고,
+    //   각 스레드는 자신과 같은 인덱스의 큐만 전담합니다.
+    //   패킷 도착 전(PostInitialRecvs 이전)에 먼저 띄워 즉시 처리되게 합니다.
+    m_LogicQueues.reserve(LOGIC_THREAD_COUNT);
+    for (uint32_t i = 0; i < LOGIC_THREAD_COUNT; ++i)
+    {
+        m_LogicQueues.push_back(std::make_unique<LogicQueue>());
+    }
+
+    m_LogicThreads.reserve(LOGIC_THREAD_COUNT);
+    for (uint32_t i = 0; i < LOGIC_THREAD_COUNT; ++i)
+    {
+        m_LogicThreads.emplace_back(&IOCPServer::LogicThread, this, i);
+    }
+    GLog::Info("[Server] {} Logic thread(s)/queue(s) started.", LOGIC_THREAD_COUNT);
+
+    // ── 월드 스테이트 브로드캐스트 스레드 기동 ──
+    m_BroadcastThread = std::thread(&IOCPServer::BroadcastLoop, this);
+    GLog::Info("[Server] Broadcast thread started ({}Hz).", BROADCAST_HZ);
 
     // ── 초기 비동기 수신 등록 ──────────────────
     if (!PostInitialRecvs()) return false;
@@ -78,13 +99,30 @@ void IOCPServer::Shutdown()
         );
     }
 
-    // Worker 스레드 종료 대기
+    // I/O Worker(생산자) 스레드 종료 대기 → 이후 큐로 신규 유입 없음
     for (auto& t : m_WorkerThreads)
     {
         if (t.joinable())
             t.join();
     }
     m_WorkerThreads.clear();
+
+    // Logic(소비자) 스레드 종료: 모든 큐에 종료 신호 → 잔여 항목 소진 후 자연 종료
+    for (auto& pQueue : m_LogicQueues)
+    {
+        pQueue->Shutdown();
+    }
+    for (auto& t : m_LogicThreads)
+    {
+        if (t.joinable())
+            t.join();
+    }
+    m_LogicThreads.clear();
+    m_LogicQueues.clear();
+
+    // 브로드캐스트 스레드 종료 대기 (m_bRunning=false 로 다음 틱에서 자연 종료)
+    if (m_BroadcastThread.joinable())
+        m_BroadcastThread.join();
 
     // 소켓 닫기
     if (m_Socket != INVALID_SOCKET)
@@ -571,10 +609,12 @@ void IOCPServer::DispatchPacket(const char* data, DWORD byteLen, const SOCKADDR_
     //   클라이언트가 알려준 "여기까지 받았다" 번호로 서버 재전송 큐를 정리.
     session->Rudp().OnAckReceived(header.AckNum);
 
-    // ── 9. RUDP 계층 라우팅 ───────────────────
+    // ── 9. RUDP 계층 라우팅 → 로직 큐로 위임(생산자) ──
+    //   여기서는 게임 로직을 실행하지 않고, 순서가 확정된(또는 정상 비신뢰)
+    //   패킷만 LogicQueue 에 Push 합니다. 실제 Handle* 실행은 소비자 몫입니다.
     if (bReliable)
     {
-        // 신뢰 스트림: 중복/역전 Drop + 순서 재조립 → 순서 확정분만 응용 계층으로
+        // 신뢰 스트림: 중복/역전 Drop + 순서 재조립 → 순서 확정분만 큐로
         std::vector<std::vector<uint8_t>> delivered;
         const bool accepted = session->Rudp().OnReliableReceived(
             header.SeqNum,
@@ -584,12 +624,11 @@ void IOCPServer::DispatchPacket(const char* data, DWORD byteLen, const SOCKADDR_
 
         for (auto& bytes : delivered)
         {
-            DispatchApp(reinterpret_cast<const char*>(bytes.data()),
-                        static_cast<DWORD>(bytes.size()), session);
+            EnqueueLogic(session, std::move(bytes));
         }
 
-        // 수용/드롭과 무관하게 누적 ACK 회신
-        //   (상대가 이전 ACK를 놓쳐 재전송한 경우에도 최신 ACK를 다시 알려줌)
+        // 누적 ACK 회신은 전송 계층 책임 → 로직 처리를 기다리지 않고 즉시 회신
+        //   (수용/드롭과 무관: 상대가 이전 ACK를 놓쳤을 수 있음)
         SendAck(*session, session->Rudp().GetCumulativeAck());
 
         if (!accepted)
@@ -606,8 +645,46 @@ void IOCPServer::DispatchPacket(const char* data, DWORD byteLen, const SOCKADDR_
             GLog::Debug("[Dispatcher] Stale transform dropped. Seq={}", header.SeqNum);
             return;
         }
-        DispatchApp(data, byteLen, session);
+        // 수신 버퍼는 곧 PostRecv 로 재사용되므로 복사본을 큐잉
+        EnqueueLogic(session,
+            std::vector<uint8_t>(reinterpret_cast<const uint8_t*>(data),
+                                 reinterpret_cast<const uint8_t*>(data) + byteLen));
     }
+}
+
+// ──────────────────────────────────────────────
+//  생산자 → 소비자 큐잉 / 소비자 루프
+// ──────────────────────────────────────────────
+
+void IOCPServer::EnqueueLogic(const SessionPtr& session, std::vector<uint8_t>&& packet)
+{
+    FLogicWorkItem item;
+    item.SessionRef = session;
+    item.Packet     = std::move(packet);
+
+    // 세션 어피니티 라우팅: 같은 세션은 항상 같은 큐(=같은 로직 스레드)로.
+    //   → 세션별 패킷 처리 순서가 단일 스레드에서 직렬화되어 보존됨.
+    const uint32_t targetQueueIdx = session->GetSessionId() % LOGIC_THREAD_COUNT;
+    m_LogicQueues[targetQueueIdx]->Push(std::move(item));
+}
+
+void IOCPServer::LogicThread(uint32_t queueIndex)
+{
+    GLog::Debug("[Logic] Thread {:x} started (queue #{}).",
+        std::hash<std::thread::id>{}(std::this_thread::get_id()), queueIndex);
+
+    LogicQueue& queue = *m_LogicQueues[queueIndex];
+
+    FLogicWorkItem item;
+    while (queue.Pop(item))
+    {
+        // 순수 게임 로직 처리 (네트워크 I/O 관여 없음)
+        DispatchApp(reinterpret_cast<const char*>(item.Packet.data()),
+                    static_cast<DWORD>(item.Packet.size()), item.SessionRef);
+    }
+
+    GLog::Debug("[Logic] Thread {:x} exiting (queue #{}).",
+        std::hash<std::thread::id>{}(std::this_thread::get_id()), queueIndex);
 }
 
 // ──────────────────────────────────────────────
@@ -723,7 +800,17 @@ void IOCPServer::HandleTransform(const FSyncTransformPacket& pkt, const SessionP
     GLog::Debug("[RX] PKT_TRANSFORM  | SessionId={} Seq={} Pos=({:.2f},{:.2f},{:.2f})",
         session->GetSessionId(), pkt.SeqNum, pkt.PosX, pkt.PosY, pkt.PosZ);
 
-    // TODO: Dead Reckoning 예측 보간 및 브로드캐스트 로직
+    // 세션 게임 상태에 최신 트랜스폼 발행 (Seqlock 쓰기 - owner 스레드 전용).
+    //   어피니티로 이 세션은 단일 로직 스레드가 순서대로 처리하므로 안전.
+    //   브로드캐스트 스레드가 이 값을 lock-free 로 읽어 주변 유저에게 뿌립니다.
+    Session::FTransformState t;
+    t.Seq    = pkt.SeqNum;
+    t.Pos[0] = pkt.PosX; t.Pos[1] = pkt.PosY; t.Pos[2] = pkt.PosZ;
+    t.Rot[0] = pkt.RotX; t.Rot[1] = pkt.RotY; t.Rot[2] = pkt.RotZ; t.Rot[3] = pkt.RotW;
+    t.Vel[0] = pkt.VelX; t.Vel[1] = pkt.VelY; t.Vel[2] = pkt.VelZ;
+    t.Era    = pkt.EraId;
+    t.Flags  = pkt.Flags;
+    session->PublishTransform(t);
 }
 
 void IOCPServer::HandleEraChange(const FEraChangePacket& pkt, const SessionPtr& session)
@@ -862,5 +949,134 @@ void IOCPServer::RetransmitSweep(int64_t nowMs)
     for (uint32_t userId : deadSessions)
     {
         m_SessionManager.RemoveByUserId(userId);
+    }
+}
+
+// ──────────────────────────────────────────────
+//  월드 스테이트 브로드캐스트 (전담 스레드)
+// ──────────────────────────────────────────────
+
+void IOCPServer::BroadcastLoop()
+{
+    using namespace std::chrono;
+    GLog::Debug("[Broadcast] Loop running at {}Hz.", BROADCAST_HZ);
+
+    const auto period = duration_cast<steady_clock::duration>(
+        duration<double>(1.0 / static_cast<double>(BROADCAST_HZ)));
+    auto nextTick = steady_clock::now();
+
+    while (m_bRunning.load(std::memory_order_acquire))
+    {
+        nextTick += period;
+        BroadcastTick();
+        std::this_thread::sleep_until(nextTick);
+    }
+
+    GLog::Debug("[Broadcast] Loop exiting.");
+}
+
+void IOCPServer::BroadcastTick()
+{
+    // 스냅샷 1건 = 한 세션의 전송에 필요한 최소 정보
+    struct FPeer {
+        uint32_t                UserId;
+        SOCKADDR_IN             Addr;
+        uint32_t                Ack;   // 이 세션의 인바운드 누적 ACK (piggyback용)
+        Session::FTransformState T;
+    };
+
+    // ── (1) 짧은 shared_lock: 전 세션 스냅샷을 lock-free 로 수집 ──
+    std::vector<FPeer> peers;
+    peers.reserve(64);
+    m_SessionManager.ForEach([&](const SessionPtr& s)
+    {
+        peers.push_back(FPeer{
+            s->GetUserId(),
+            s->GetRemoteAddr(),
+            s->Rudp().GetCumulativeAck(),
+            s->ReadTransform() });
+    });
+    // ← 여기서 SessionManager 락 해제 (Join/Leave 가 오래 막히지 않음)
+
+    if (peers.empty())
+        return;
+
+    const uint64_t tickMs = static_cast<uint64_t>(Session::NowMs());
+
+    // 한 프래그먼트(패킷)에 담을 수 있는 최대 엔트리 수
+    constexpr size_t kMaxEntries =
+        (MAX_UDP_PAYLOAD - sizeof(FPacketHeader) - sizeof(FWorldStateBody))
+        / sizeof(FWorldStateEntry);
+    static_assert(kMaxEntries > 0, "world-state header exceeds MTU");
+
+    // ── (2) 락 밖: 수신자별 Era-필터 집계 패킷 조립 & 전송 ──
+    std::vector<FWorldStateEntry> entries;
+    entries.reserve(peers.size());
+
+    for (const FPeer& me : peers)
+    {
+        // AOI: 같은 Era + 자기 자신 제외 + 트랜스폼을 1회 이상 보낸 유저만
+        entries.clear();
+        for (const FPeer& other : peers)
+        {
+            if (other.UserId == me.UserId) continue;   // 자기 자신
+            if (other.T.Seq == 0)          continue;   // 아직 위치 미수신
+            if (other.T.Era != me.T.Era)   continue;   // 다른 시대 → 렌더 불필요
+
+            FWorldStateEntry e{};
+            e.UserId = other.UserId;
+            e.SeqNum = other.T.Seq;
+            e.PosX = other.T.Pos[0]; e.PosY = other.T.Pos[1]; e.PosZ = other.T.Pos[2];
+            e.RotX = other.T.Rot[0]; e.RotY = other.T.Rot[1];
+            e.RotZ = other.T.Rot[2]; e.RotW = other.T.Rot[3];
+            e.VelX = other.T.Vel[0]; e.VelY = other.T.Vel[1]; e.VelZ = other.T.Vel[2];
+            e.Era   = other.T.Era;
+            e.Flags = other.T.Flags;
+            entries.push_back(e);
+        }
+
+        // 엔트리가 0개여도 1패킷은 전송 → 클라가 "이번 틱 이웃 없음"을 확정
+        const size_t total = entries.size();
+        const uint8_t fragCount = static_cast<uint8_t>(
+            total == 0 ? 1 : (total + kMaxEntries - 1) / kMaxEntries);
+
+        for (uint8_t frag = 0; frag < fragCount; ++frag)
+        {
+            const size_t start     = static_cast<size_t>(frag) * kMaxEntries;
+            const size_t remaining = (total > start) ? (total - start) : 0;
+            // std::min 은 <windows.h> 의 min 매크로와 충돌하므로 직접 계산
+            const size_t count     = (remaining < kMaxEntries) ? remaining : kMaxEntries;
+
+            const int bodyLen = static_cast<int>(
+                sizeof(FWorldStateBody) + count * sizeof(FWorldStateEntry));
+
+            FPacketHeader hdr{};
+            hdr.Magic[0] = MAGIC_BYTE_0;
+            hdr.Magic[1] = MAGIC_BYTE_1;
+            hdr.Version  = 0x01;
+            hdr.Type     = static_cast<uint8_t>(EPacketType::PKT_WORLD_STATE);
+            hdr.BodyLen  = static_cast<uint16_t>(bodyLen);
+            hdr.SeqNum   = 0;             // 비신뢰: 최신성은 ServerTimeMs 로 판단
+            hdr.AckNum   = me.Ack;        // ★ 누적 ACK piggyback
+            hdr.Flags    = PKT_FLAG_NONE;
+
+            FWorldStateBody body{};
+            body.ServerTimeMs = tickMs;
+            body.EntryCount   = static_cast<uint16_t>(count);
+            body.FragIndex    = frag;
+            body.FragCount    = fragCount;
+
+            char buf[MAX_UDP_PAYLOAD];
+            std::memcpy(buf, &hdr, sizeof(hdr));
+            std::memcpy(buf + sizeof(hdr), &body, sizeof(body));
+            if (count > 0)
+            {
+                std::memcpy(buf + sizeof(hdr) + sizeof(body),
+                            entries.data() + start,
+                            count * sizeof(FWorldStateEntry));
+            }
+
+            SendTo(me.Addr, buf, static_cast<int>(sizeof(hdr)) + bodyLen);
+        }
     }
 }

@@ -27,6 +27,7 @@
 
 #include "Packets.h"
 #include "Network/SessionManager.h"
+#include "Network/LogicQueue.h"
 
 // ──────────────────────────────────────────────
 //  상수
@@ -35,7 +36,9 @@ inline constexpr uint16_t SERVER_PORT        = 9000;
 inline constexpr uint32_t MAX_UDP_PAYLOAD    = 1472;   // 이더넷 MTU(1500) - IP(20) - UDP(8)
 inline constexpr uint32_t RECV_BUFFER_COUNT  = 64;     // 사전 할당 수신 버퍼 수
 inline constexpr uint32_t SEND_BUFFER_COUNT  = 64;     // 사전 할당 송신 버퍼 수 (부족 시 동적 증설)
-inline constexpr uint32_t WORKER_THREAD_COUNT = 4;     // Worker 스레드 수 (2~4)
+inline constexpr uint32_t WORKER_THREAD_COUNT = 4;     // I/O Worker(생산자) 스레드 수 (2~4)
+inline constexpr uint32_t LOGIC_THREAD_COUNT  = 4;     // Logic(소비자) 스레드 수
+inline constexpr uint32_t BROADCAST_HZ        = 30;    // 월드 스테이트 브로드캐스트 주기(Hz)
 inline constexpr int64_t  SESSION_TIMEOUT_MS  = 10000; // 무통신 세션 타임아웃 (하트비트 1Hz 기준 10초)
 
 // ── RUDP(신뢰 UDP) 타이밍 ─────────────────────
@@ -205,14 +208,40 @@ private:
     void DispatchPacket(const char* data, DWORD byteLen, const SOCKADDR_IN& senderAddr);
 
     /**
+     * @brief 순서가 확정된 패킷을 게임 로직 큐(LogicQueue)에 밀어 넣습니다.
+     *        (생산자 측: I/O Worker 스레드에서 호출)
+     */
+    void EnqueueLogic(const SessionPtr& session, std::vector<uint8_t>&& packet);
+
+    /**
+     * @brief Logic(소비자) 스레드 진입점 (세션 어피니티).
+     *        자신에게 할당된 queueIndex 번 큐에서만 항목을 꺼내 DispatchApp
+     *        으로 게임 로직을 실행합니다. 네트워크 I/O 에는 관여하지 않습니다.
+     * @param queueIndex 이 스레드가 전담하는 LogicQueue 인덱스
+     */
+    void LogicThread(uint32_t queueIndex);
+
+    /**
      * @brief 헤더 검증/RUDP 처리가 끝난 패킷을 타입별 핸들러로 분기합니다.
-     *        (재조립으로 순서가 확정된 신뢰 패킷도 이 경로로 재생됩니다)
+     *        (소비자 측: Logic 스레드에서 호출. 재조립으로 순서가 확정된
+     *         신뢰 패킷도 이 경로로 재생됩니다)
      */
     void DispatchApp(const char* data, DWORD byteLen, const SessionPtr& session);
 
     // ── RUDP 재전송 타이머 ────────────────────
     /** @brief 모든 세션의 재전송 큐를 스캔해 타임아웃분을 재전송합니다. */
     void RetransmitSweep(int64_t nowMs);
+
+    // ── 월드 스테이트 브로드캐스트 (전담 스레드) ──
+    /** @brief BROADCAST_HZ 주기로 BroadcastTick 을 구동하는 전담 스레드. */
+    void BroadcastLoop();
+
+    /**
+     * @brief 한 틱 분량의 브로드캐스트 수행.
+     *        (1) 전 세션 트랜스폼을 lock-free 로 1회 수집(스냅샷)
+     *        (2) 세션락 해제 후 유저별 Era-필터 집계 패킷을 전송
+     */
+    void BroadcastTick();
 
     // ── 패킷 핸들러 (stub) ────────────────────
     //   Dispatcher 가 미리 해석한 세션을 함께 전달합니다.
@@ -232,8 +261,19 @@ private:
 
     std::atomic<bool> m_bRunning{ false };
 
-    // Worker 스레드 풀
+    // I/O Worker(생산자) 스레드 풀
     std::vector<std::thread> m_WorkerThreads;
+
+    // Logic(소비자) 스레드 풀 + 세션 어피니티용 큐 배열.
+    //   각 로직 스레드는 동일 인덱스의 큐만 전담하며, 특정 세션의 패킷은
+    //   항상 (SessionId % LOGIC_THREAD_COUNT) 로 결정된 하나의 큐/스레드에서만
+    //   처리되므로 세션별 처리 순서가 보존됩니다.
+    //   (LogicQueue 는 복사 불가 → unique_ptr 로 소유)
+    std::vector<std::thread>                 m_LogicThreads;
+    std::vector<std::unique_ptr<LogicQueue>> m_LogicQueues;
+
+    // 월드 스테이트 브로드캐스트 전담 스레드
+    std::thread m_BroadcastThread;
 
     // 사전 할당된 수신 오버랩 버퍼 풀 (RECV_BUFFER_COUNT 개)
     std::vector<std::unique_ptr<FRecvOverlapped>> m_RecvPool;

@@ -11,7 +11,8 @@ enum class EPacketType : uint8_t {
     PKT_HEARTBEAT    = 0x05,  // 연결 유지 핑/퐁 (1Hz) (C<->S)
     PKT_AI_TRIGGER   = 0x06,  // POI 응시 -> AI 도슨트 호출 (C->S->BE)
     PKT_ACK          = 0x07,  // 수신 확인 (RUDP 확장 단계용) (S->C)
-    PKT_SERVER_STATE = 0x08   // 세션 현황 브로드캐스트 (S->C)
+    PKT_SERVER_STATE = 0x08,  // 세션 현황 브로드캐스트 (S->C)
+    PKT_WORLD_STATE  = 0x09   // 주변 유저 위치 집계 브로드캐스트 (S->C, 30Hz)
 };
 
 // 패킷 헤더 Flags 비트 정의 (RUDP 계층)
@@ -115,6 +116,35 @@ struct FServerStatePacket {
     uint8_t       UserCount;   // 현재 세션 접속자 수 (max 255)
     uint32_t      ServerTime;  // 서버 시각 (Unix sec)
     uint8_t       CurrentEra;  // 서버 기준 시대
+};
+
+// 0x09: 월드 스테이트 브로드캐스트
+//   서버가 30Hz로 "같은 시대(Era)에 있는 주변 유저들"의 트랜스폼을 모아
+//   각 클라이언트에게 집계 전송합니다(AOI = Era 필터).
+//
+//   와이어 레이아웃:  FPacketHeader | FWorldStateBody | FWorldStateEntry × EntryCount
+//
+//   MTU(1472) 초과 시 여러 프래그먼트로 분할되며, 같은 ServerTimeMs 를 공유하는
+//   FragCount 개의 프래그먼트를 클라이언트가 병합해 "이번 틱의 전체 이웃 목록"을
+//   구성합니다. 클라이언트는 header.SeqNum 이 아닌 ServerTimeMs 로 최신성을 판단합니다.
+
+// 개별 유저 1명의 트랜스폼 엔트리 (50 bytes)
+struct FWorldStateEntry {
+    uint32_t UserId;       // 대상 유저 ID
+    uint32_t SeqNum;       // 원본 트랜스폼 SeqNum (스테일 판정/디버그)
+    float    PosX, PosY, PosZ;
+    float    RotX, RotY, RotZ, RotW;
+    float    VelX, VelY, VelZ;
+    uint8_t  Era;          // 이 유저의 시대 (수신자와 동일)
+    uint8_t  Flags;        // FSyncTransformPacket.Flags 와 동일 비트 정의
+};
+
+// 월드 스테이트 바디 헤더 (엔트리 배열이 뒤따름)
+struct FWorldStateBody {
+    uint64_t ServerTimeMs;  // 틱 식별자(단조 증가) - 프래그먼트 병합/최신성 판정
+    uint16_t EntryCount;    // 이 프래그먼트에 담긴 엔트리 수
+    uint8_t  FragIndex;     // 프래그먼트 인덱스 (0 .. FragCount-1)
+    uint8_t  FragCount;     // 이번 틱의 총 프래그먼트 수
 };
 
 #pragma pack(pop)
