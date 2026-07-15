@@ -117,7 +117,15 @@ void IOCPServer::RunRecvLoop()
     {
         // 1Hz 주기로 서버 상태를 체크하는 심박 슬롯
         std::this_thread::sleep_for(std::chrono::seconds(1));
-        // TODO: 세션 타임아웃 체크, 통계 출력 등 추가
+
+        // 무통신 세션 정리 (마지막 통신 후 SESSION_TIMEOUT_MS 초과)
+        const auto removed = m_SessionManager.RemoveTimedOut(SESSION_TIMEOUT_MS);
+        if (!removed.empty())
+        {
+            GLog::Info("[Server] {} session(s) timed out. Active sessions: {}",
+                removed.size(), m_SessionManager.Count());
+        }
+        // TODO: 통계 출력 등 추가
     }
 }
 
@@ -366,25 +374,52 @@ void IOCPServer::DispatchPacket(const char* data, DWORD byteLen, const SOCKADDR_
         return;
     }
 
-    // ── 6. 패킷 타입별 분기 ───────────────────
+    // ── 6. 패킷 타입 결정 ─────────────────────
     const auto packetType = static_cast<EPacketType>(header.Type);
 
+    // ── 7. JOIN: 세션이 아직 없으므로 먼저 세션을 생성/등록 ──
+    //   UDP 는 연결 개념이 없으므로, 클라이언트는 반드시 JOIN 으로
+    //   먼저 자신을 등록해야 이후 패킷이 세션에 매핑됩니다.
+    if (packetType == EPacketType::PKT_JOIN)
+    {
+        if (byteLen < sizeof(FJoinPacket))
+        {
+            GLog::Warn("[Dispatcher] PKT_JOIN too short: {} bytes", byteLen);
+            return;
+        }
+        FJoinPacket pkt{};
+        std::memcpy(&pkt, data, sizeof(FJoinPacket));
+
+        SessionPtr session = m_SessionManager.CreateOrGet(pkt.UserId, senderAddr);
+        session->Touch();
+        HandleJoin(pkt, session);
+        return;
+    }
+
+    // ── 8. JOIN 이외 패킷: 반드시 기존 세션이 존재해야 함 ──
+    //   주소를 기반으로 세션을 조회하고, 없으면(미등록/타임아웃) 드롭.
+    SessionPtr session = m_SessionManager.FindByAddr(senderAddr);
+    if (!session)
+    {
+        char addrBuf[INET_ADDRSTRLEN]{};
+        ::inet_ntop(AF_INET, &senderAddr.sin_addr, addrBuf, sizeof(addrBuf));
+        GLog::Warn("[Dispatcher] Packet 0x{:02X} from unknown sender {}:{} dropped (JOIN required).",
+            header.Type, addrBuf, ::ntohs(senderAddr.sin_port));
+        return;
+    }
+
+    // 통신이 발생했으므로 타임아웃 타이머 갱신 후 세션에 처리 위임
+    session->Touch();
+
+    // ── 9. 패킷 타입별 분기 (해석한 세션을 함께 전달) ──
     switch (packetType)
     {
-        case EPacketType::PKT_JOIN:
-        {
-            if (byteLen < sizeof(FJoinPacket)) break;
-            FJoinPacket pkt{};
-            std::memcpy(&pkt, data, sizeof(FJoinPacket));
-            HandleJoin(pkt, senderAddr);
-            break;
-        }
         case EPacketType::PKT_LEAVE:
         {
             if (byteLen < sizeof(FLeavePacket)) break;
             FLeavePacket pkt{};
             std::memcpy(&pkt, data, sizeof(FLeavePacket));
-            HandleLeave(pkt, senderAddr);
+            HandleLeave(pkt, session);
             break;
         }
         case EPacketType::PKT_TRANSFORM:
@@ -392,7 +427,7 @@ void IOCPServer::DispatchPacket(const char* data, DWORD byteLen, const SOCKADDR_
             if (byteLen < sizeof(FSyncTransformPacket)) break;
             FSyncTransformPacket pkt{};
             std::memcpy(&pkt, data, sizeof(FSyncTransformPacket));
-            HandleTransform(pkt, senderAddr);
+            HandleTransform(pkt, session);
             break;
         }
         case EPacketType::PKT_ERA_CHANGE:
@@ -400,7 +435,7 @@ void IOCPServer::DispatchPacket(const char* data, DWORD byteLen, const SOCKADDR_
             if (byteLen < sizeof(FEraChangePacket)) break;
             FEraChangePacket pkt{};
             std::memcpy(&pkt, data, sizeof(FEraChangePacket));
-            HandleEraChange(pkt, senderAddr);
+            HandleEraChange(pkt, session);
             break;
         }
         case EPacketType::PKT_HEARTBEAT:
@@ -408,7 +443,7 @@ void IOCPServer::DispatchPacket(const char* data, DWORD byteLen, const SOCKADDR_
             if (byteLen < sizeof(FHeartbeatPacket)) break;
             FHeartbeatPacket pkt{};
             std::memcpy(&pkt, data, sizeof(FHeartbeatPacket));
-            HandleHeartbeat(pkt, senderAddr);
+            HandleHeartbeat(pkt, session);
             break;
         }
         case EPacketType::PKT_AI_TRIGGER:
@@ -416,7 +451,7 @@ void IOCPServer::DispatchPacket(const char* data, DWORD byteLen, const SOCKADDR_
             if (byteLen < sizeof(FAiTriggerPacket)) break;
             FAiTriggerPacket pkt{};
             std::memcpy(&pkt, data, sizeof(FAiTriggerPacket));
-            HandleAiTrigger(pkt, senderAddr);
+            HandleAiTrigger(pkt, session);
             break;
         }
         case EPacketType::PKT_ACK:
@@ -424,7 +459,7 @@ void IOCPServer::DispatchPacket(const char* data, DWORD byteLen, const SOCKADDR_
             if (byteLen < sizeof(FAckPacket)) break;
             FAckPacket pkt{};
             std::memcpy(&pkt, data, sizeof(FAckPacket));
-            HandleAck(pkt, senderAddr);
+            HandleAck(pkt, session);
             break;
         }
         case EPacketType::PKT_SERVER_STATE:
@@ -432,7 +467,7 @@ void IOCPServer::DispatchPacket(const char* data, DWORD byteLen, const SOCKADDR_
             if (byteLen < sizeof(FServerStatePacket)) break;
             FServerStatePacket pkt{};
             std::memcpy(&pkt, data, sizeof(FServerStatePacket));
-            HandleServerState(pkt, senderAddr);
+            HandleServerState(pkt, session);
             break;
         }
         default:
@@ -447,55 +482,61 @@ void IOCPServer::DispatchPacket(const char* data, DWORD byteLen, const SOCKADDR_
 //  패킷 핸들러 (Stub 구현 - 추후 로직 채워넣기)
 // ──────────────────────────────────────────────
 
-void IOCPServer::HandleJoin(const FJoinPacket& pkt, const SOCKADDR_IN& sender)
+void IOCPServer::HandleJoin(const FJoinPacket& pkt, const SessionPtr& session)
 {
-    char addrBuf[INET_ADDRSTRLEN]{};
-    ::inet_ntop(AF_INET, &sender.sin_addr, addrBuf, sizeof(addrBuf));
-    GLog::Info("[RX] PKT_JOIN       | UserId={} from {}:{}",
-        pkt.UserId, addrBuf, ::ntohs(sender.sin_port));
-    // TODO: 세션 등록 로직
+    GLog::Info("[RX] PKT_JOIN       | SessionId={} UserId={} from {}",
+        session->GetSessionId(), pkt.UserId, session->GetAddrString());
+    // 세션 등록은 Dispatcher(CreateOrGet)에서 이미 완료됨.
+    // TODO: JOIN 수락 응답 전송 및 SERVER_STATE 브로드캐스트
 }
 
-void IOCPServer::HandleLeave(const FLeavePacket& pkt, const SOCKADDR_IN& sender)
+void IOCPServer::HandleLeave(const FLeavePacket& pkt, const SessionPtr& session)
 {
-    GLog::Info("[RX] PKT_LEAVE      | UserId={} Reason={}", pkt.UserId, pkt.Reason);
-    // TODO: 세션 제거 로직
+    GLog::Info("[RX] PKT_LEAVE      | SessionId={} UserId={} Reason={}",
+        session->GetSessionId(), pkt.UserId, pkt.Reason);
+    // 정상 퇴장 → 세션 제거
+    m_SessionManager.RemoveByUserId(session->GetUserId());
+    // TODO: 잔여 참가자에게 이탈 브로드캐스트
 }
 
-void IOCPServer::HandleTransform(const FSyncTransformPacket& pkt, const SOCKADDR_IN& sender)
+void IOCPServer::HandleTransform(const FSyncTransformPacket& pkt, const SessionPtr& session)
 {
     // 30Hz로 가장 빈번하게 호출 → GLog::Debug는 _DEBUG 빌드에서만 출력
-    GLog::Debug("[RX] PKT_TRANSFORM  | UserId={} Seq={} Pos=({:.2f},{:.2f},{:.2f})",
-        pkt.UserId, pkt.SeqNum, pkt.PosX, pkt.PosY, pkt.PosZ);
+    GLog::Debug("[RX] PKT_TRANSFORM  | SessionId={} Seq={} Pos=({:.2f},{:.2f},{:.2f})",
+        session->GetSessionId(), pkt.SeqNum, pkt.PosX, pkt.PosY, pkt.PosZ);
     // TODO: Dead Reckoning 예측 보간 및 브로드캐스트 로직
 }
 
-void IOCPServer::HandleEraChange(const FEraChangePacket& pkt, const SOCKADDR_IN& sender)
+void IOCPServer::HandleEraChange(const FEraChangePacket& pkt, const SessionPtr& session)
 {
-    GLog::Info("[RX] PKT_ERA_CHANGE | UserId={} Era {} -> {}",
-        pkt.UserId, pkt.FromEra, pkt.ToEra);
-    // TODO: 세션 내 시대 동기화 로직
+    GLog::Info("[RX] PKT_ERA_CHANGE | SessionId={} Era {} -> {}",
+        session->GetSessionId(), pkt.FromEra, pkt.ToEra);
+    // 세션 상태에 현재 시대 반영
+    session->SetEra(pkt.ToEra);
+    // TODO: SyncMode 에 따른 세션 내 시대 동기화 로직
 }
 
-void IOCPServer::HandleHeartbeat(const FHeartbeatPacket& pkt, const SOCKADDR_IN& sender)
+void IOCPServer::HandleHeartbeat(const FHeartbeatPacket& pkt, const SessionPtr& session)
 {
-    // TODO: Pong 응답 전송 및 세션 타임스탬프 갱신
+    // Touch() 는 Dispatcher 에서 이미 호출됨 → 타임아웃 타이머 갱신 완료
+    // TODO: Pong 응답 전송 (ClientTime 에코)
 }
 
-void IOCPServer::HandleAiTrigger(const FAiTriggerPacket& pkt, const SOCKADDR_IN& sender)
+void IOCPServer::HandleAiTrigger(const FAiTriggerPacket& pkt, const SessionPtr& session)
 {
-    GLog::Info("[RX] PKT_AI_TRIGGER | UserId={} ObjectId={} GazeDuration={:.2f}s",
-        pkt.UserId, pkt.ObjectId, pkt.GazeDuration);
+    GLog::Info("[RX] PKT_AI_TRIGGER | SessionId={} ObjectId={} GazeDuration={:.2f}s",
+        session->GetSessionId(), pkt.ObjectId, pkt.GazeDuration);
     // TODO: Backend 서버로 AI 도슨트 호출 전달 로직
 }
 
-void IOCPServer::HandleAck(const FAckPacket& pkt, const SOCKADDR_IN& sender)
+void IOCPServer::HandleAck(const FAckPacket& pkt, const SessionPtr& session)
 {
-    GLog::Info("[RX] PKT_ACK        | UserId={} AckSeqNum={}", pkt.UserId, pkt.AckSeqNum);
+    GLog::Info("[RX] PKT_ACK        | SessionId={} AckSeqNum={}",
+        session->GetSessionId(), pkt.AckSeqNum);
     // TODO: RUDP 재전송 큐에서 해당 SeqNum 제거
 }
 
-void IOCPServer::HandleServerState(const FServerStatePacket& pkt, const SOCKADDR_IN& sender)
+void IOCPServer::HandleServerState(const FServerStatePacket& pkt, const SessionPtr& session)
 {
     GLog::Info("[RX] PKT_SERVER_STATE | SessionId={} UserCount={}",
         pkt.SessionId, pkt.UserCount);

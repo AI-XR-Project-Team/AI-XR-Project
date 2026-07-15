@@ -25,6 +25,7 @@
 #include <functional>
 
 #include "Packets.h"
+#include "Network/SessionManager.h"
 
 // ──────────────────────────────────────────────
 //  상수
@@ -33,6 +34,7 @@ inline constexpr uint16_t SERVER_PORT        = 9000;
 inline constexpr uint32_t MAX_UDP_PAYLOAD    = 1472;   // 이더넷 MTU(1500) - IP(20) - UDP(8)
 inline constexpr uint32_t RECV_BUFFER_COUNT  = 64;     // 사전 할당 수신 버퍼 수
 inline constexpr uint32_t WORKER_THREAD_COUNT = 4;     // Worker 스레드 수 (2~4)
+inline constexpr int64_t  SESSION_TIMEOUT_MS  = 10000; // 무통신 세션 타임아웃 (하트비트 1Hz 기준 10초)
 
 // 패킷 매직 바이트 ("AR")
 inline constexpr uint8_t MAGIC_BYTE_0 = 0x41;  // 'A'
@@ -120,7 +122,8 @@ private:
 
     // ── 패킷 Dispatcher ───────────────────────
     /**
-     * @brief 수신 버퍼에서 헤더를 검증하고 패킷 종류별로 분기합니다.
+     * @brief 수신 버퍼에서 헤더를 검증하고, 송신자 주소로 세션을 해석한 뒤
+     *        패킷 종류별 핸들러에 세션을 위임합니다.
      * @param data       원시 바이트 배열
      * @param byteLen    수신 바이트 수
      * @param senderAddr 송신자 주소
@@ -128,14 +131,18 @@ private:
     void DispatchPacket(const char* data, DWORD byteLen, const SOCKADDR_IN& senderAddr);
 
     // ── 패킷 핸들러 (stub) ────────────────────
-    void HandleJoin       (const FJoinPacket&         pkt, const SOCKADDR_IN& sender);
-    void HandleLeave      (const FLeavePacket&        pkt, const SOCKADDR_IN& sender);
-    void HandleTransform  (const FSyncTransformPacket& pkt, const SOCKADDR_IN& sender);
-    void HandleEraChange  (const FEraChangePacket&    pkt, const SOCKADDR_IN& sender);
-    void HandleHeartbeat  (const FHeartbeatPacket&    pkt, const SOCKADDR_IN& sender);
-    void HandleAiTrigger  (const FAiTriggerPacket&    pkt, const SOCKADDR_IN& sender);
-    void HandleAck        (const FAckPacket&          pkt, const SOCKADDR_IN& sender);
-    void HandleServerState(const FServerStatePacket&  pkt, const SOCKADDR_IN& sender);
+    //   Dispatcher 가 미리 해석한 세션을 함께 전달합니다.
+    //   (주소·UserId 등은 session 객체에서 조회)
+    using SessionPtr = SessionManager::SessionPtr;
+
+    void HandleJoin       (const FJoinPacket&          pkt, const SessionPtr& session);
+    void HandleLeave      (const FLeavePacket&         pkt, const SessionPtr& session);
+    void HandleTransform  (const FSyncTransformPacket& pkt, const SessionPtr& session);
+    void HandleEraChange  (const FEraChangePacket&     pkt, const SessionPtr& session);
+    void HandleHeartbeat  (const FHeartbeatPacket&     pkt, const SessionPtr& session);
+    void HandleAiTrigger  (const FAiTriggerPacket&     pkt, const SessionPtr& session);
+    void HandleAck        (const FAckPacket&           pkt, const SessionPtr& session);
+    void HandleServerState(const FServerStatePacket&   pkt, const SessionPtr& session);
 
     // ── 멤버 변수 ─────────────────────────────
     SOCKET   m_Socket{ INVALID_SOCKET };
@@ -148,4 +155,7 @@ private:
 
     // 사전 할당된 오버랩 버퍼 풀 (RECV_BUFFER_COUNT 개)
     std::vector<std::unique_ptr<FRecvOverlapped>> m_RecvPool;
+
+    // 접속 세션 관리자 (여러 Worker 스레드가 공유 접근)
+    SessionManager m_SessionManager;
 };
