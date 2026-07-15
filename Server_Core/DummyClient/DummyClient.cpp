@@ -45,13 +45,17 @@ static SOCKET            g_Socket{ INVALID_SOCKET };
 // ──────────────────────────────────────────────
 //  헬퍼: 패킷 헤더 채우기
 // ──────────────────────────────────────────────
-static void FillHeader(FPacketHeader& header, EPacketType type, uint16_t bodyLen) noexcept
+static void FillHeader(FPacketHeader& header, EPacketType type, uint16_t bodyLen,
+                       uint32_t seqNum, uint8_t flags) noexcept
 {
     header.Magic[0] = 0x41;   // 'A'
     header.Magic[1] = 0x52;   // 'R'
     header.Version  = 0x01;
     header.Type     = static_cast<uint8_t>(type);
     header.BodyLen  = bodyLen;
+    header.SeqNum   = seqNum;  // RELIABLE: 신뢰 스트림 순서 / 그 외: 비신뢰 순서
+    header.AckNum   = 0;       // 더미는 서버의 신뢰 송신을 ACK하지 않으므로 0
+    header.Flags    = flags;   // PKT_FLAG_RELIABLE 등
 }
 
 // ──────────────────────────────────────────────
@@ -137,8 +141,10 @@ static bool SendPacket(const void* pData, int size, const SOCKADDR_IN& serverAdd
 static void SendJoinPacket(const SOCKADDR_IN& serverAddr)
 {
     FJoinPacket pkt{};
+    // JOIN 은 신뢰 이벤트 → RELIABLE 플래그, 신뢰 스트림 SeqNum=1 로 시작
     FillHeader(pkt.Header, EPacketType::PKT_JOIN,
-               static_cast<uint16_t>(sizeof(FJoinPacket) - sizeof(FPacketHeader)));
+               static_cast<uint16_t>(sizeof(FJoinPacket) - sizeof(FPacketHeader)),
+               1, PKT_FLAG_RELIABLE);
 
     pkt.UserId        = DUMMY_USER_ID;
     pkt.LocationId    = 1001;          // 더미 유적지 ID
@@ -162,8 +168,10 @@ static void SendTransformPacket(const SOCKADDR_IN& serverAddr,
                                  float              posZ)
 {
     FSyncTransformPacket pkt{};
+    // Transform 은 비신뢰 순서 스트림 → 플래그 없음, 헤더 SeqNum 으로 스테일 판정
     FillHeader(pkt.Header, EPacketType::PKT_TRANSFORM,
-               static_cast<uint16_t>(sizeof(FSyncTransformPacket) - sizeof(FPacketHeader)));
+               static_cast<uint16_t>(sizeof(FSyncTransformPacket) - sizeof(FPacketHeader)),
+               seqNum, PKT_FLAG_NONE);
 
     pkt.UserId    = DUMMY_USER_ID;
     pkt.SessionId = DUMMY_SESSION;

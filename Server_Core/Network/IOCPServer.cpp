@@ -121,19 +121,30 @@ void IOCPServer::RunRecvLoop()
     //       Main 스레드는 이 함수를 통해 종료 신호를 대기하거나
     //       추후 추가 로직(통계, 타임아웃 관리 등)을 수행할 수 있습니다.
     GLog::Info("[Server] Main recv loop running. Press Ctrl+C to stop.");
+
+    int64_t lastTimeoutSweepMs = Session::NowMs();
+
     while (m_bRunning.load(std::memory_order_acquire))
     {
-        // 1Hz 주기로 서버 상태를 체크하는 심박 슬롯
-        std::this_thread::sleep_for(std::chrono::seconds(1));
+        // RUDP 재전송 해상도에 맞춰 짧은 주기로 틱
+        std::this_thread::sleep_for(std::chrono::milliseconds(RUDP_TICK_MS));
 
-        // 무통신 세션 정리 (마지막 통신 후 SESSION_TIMEOUT_MS 초과)
-        const auto removed = m_SessionManager.RemoveTimedOut(SESSION_TIMEOUT_MS);
-        if (!removed.empty())
+        const int64_t nowMs = Session::NowMs();
+
+        // (1) 매 틱: 재전송 큐 스캔 → 타임아웃분 재전송
+        RetransmitSweep(nowMs);
+
+        // (2) 1초마다: 무통신 세션 정리 (마지막 통신 후 SESSION_TIMEOUT_MS 초과)
+        if (nowMs - lastTimeoutSweepMs >= 1000)
         {
-            GLog::Info("[Server] {} session(s) timed out. Active sessions: {}",
-                removed.size(), m_SessionManager.Count());
+            lastTimeoutSweepMs = nowMs;
+            const auto removed = m_SessionManager.RemoveTimedOut(SESSION_TIMEOUT_MS);
+            if (!removed.empty())
+            {
+                GLog::Info("[Server] {} session(s) timed out. Active sessions: {}",
+                    removed.size(), m_SessionManager.Count());
+            }
         }
-        // TODO: 통계 출력 등 추가
     }
 }
 
@@ -522,12 +533,14 @@ void IOCPServer::DispatchPacket(const char* data, DWORD byteLen, const SOCKADDR_
         return;
     }
 
-    // ── 6. 패킷 타입 결정 ─────────────────────
+    // ── 6. 패킷 타입/신뢰 여부 결정 ───────────
     const auto packetType = static_cast<EPacketType>(header.Type);
+    const bool bReliable  = (header.Flags & PKT_FLAG_RELIABLE) != 0;
 
-    // ── 7. JOIN: 세션이 아직 없으므로 먼저 세션을 생성/등록 ──
-    //   UDP 는 연결 개념이 없으므로, 클라이언트는 반드시 JOIN 으로
-    //   먼저 자신을 등록해야 이후 패킷이 세션에 매핑됩니다.
+    // ── 7. 세션 해석 ──────────────────────────
+    //   JOIN 은 세션 생성 계기이므로 UserId 를 읽어 세션을 확보하고,
+    //   그 외 패킷은 주소로 조회(없으면 드롭)합니다.
+    SessionPtr session;
     if (packetType == EPacketType::PKT_JOIN)
     {
         if (byteLen < sizeof(FJoinPacket))
@@ -535,33 +548,89 @@ void IOCPServer::DispatchPacket(const char* data, DWORD byteLen, const SOCKADDR_
             GLog::Warn("[Dispatcher] PKT_JOIN too short: {} bytes", byteLen);
             return;
         }
-        FJoinPacket pkt{};
-        std::memcpy(&pkt, data, sizeof(FJoinPacket));
-
-        SessionPtr session = m_SessionManager.CreateOrGet(pkt.UserId, senderAddr);
-        session->Touch();
-        HandleJoin(pkt, session);
-        return;
+        const auto* jp = reinterpret_cast<const FJoinPacket*>(data);
+        session = m_SessionManager.CreateOrGet(jp->UserId, senderAddr);
     }
-
-    // ── 8. JOIN 이외 패킷: 반드시 기존 세션이 존재해야 함 ──
-    //   주소를 기반으로 세션을 조회하고, 없으면(미등록/타임아웃) 드롭.
-    SessionPtr session = m_SessionManager.FindByAddr(senderAddr);
-    if (!session)
+    else
     {
-        char addrBuf[INET_ADDRSTRLEN]{};
-        ::inet_ntop(AF_INET, &senderAddr.sin_addr, addrBuf, sizeof(addrBuf));
-        GLog::Warn("[Dispatcher] Packet 0x{:02X} from unknown sender {}:{} dropped (JOIN required).",
-            header.Type, addrBuf, ::ntohs(senderAddr.sin_port));
-        return;
+        session = m_SessionManager.FindByAddr(senderAddr);
+        if (!session)
+        {
+            char addrBuf[INET_ADDRSTRLEN]{};
+            ::inet_ntop(AF_INET, &senderAddr.sin_addr, addrBuf, sizeof(addrBuf));
+            GLog::Warn("[Dispatcher] Packet 0x{:02X} from unknown sender {}:{} dropped (JOIN required).",
+                header.Type, addrBuf, ::ntohs(senderAddr.sin_port));
+            return;
+        }
     }
 
-    // 통신이 발생했으므로 타임아웃 타이머 갱신 후 세션에 처리 위임
+    // 통신 발생 → 타임아웃 타이머 갱신
     session->Touch();
 
-    // ── 9. 패킷 타입별 분기 (해석한 세션을 함께 전달) ──
-    switch (packetType)
+    // ── 8. 상대의 누적 ACK 반영 (모든 패킷 piggyback) ──
+    //   클라이언트가 알려준 "여기까지 받았다" 번호로 서버 재전송 큐를 정리.
+    session->Rudp().OnAckReceived(header.AckNum);
+
+    // ── 9. RUDP 계층 라우팅 ───────────────────
+    if (bReliable)
     {
+        // 신뢰 스트림: 중복/역전 Drop + 순서 재조립 → 순서 확정분만 응용 계층으로
+        std::vector<std::vector<uint8_t>> delivered;
+        const bool accepted = session->Rudp().OnReliableReceived(
+            header.SeqNum,
+            reinterpret_cast<const uint8_t*>(data),
+            static_cast<int>(byteLen),
+            delivered);
+
+        for (auto& bytes : delivered)
+        {
+            DispatchApp(reinterpret_cast<const char*>(bytes.data()),
+                        static_cast<DWORD>(bytes.size()), session);
+        }
+
+        // 수용/드롭과 무관하게 누적 ACK 회신
+        //   (상대가 이전 ACK를 놓쳐 재전송한 경우에도 최신 ACK를 다시 알려줌)
+        SendAck(*session, session->Rudp().GetCumulativeAck());
+
+        if (!accepted)
+        {
+            GLog::Debug("[Dispatcher] Reliable dup/stale dropped. Seq={}", header.SeqNum);
+        }
+    }
+    else
+    {
+        // 비신뢰: Transform(30Hz) 만 순서 기반 스테일/중복 Drop (재전송/재조립 없음)
+        if (packetType == EPacketType::PKT_TRANSFORM &&
+            !session->Rudp().AcceptUnreliable(header.SeqNum))
+        {
+            GLog::Debug("[Dispatcher] Stale transform dropped. Seq={}", header.SeqNum);
+            return;
+        }
+        DispatchApp(data, byteLen, session);
+    }
+}
+
+// ──────────────────────────────────────────────
+//  응용 계층 Dispatcher (타입별 핸들러 분기)
+//    헤더 검증 + RUDP 처리를 마친 패킷만 도달합니다.
+//    재조립으로 순서가 확정된 신뢰 패킷도 이 경로로 재생됩니다.
+// ──────────────────────────────────────────────
+
+void IOCPServer::DispatchApp(const char* data, DWORD byteLen, const SessionPtr& session)
+{
+    FPacketHeader header{};
+    std::memcpy(&header, data, sizeof(FPacketHeader));
+
+    switch (static_cast<EPacketType>(header.Type))
+    {
+        case EPacketType::PKT_JOIN:
+        {
+            if (byteLen < sizeof(FJoinPacket)) break;
+            FJoinPacket pkt{};
+            std::memcpy(&pkt, data, sizeof(FJoinPacket));
+            HandleJoin(pkt, session);
+            break;
+        }
         case EPacketType::PKT_LEAVE:
         {
             if (byteLen < sizeof(FLeavePacket)) break;
@@ -650,11 +719,9 @@ void IOCPServer::HandleLeave(const FLeavePacket& pkt, const SessionPtr& session)
 void IOCPServer::HandleTransform(const FSyncTransformPacket& pkt, const SessionPtr& session)
 {
     // 30Hz로 가장 빈번하게 호출 → GLog::Debug는 _DEBUG 빌드에서만 출력
+    // (Transform 은 비신뢰 스트림: 스테일/중복은 Dispatcher 에서 이미 Drop 됨)
     GLog::Debug("[RX] PKT_TRANSFORM  | SessionId={} Seq={} Pos=({:.2f},{:.2f},{:.2f})",
         session->GetSessionId(), pkt.SeqNum, pkt.PosX, pkt.PosY, pkt.PosZ);
-
-    // RUDP: 수신한 시퀀스 번호에 대해 즉시 ACK(수신 확인) 응답
-    SendAck(*session, pkt.SeqNum);
 
     // TODO: Dead Reckoning 예측 보간 및 브로드캐스트 로직
 }
@@ -699,7 +766,7 @@ void IOCPServer::HandleServerState(const FServerStatePacket& pkt, const SessionP
 //  응답 패킷 헬퍼
 // ──────────────────────────────────────────────
 
-void IOCPServer::SendAck(const Session& session, uint32_t ackSeqNum)
+void IOCPServer::SendAck(const Session& session, uint32_t cumulativeAck)
 {
     FAckPacket ack{};
     ack.Header.Magic[0] = MAGIC_BYTE_0;
@@ -707,8 +774,93 @@ void IOCPServer::SendAck(const Session& session, uint32_t ackSeqNum)
     ack.Header.Version  = 0x01;
     ack.Header.Type     = static_cast<uint8_t>(EPacketType::PKT_ACK);
     ack.Header.BodyLen  = static_cast<uint16_t>(sizeof(FAckPacket) - sizeof(FPacketHeader));
+    ack.Header.SeqNum   = 0;                       // ACK 패킷 자체는 비신뢰
+    ack.Header.AckNum   = cumulativeAck;           // 누적 ACK (핵심 필드)
+    ack.Header.Flags    = PKT_FLAG_NONE;
     ack.UserId    = session.GetUserId();
-    ack.AckSeqNum = ackSeqNum;
+    ack.AckSeqNum = cumulativeAck;                 // 바디에도 동일 값(호환/가독성)
 
     SendToSession(session, &ack, sizeof(ack));
+}
+
+// ──────────────────────────────────────────────
+//  신뢰 패킷 송신 + 재전송 큐 등록
+// ──────────────────────────────────────────────
+
+bool IOCPServer::SendReliableToSession(Session& session, uint8_t type, const void* body, int bodyLen)
+{
+    if (bodyLen < 0 || sizeof(FPacketHeader) + static_cast<size_t>(bodyLen) > MAX_UDP_PAYLOAD)
+    {
+        GLog::Warn("[Send] Reliable payload too large: bodyLen={}", bodyLen);
+        return false;
+    }
+
+    const int total = static_cast<int>(sizeof(FPacketHeader)) + bodyLen;
+    const uint32_t seq = session.Rudp().AssignSendSeq();
+
+    // 전체 패킷 직렬화 (헤더 + 바디)
+    std::vector<uint8_t> packet(static_cast<size_t>(total));
+
+    FPacketHeader header{};
+    header.Magic[0] = MAGIC_BYTE_0;
+    header.Magic[1] = MAGIC_BYTE_1;
+    header.Version  = 0x01;
+    header.Type     = type;
+    header.BodyLen  = static_cast<uint16_t>(bodyLen);
+    header.SeqNum   = seq;
+    header.AckNum   = session.Rudp().GetCumulativeAck();  // 인바운드 누적 ACK piggyback
+    header.Flags    = PKT_FLAG_RELIABLE;
+
+    std::memcpy(packet.data(), &header, sizeof(FPacketHeader));
+    if (bodyLen > 0)
+        std::memcpy(packet.data() + sizeof(FPacketHeader), body, static_cast<size_t>(bodyLen));
+
+    // 재전송 큐에 복사본 보관 (ACK 수신 전까지 타이머가 재전송 담당)
+    session.Rudp().OnReliableSent(seq, packet.data(), total, Session::NowMs());
+
+    // 실제 비동기 전송
+    return SendTo(session.GetRemoteAddr(), packet.data(), total);
+}
+
+// ──────────────────────────────────────────────
+//  RUDP 재전송 타이머 (Main 스레드에서 주기 호출)
+// ──────────────────────────────────────────────
+
+void IOCPServer::RetransmitSweep(int64_t nowMs)
+{
+    // 최대 재시도를 초과해 포기해야 할 세션(UserId) 수집 → ForEach 종료 후 제거
+    std::vector<uint32_t> deadSessions;
+
+    // 주의: ForEach 는 SessionManager 를 shared_lock 으로 순회하므로
+    //       콜백 내부에서 세션을 제거(unique_lock)하면 데드락 → 나중에 처리.
+    m_SessionManager.ForEach([&](const SessionPtr& session)
+    {
+        std::vector<std::vector<uint8_t>> resend;
+        std::vector<uint32_t>             deadSeqs;
+
+        session->Rudp().CollectRetransmits(
+            nowMs, RUDP_RETRANS_TIMEOUT_MS, RUDP_MAX_RETRIES, resend, deadSeqs);
+
+        for (auto& bytes : resend)
+        {
+            SendTo(session->GetRemoteAddr(), bytes.data(), static_cast<int>(bytes.size()));
+        }
+        if (!resend.empty())
+        {
+            GLog::Debug("[Retransmit] SessionId={} resent {} packet(s).",
+                session->GetSessionId(), resend.size());
+        }
+
+        if (!deadSeqs.empty())
+        {
+            GLog::Warn("[Retransmit] SessionId={} exceeded max retries on {} packet(s). Dropping session.",
+                session->GetSessionId(), deadSeqs.size());
+            deadSessions.push_back(session->GetUserId());
+        }
+    });
+
+    for (uint32_t userId : deadSessions)
+    {
+        m_SessionManager.RemoveByUserId(userId);
+    }
 }

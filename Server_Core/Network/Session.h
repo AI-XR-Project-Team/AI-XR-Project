@@ -26,6 +26,8 @@
 #include <chrono>
 #include <string>
 
+#include "Network/RudpChannel.h"
+
 class Session
 {
 public:
@@ -79,6 +81,11 @@ public:
         return std::string(buf) + ":" + std::to_string(::ntohs(m_RemoteAddr.sin_port));
     }
 
+    // ── RUDP(신뢰 UDP) 채널 ────────────────────────
+    // 이 세션의 신뢰성/순서 제어 상태 머신 (자체 mutex 로 스레드 안전)
+    RudpChannel&       Rudp()       noexcept { return m_Rudp; }
+    const RudpChannel& Rudp() const noexcept { return m_Rudp; }
+
     // 단조 증가 시계 기준 현재 시각(ms) - 벽시계 변경 영향 없음
     static int64_t NowMs() noexcept
     {
@@ -95,4 +102,7 @@ private:
     // ── 가변 (멀티스레드 접근 → atomic) ────────────
     std::atomic<int64_t> m_LastRecvMs{ 0 };
     std::atomic<uint8_t> m_EraId{ 0 };
+
+    // ── RUDP 채널 (내부적으로 mutex 보호) ──────────
+    RudpChannel m_Rudp;
 };

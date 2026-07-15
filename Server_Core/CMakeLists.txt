@@ -36,6 +36,7 @@ set(SERVER_SOURCES
     main.cpp
     Network/IOCPServer.cpp
     Network/SessionManager.cpp
+    Network/RudpChannel.cpp
 )
 
 add_executable(CoreServer ${SERVER_SOURCES})
