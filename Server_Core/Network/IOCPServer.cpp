@@ -35,6 +35,7 @@ bool IOCPServer::Start(uint16_t port)
     if (!BindSocket(port))    return false;
     if (!CreateIOCP())        return false;
     if (!AssociateSocketWithIOCP()) return false;
+    if (!InitSendPool())      return false;
 
     m_bRunning.store(true, std::memory_order_release);
 
@@ -101,6 +102,13 @@ void IOCPServer::Shutdown()
 
     // 수신 풀 해제 (unique_ptr 이 자동 해제)
     m_RecvPool.clear();
+
+    // 송신 풀 해제 (Worker 합류 + 소켓 종료 이후이므로 in-flight 송신 없음)
+    {
+        std::lock_guard<std::mutex> lock(m_SendPoolMutex);
+        m_SendFreeList.clear();
+        m_SendPool.clear();
+    }
 
     ::WSACleanup();
     GLog::Info("[Server] Shutdown complete.");
@@ -201,7 +209,7 @@ bool IOCPServer::AssociateSocketWithIOCP()
     HANDLE result = ::CreateIoCompletionPort(
         reinterpret_cast<HANDLE>(m_Socket),
         m_hIOCP,
-        static_cast<ULONG_PTR>(ECompletionKey::RecvCompleted),
+        static_cast<ULONG_PTR>(ECompletionKey::SocketIo),
         0
     );
 
@@ -227,6 +235,20 @@ bool IOCPServer::PostInitialRecvs()
     return true;
 }
 
+bool IOCPServer::InitSendPool()
+{
+    m_SendPool.reserve(SEND_BUFFER_COUNT);
+    m_SendFreeList.reserve(SEND_BUFFER_COUNT);
+    for (uint32_t i = 0; i < SEND_BUFFER_COUNT; ++i)
+    {
+        auto pOvlp = std::make_unique<FSendOverlapped>();
+        m_SendFreeList.push_back(pOvlp.get());
+        m_SendPool.push_back(std::move(pOvlp));
+    }
+    GLog::Info("[Server] Send pool initialized with {} buffer(s).", SEND_BUFFER_COUNT);
+    return true;
+}
+
 // ──────────────────────────────────────────────
 //  비동기 수신 등록
 // ──────────────────────────────────────────────
@@ -236,7 +258,8 @@ void IOCPServer::PostRecv(FRecvOverlapped* pOvlp)
     assert(pOvlp != nullptr);
 
     // 구조체 재사용 시 초기화 (단, Buffer 내용은 덮어써지므로 불필요)
-    ::ZeroMemory(&pOvlp->Overlapped, sizeof(WSAOVERLAPPED));
+    ::ZeroMemory(&pOvlp->Base.Overlapped, sizeof(WSAOVERLAPPED));
+    pOvlp->Base.Operation = EIoOperation::Recv;
     pOvlp->WsaBuf.buf = pOvlp->Buffer;
     pOvlp->WsaBuf.len = MAX_UDP_PAYLOAD;
     pOvlp->RemoteAddrLen = sizeof(SOCKADDR_IN);
@@ -250,7 +273,7 @@ void IOCPServer::PostRecv(FRecvOverlapped* pOvlp)
         &flags,
         reinterpret_cast<SOCKADDR*>(&pOvlp->RemoteAddr),
         &pOvlp->RemoteAddrLen,
-        &pOvlp->Overlapped,
+        &pOvlp->Base.Overlapped,
         nullptr                                     // 완료 루틴 없음 (IOCP 방식)
     );
 
@@ -263,6 +286,101 @@ void IOCPServer::PostRecv(FRecvOverlapped* pOvlp)
             GLog::Error("[Server] WSARecvFrom failed: {}", err);
         }
     }
+}
+
+// ──────────────────────────────────────────────
+//  비동기 송신
+// ──────────────────────────────────────────────
+
+FSendOverlapped* IOCPServer::AcquireSendOverlapped()
+{
+    std::lock_guard<std::mutex> lock(m_SendPoolMutex);
+
+    if (!m_SendFreeList.empty())
+    {
+        FSendOverlapped* pOvlp = m_SendFreeList.back();
+        m_SendFreeList.pop_back();
+        return pOvlp;
+    }
+
+    // free list 소진 → 동적 증설 (부하 급증 시 ACK 유실 방지)
+    // 주의: 실제 오버랩 객체는 힙에 있고 벡터엔 unique_ptr(포인터)만 저장되므로,
+    //       벡터 재할당이 일어나도 in-flight 송신의 raw 포인터는 유효합니다.
+    auto pNew = std::make_unique<FSendOverlapped>();
+    FSendOverlapped* pOvlp = pNew.get();
+    m_SendPool.push_back(std::move(pNew));
+    GLog::Warn("[Server] Send pool grew to {} buffer(s).", m_SendPool.size());
+    return pOvlp;
+}
+
+void IOCPServer::ReleaseSendOverlapped(FSendOverlapped* pOvlp)
+{
+    std::lock_guard<std::mutex> lock(m_SendPoolMutex);
+    m_SendFreeList.push_back(pOvlp);
+}
+
+bool IOCPServer::SendTo(const SOCKADDR_IN& to, const void* data, int len)
+{
+    if (len <= 0 || len > static_cast<int>(MAX_UDP_PAYLOAD))
+    {
+        GLog::Warn("[Send] Invalid payload length: {}", len);
+        return false;
+    }
+    if (!m_bRunning.load(std::memory_order_acquire))
+        return false;
+
+    // 1) 송신 버퍼 획득 및 데이터 준비
+    FSendOverlapped* pOvlp = AcquireSendOverlapped();
+
+    ::ZeroMemory(&pOvlp->Base.Overlapped, sizeof(WSAOVERLAPPED));
+    pOvlp->Base.Operation = EIoOperation::Send;
+    std::memcpy(pOvlp->Buffer, data, static_cast<size_t>(len));
+    pOvlp->WsaBuf.buf = pOvlp->Buffer;
+    pOvlp->WsaBuf.len = static_cast<ULONG>(len);
+    pOvlp->RemoteAddr = to;
+
+    // 2) 비동기 송신 등록
+    DWORD bytesSent = 0;
+    int result = ::WSASendTo(
+        m_Socket,
+        &pOvlp->WsaBuf,
+        1,
+        &bytesSent,
+        0,                                          // flags
+        reinterpret_cast<const SOCKADDR*>(&pOvlp->RemoteAddr),
+        sizeof(SOCKADDR_IN),
+        &pOvlp->Base.Overlapped,
+        nullptr                                     // 완료 루틴 없음 (IOCP 방식)
+    );
+
+    if (result == SOCKET_ERROR)
+    {
+        const int err = ::WSAGetLastError();
+        if (err != WSA_IO_PENDING)
+        {
+            // 진짜 실패: 이 경우 완료 통지가 IOCP 로 오지 않으므로 즉시 반납
+            GLog::Error("[Send] WSASendTo failed: {}", err);
+            ReleaseSendOverlapped(pOvlp);
+            return false;
+        }
+    }
+
+    // 즉시 완료(result==0) 또는 WSA_IO_PENDING:
+    //   두 경우 모두 완료 패킷이 IOCP 에 큐잉되므로(SKIP_ON_SUCCESS 미설정),
+    //   버퍼 반납은 Worker 스레드의 OnSendCompleted 에서 수행합니다.
+    return true;
+}
+
+bool IOCPServer::SendToSession(const Session& session, const void* data, int len)
+{
+    return SendTo(session.GetRemoteAddr(), data, len);
+}
+
+void IOCPServer::OnSendCompleted(FSendOverlapped* pOvlp)
+{
+    // 전송 완료 → 버퍼를 풀로 반납하여 재사용
+    // (필요 시 여기서 송신 통계/완료 로그를 남길 수 있음)
+    ReleaseSendOverlapped(pOvlp);
 }
 
 // ──────────────────────────────────────────────
@@ -296,31 +414,61 @@ void IOCPServer::WorkerThread()
             break;
         }
 
-        // ── 오류 처리 ──────────────────────────
-        if (!success || pRawOvlp == nullptr)
+        // ── 완료 패킷 자체가 없는 GQCS 실패 ────
+        //   (pRawOvlp == nullptr 이면 어떤 I/O 도 회수할 수 없음)
+        if (pRawOvlp == nullptr)
         {
             const DWORD err = ::GetLastError();
             // 소켓 종료/강제 닫힘 시 루프 탈출
             if (err == ERROR_OPERATION_ABORTED || err == ERROR_ABANDONED_WAIT_0)
                 break;
 
-            GLog::Error("[Worker] GQCS failed: {}", err);
+            GLog::Error("[Worker] GQCS failed (no overlapped): {}", err);
             continue;
         }
 
-        // ── 수신 완료 처리 ─────────────────────
-        // FRecvOverlapped.Overlapped 가 첫 번째 멤버이므로 reinterpret_cast 안전
-        auto* pOvlp = reinterpret_cast<FRecvOverlapped*>(pRawOvlp);
+        // ── 완료된 I/O 종류 판별 (Recv / Send) ──
+        //   Base 가 각 구조체의 offset 0 이므로 캐스팅이 안전합니다.
+        auto* pBase = reinterpret_cast<FIoOverlappedBase*>(pRawOvlp);
 
-        if (bytesTransferred > 0)
+        switch (pBase->Operation)
         {
-            OnRecvCompleted(pOvlp, bytesTransferred);
-        }
+            case EIoOperation::Recv:
+            {
+                auto* pOvlp = reinterpret_cast<FRecvOverlapped*>(pRawOvlp);
 
-        // 버퍼 재사용: 다음 수신 등록
-        if (m_bRunning.load(std::memory_order_acquire))
-        {
-            PostRecv(pOvlp);
+                // 정상 수신 시에만 디스패치 (실패 시 버퍼만 재사용)
+                if (success && bytesTransferred > 0)
+                {
+                    OnRecvCompleted(pOvlp, bytesTransferred);
+                }
+
+                // 버퍼 재사용: 다음 수신 등록
+                if (m_bRunning.load(std::memory_order_acquire))
+                {
+                    PostRecv(pOvlp);
+                }
+                break;
+            }
+            case EIoOperation::Send:
+            {
+                auto* pOvlp = reinterpret_cast<FSendOverlapped*>(pRawOvlp);
+
+                if (!success)
+                {
+                    GLog::Warn("[Worker] Async send failed: {}", ::GetLastError());
+                }
+
+                // 성공/실패 무관하게 버퍼는 반드시 풀로 반납 (누수 방지)
+                OnSendCompleted(pOvlp);
+                break;
+            }
+            default:
+            {
+                GLog::Error("[Worker] Unknown IO operation: {}",
+                    static_cast<int>(pBase->Operation));
+                break;
+            }
         }
     }
 }
@@ -504,6 +652,10 @@ void IOCPServer::HandleTransform(const FSyncTransformPacket& pkt, const SessionP
     // 30Hz로 가장 빈번하게 호출 → GLog::Debug는 _DEBUG 빌드에서만 출력
     GLog::Debug("[RX] PKT_TRANSFORM  | SessionId={} Seq={} Pos=({:.2f},{:.2f},{:.2f})",
         session->GetSessionId(), pkt.SeqNum, pkt.PosX, pkt.PosY, pkt.PosZ);
+
+    // RUDP: 수신한 시퀀스 번호에 대해 즉시 ACK(수신 확인) 응답
+    SendAck(*session, pkt.SeqNum);
+
     // TODO: Dead Reckoning 예측 보간 및 브로드캐스트 로직
 }
 
@@ -541,4 +693,22 @@ void IOCPServer::HandleServerState(const FServerStatePacket& pkt, const SessionP
     GLog::Info("[RX] PKT_SERVER_STATE | SessionId={} UserCount={}",
         pkt.SessionId, pkt.UserCount);
     // TODO: 서버 상태 패킷 수신 처리
+}
+
+// ──────────────────────────────────────────────
+//  응답 패킷 헬퍼
+// ──────────────────────────────────────────────
+
+void IOCPServer::SendAck(const Session& session, uint32_t ackSeqNum)
+{
+    FAckPacket ack{};
+    ack.Header.Magic[0] = MAGIC_BYTE_0;
+    ack.Header.Magic[1] = MAGIC_BYTE_1;
+    ack.Header.Version  = 0x01;
+    ack.Header.Type     = static_cast<uint8_t>(EPacketType::PKT_ACK);
+    ack.Header.BodyLen  = static_cast<uint16_t>(sizeof(FAckPacket) - sizeof(FPacketHeader));
+    ack.UserId    = session.GetUserId();
+    ack.AckSeqNum = ackSeqNum;
+
+    SendToSession(session, &ack, sizeof(ack));
 }
