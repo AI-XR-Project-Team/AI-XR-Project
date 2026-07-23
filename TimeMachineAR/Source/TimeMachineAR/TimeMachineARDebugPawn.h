@@ -70,4 +70,17 @@ protected:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Network Simulation")
 	float InterpolationSpeed = 10.0f;
+
+	// --- Gaze Raycast Logic ---
+	void CheckGaze(float DeltaTime);
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AR Interaction")
+	float RequiredGazeTime = 3.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AR Interaction")
+	float MaxGazeDistance = 2000.0f;
+
+private:
+	float GazeTimer = 0.0f;
+	class ADinoOverlayActor* CurrentGazedActor = nullptr;
 };
