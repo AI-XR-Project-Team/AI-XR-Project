@@ -1,18 +1,31 @@
 """`LLM_PROVIDER` 설정값으로 LLM 클라이언트 구현을 고르는 팩토리.
 
-벤더 확정 시 수정 지점은 이 파일의 `_PROVIDERS` 한 줄뿐이다.
-    "gemini": lambda: GeminiLlmClient(api_key=settings.LLM_API_KEY, ...),
+벤더를 추가할 때 수정 지점은 이 파일의 `_PROVIDERS` 한 줄뿐이다.
+    "openai": _build_openai,   # app/services/llm/openai.py 에 어댑터 추가 후
 """
 from functools import lru_cache
 from typing import Callable, Dict
 
 from app.core.config import settings
 from app.services.llm.base import LlmClient
+from app.services.llm.gemini import GeminiLlmClient
 from app.services.llm.mock import FailingLlmClient, MockLlmClient
+
+
+def _build_gemini() -> LlmClient:
+    return GeminiLlmClient(
+        api_key=settings.LLM_API_KEY,
+        model=settings.LLM_MODEL,
+        timeout_sec=settings.LLM_TIMEOUT_SEC,
+        max_tokens=settings.LLM_MAX_TOKENS,
+        thinking_level=settings.LLM_THINKING_LEVEL,
+    )
+
 
 _PROVIDERS: Dict[str, Callable[[], LlmClient]] = {
     "mock": MockLlmClient,
     "failing": FailingLlmClient,
+    "gemini": _build_gemini,
 }
 
 

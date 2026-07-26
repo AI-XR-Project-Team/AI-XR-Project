@@ -124,9 +124,14 @@ def test_공백뿐인_질문은_기본_요청문장으로_대체된다(poi, exhi
 
 # --- LLM 팩토리 --------------------------------------------------------
 
-def test_기본_provider는_키_없이_동작하는_mock이다():
+def test_mock_provider는_키_없이_생성된다(monkeypatch):
+    from app.core import config
+
     get_llm_client.cache_clear()
+    monkeypatch.setattr(config.settings, "LLM_PROVIDER", "mock")
+    monkeypatch.setattr(config.settings, "LLM_API_KEY", "")
     assert isinstance(get_llm_client(), MockLlmClient)
+    get_llm_client.cache_clear()
 
 
 def test_지원하지_않는_provider는_에러다(monkeypatch):
@@ -139,8 +144,89 @@ def test_지원하지_않는_provider는_에러다(monkeypatch):
     get_llm_client.cache_clear()
 
 
-def test_mock과_failing_provider가_등록되어_있다():
-    assert set(_PROVIDERS) == {"mock", "failing"}
+def test_등록된_provider_목록():
+    assert set(_PROVIDERS) == {"mock", "failing", "gemini"}
+
+
+def test_gemini_provider는_키가_없으면_생성시_에러다(monkeypatch):
+    """키 누락을 폴백으로 숨기지 않고 생성 시점에 드러낸다."""
+    from app.core import config
+
+    get_llm_client.cache_clear()
+    monkeypatch.setattr(config.settings, "LLM_PROVIDER", "gemini")
+    monkeypatch.setattr(config.settings, "LLM_API_KEY", "")
+    with pytest.raises(ValueError, match="LLM_API_KEY"):
+        get_llm_client()
+    get_llm_client.cache_clear()
+
+
+def test_GeminiLlmClient는_호출실패를_LlmError로_감싼다(poi, exhibit, dinosaur):
+    """네트워크/타임아웃 실패가 500이 아니라 폴백으로 이어지는지 확인."""
+    from app.services.llm.gemini import GeminiLlmClient
+
+    client = GeminiLlmClient(
+        # 실제 키 형식을 흉내내지 않는다 — 시크릿 스캐너 오탐 방지
+        api_key="dummy-key-for-failure-test",
+        model="gemini-3.6-flash",
+        timeout_sec=10.0,
+        max_tokens=1024,
+        thinking_level="minimal",
+    )
+    result = ask_docent(poi, exhibit, dinosaur, None, client)
+
+    assert result.source == "fallback"
+    assert result.answer == poi.docent_text
+
+
+def test_잘못된_thinking_level은_생성시_에러다():
+    from app.services.llm.gemini import GeminiLlmClient
+
+    with pytest.raises(ValueError, match="LLM_THINKING_LEVEL"):
+        GeminiLlmClient(
+            api_key="dummy-key",
+            model="gemini-3.6-flash",
+            timeout_sec=10.0,
+            max_tokens=1024,
+            thinking_level="turbo",
+        )
+
+
+def test_타임아웃이_API최소값_미만이면_올려서_생성된다():
+    """Gemini 는 10초 미만 deadline 을 400 으로 거부한다 — 클램프해야 한다."""
+    from app.services.llm.gemini import GeminiLlmClient
+
+    client = GeminiLlmClient(
+        api_key="dummy-key",
+        model="gemini-3.6-flash",
+        timeout_sec=4.0,  # 그대로 보내면 400 INVALID_ARGUMENT
+        max_tokens=1024,
+        thinking_level="minimal",
+    )
+    assert client._client._api_client._http_options.timeout == 10_000
+
+
+def test_Gemini_안전차단은_LlmError로_올린다():
+    """차단 시 text 가 None 이라 그냥 읽으면 원인을 알 수 없다 — 먼저 판별한다."""
+    from google.genai import types
+
+    from app.services.llm.gemini import GeminiLlmClient
+
+    blocked = types.GenerateContentResponse(
+        candidates=[types.Candidate(finish_reason=types.FinishReason.SAFETY)]
+    )
+    with pytest.raises(LlmError, match="중단"):
+        GeminiLlmClient._raise_if_blocked(blocked)
+
+
+def test_Gemini_정상종료는_통과한다():
+    from google.genai import types
+
+    from app.services.llm.gemini import GeminiLlmClient
+
+    ok = types.GenerateContentResponse(
+        candidates=[types.Candidate(finish_reason=types.FinishReason.STOP)]
+    )
+    GeminiLlmClient._raise_if_blocked(ok)  # 예외가 없어야 한다
 
 
 def test_MockLlmClient는_컨텍스트를_반영한다():
@@ -197,11 +283,10 @@ def test_poi_id가_UUID가_아니면_422다(client):
     assert res.status_code == 422
 
 
-def test_LLM_장애시에도_500이_아니라_폴백을_반환한다(client, poi, monkeypatch):
-    from app.core import config
+def test_LLM_장애시에도_500이_아니라_폴백을_반환한다(client, poi):
+    from app.main import app
 
-    get_llm_client.cache_clear()
-    monkeypatch.setattr(config.settings, "LLM_PROVIDER", "failing")
+    app.dependency_overrides[get_llm_client] = FailingLlmClient
 
     res = client.post("/docent/ask", json={"poi_id": str(POI_ID)})
 

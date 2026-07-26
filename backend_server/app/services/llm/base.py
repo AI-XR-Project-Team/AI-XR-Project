@@ -1,7 +1,7 @@
 """LLM Provider 추상 계층.
 
-벤더(Gemini / Claude / OpenAI 등)가 확정되면 이 모듈의 `LlmClient` 를 구현한
-어댑터 파일을 추가하고 `factory._PROVIDERS` 에 한 줄 등록하기만 하면 된다.
+벤더를 바꾸거나 추가할 때는 이 모듈의 `LlmClient` 를 구현한 어댑터 파일을
+추가하고 `factory._PROVIDERS` 에 한 줄 등록하기만 하면 된다.
 도슨트 서비스(`app.services.docent`)와 라우터는 수정하지 않는다.
 
 인터페이스는 의도적으로 `generate()` 하나만 둔다. 스트리밍·툴콜·멀티턴은

@@ -28,13 +28,14 @@ LLM 벤더는 **아직 확정되지 않았다**. 따라서 이 브랜치에서�
 
 - 포함(In scope):
   - LLM Provider 추상 인터페이스(`LlmClient`) + 팩토리(`get_llm_client()`)
+  - `GeminiLlmClient` — Google Gemini API 어댑터 (실사용 구현, 무료 티어)
   - `MockLlmClient` — API 키 없이 동작하는 개발/테스트용 구현
   - 프롬프트 조립 서비스 — DB(dinosaur/exhibit/poi)에서 컨텍스트를 모아 system prompt 생성
   - 엔드포인트 `POST /docent/ask` (Swagger 문서화 포함: tags/summary/examples/responses)
   - 실패·타임아웃 시 `pois.docent_text` 로 폴백
   - pytest 스모크 테스트 (이 레포 최초 테스트 도입)
 - 제외(Out of scope):
-  - **실제 LLM 벤더 어댑터**(Gemini/Claude/OpenAI) — 벤더 확정 후 별도 브랜치
+  - Claude/OpenAI 어댑터 — 필요 시 `app/services/llm/` 에 파일 1개 추가
   - Cloud TTS 연동 — 별도 브랜치
   - Redis 캐싱 — 별도 브랜치 (통합 문서 R3). 본 브랜치는 `docent_text` 폴백이 대체
   - Q&A 로그 적재용 `ai_docent_logs` 테이블 — 별도 브랜치 (§7)
@@ -103,13 +104,19 @@ Response (`DocentAskResponse`):
 
 - 외부 의존성: 신규 런타임 의존성 없음(Mock 단계). 개발 의존성으로 `pytest`, `httpx` 추가.
 
-**환경변수** (`.env.example` 추가분)
-```
-LLM_PROVIDER=mock          # mock | (추후) gemini | claude | openai
-LLM_API_KEY=               # mock 에서는 비워둠
-LLM_MODEL=                 # 벤더 확정 후 지정
-LLM_TIMEOUT_SEC=4.0        # 초과 시 docent_text 폴백
-```
+**환경변수**
+
+| 변수 | 기본값 | 설명 |
+|---|---|---|
+| `LLM_PROVIDER` | `mock` | `gemini` \| `mock` \| `failing` |
+| `LLM_API_KEY` | (빈값) | **`.env` 에만 둔다.** `.env.example`·코드에 실제 키 금지 |
+| `LLM_MODEL` | `gemini-2.5-flash` | 무료 티어는 flash 계열 한도가 넉넉 |
+| `LLM_MAX_TOKENS` | `2048` | 응답 텍스트 상한 |
+| `LLM_THINKING_BUDGET` | `0` | Gemini 2.5 사고 토큰. `0`=끔 / `-1`=자동 |
+| `LLM_TIMEOUT_SEC` | `4.0` | 초과 시 `docent_text` 폴백 |
+
+> `.env` 는 `backend_server/.gitignore:4` 로 커밋에서 제외된다.
+> `.env.example` 은 커밋되므로 `LLM_API_KEY` 를 **반드시 빈 값으로 유지**한다.
 
 ### 데이터 흐름
 ```
