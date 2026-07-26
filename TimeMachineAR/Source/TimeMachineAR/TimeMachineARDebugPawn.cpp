@@ -6,7 +6,7 @@
 #include "Components/StaticMeshComponent.h"
 #include "TimerManager.h"
 #include "Math/UnrealMathUtility.h"
-
+#include "DinoOverlayActor.h"
 ATimeMachineARDebugPawn::ATimeMachineARDebugPawn()
 {
 	PrimaryActorTick.bCanEverTick = true;
@@ -82,6 +82,9 @@ void ATimeMachineARDebugPawn::Tick(float DeltaTime)
 	FRotator NewRotation = FMath::RInterpTo(GhostMesh->GetComponentRotation(), TargetRotation, DeltaTime, InterpolationSpeed);
 
 	GhostMesh->SetWorldLocationAndRotation(NewLocation, NewRotation);
+
+	// 시선 인식 로직 호출
+	CheckGaze(DeltaTime);
 }
 
 void ATimeMachineARDebugPawn::SimulateServerUpdate()
@@ -159,5 +162,48 @@ void ATimeMachineARDebugPawn::Roll(const FInputActionValue& Value)
 	if (Controller != nullptr)
 	{
 		AddControllerRollInput(RollValue);
+	}
+}
+
+void ATimeMachineARDebugPawn::CheckGaze(float DeltaTime)
+{
+	if (!CameraComponent) return;
+
+	FVector StartLocation = CameraComponent->GetComponentLocation();
+	FVector ForwardVector = CameraComponent->GetForwardVector();
+	FVector EndLocation = StartLocation + (ForwardVector * MaxGazeDistance);
+
+	FHitResult HitResult;
+	FCollisionQueryParams CollisionParams;
+	CollisionParams.AddIgnoredActor(this);
+
+	bool bHit = GetWorld()->LineTraceSingleByChannel(HitResult, StartLocation, EndLocation, ECC_Visibility, CollisionParams);
+
+	ADinoOverlayActor* GazedActor = nullptr;
+
+	if (bHit && HitResult.GetActor())
+	{
+		GazedActor = Cast<ADinoOverlayActor>(HitResult.GetActor());
+	}
+
+	// 바라보는 대상이 같으면 타이머 증가
+	if (GazedActor && GazedActor == CurrentGazedActor)
+	{
+		GazeTimer += DeltaTime;
+
+		// 3초 도달 시 렌더링 이벤트 트리거
+		if (GazeTimer >= RequiredGazeTime)
+		{
+			GazedActor->StartReveal();
+			// 한번 작동 후에는 타이머를 초기화하거나, 더 이상 작동하지 않게 할 수 있음
+			// 여기서는 초기화하여 무한 발동을 막음 (StartReveal 내부에서 중복 실행 방지됨)
+			GazeTimer = 0.0f; 
+		}
+	}
+	else
+	{
+		// 대상이 바뀌거나 아무것도 안 보면 타이머 초기화
+		CurrentGazedActor = GazedActor;
+		GazeTimer = 0.0f;
 	}
 }
