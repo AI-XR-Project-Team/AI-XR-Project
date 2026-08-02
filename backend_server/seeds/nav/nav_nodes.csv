@@ -1,0 +1,10 @@
+node_key,map_key,pos_x_cm,pos_y_cm,pos_z_cm,node_type,label
+n-entrance,floor1,0,0,120,entrance,정문
+j-lobby,floor1,0,600,120,junction,로비 분기
+n-corridor-1,floor1,0,1400,120,waypoint,중앙복도 중간
+ex-tyranno,floor1,-400,1400,120,exhibit,티라노사우루스 골격 앞
+ex-triceratops,floor1,400,1400,120,exhibit,트리케라톱스 골격 앞
+wc-1,floor1,300,600,120,facility,화장실
+s-start,neuti4,130,145,120,entrance,시작점(거실/다용도실 앞)
+j-bend,neuti4,170,310,120,junction,경유(경로 꺾임)
+d-kitchen,neuti4,210,485,120,facility,도착점(주방)
