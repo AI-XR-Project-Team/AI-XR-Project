@@ -29,8 +29,41 @@ struct FDocentAnswer
 	int32 ElapsedMs = 0;
 };
 
+/**
+ * 대화 한 턴이 끝났을 때의 결과.
+ *
+ * 서버 SSE 의 `done` 프레임과 대응한다.
+ */
+USTRUCT(BlueprintType)
+struct FDocentChatResult
+{
+	GENERATED_BODY()
+
+	/** 조각을 모두 이어 붙인 최종 응답. */
+	UPROPERTY(BlueprintReadOnly, Category = "Docent")
+	FString FullText;
+
+	/** "llm" = 모델 생성 / "fallback" = LLM 실패로 DB 해설 대체 */
+	UPROPERTY(BlueprintReadOnly, Category = "Docent")
+	FString Source;
+
+	/** 첫 글자가 도착하기까지 걸린 시간(ms). 스트리밍의 체감 지표다. */
+	UPROPERTY(BlueprintReadOnly, Category = "Docent")
+	int32 TtftMs = 0;
+
+	/** 전체 생성 시간(ms). */
+	UPROPERTY(BlueprintReadOnly, Category = "Docent")
+	int32 TotalMs = 0;
+};
+
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnDocentAnswered, const FDocentAnswer&, Answer);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnDocentFailed, const FString&, Reason);
+
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnChatSessionReady, const FString&, SessionId);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnChatDelta, const FString&, Text);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnChatCompleted, const FDocentChatResult&, Result);
+/** `bPartial=true` 면 앞서 받은 조각은 유효하다. 지우지 말고 남겨야 한다. */
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnChatFailed, const FString&, Reason, bool, bPartial);
 
 /**
  * AI 도슨트 서버와 통신하는 게임 인스턴스 서브시스템.
@@ -89,6 +122,53 @@ public:
 	UPROPERTY(BlueprintAssignable, Category = "Docent")
 	FOnDocentFailed OnFailed;
 
+	// ---------------------------------------------------------------- 챗봇
+
+	/**
+	 * 대화 세션을 시작한다 (POST /docent/sessions).
+	 *
+	 * 채팅창을 열 때 한 번 호출한다. 완료되면 OnChatSessionReady 가 뜨고,
+	 * 그 뒤부터 SendChatMessage 를 쓸 수 있다.
+	 *
+	 * @param ExhibitId 대화 대상 전시물의 UUID. 비우면 매 질문마다 PoiId 를
+	 *                  줘야 한다.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Docent|Chat")
+	void StartChatSession(const FString& ExhibitId);
+
+	/**
+	 * 질문을 보내고 응답을 조각 단위로 받는다 (POST /docent/chat/stream).
+	 *
+	 * 응답은 OnChatDelta 로 여러 번 나뉘어 오고, 마지막에 OnChatCompleted 가
+	 * 한 번 뜬다. 말풍선 하나를 만들어 두고 델타가 올 때마다 이어 붙이면 된다.
+	 *
+	 * @param Message 관람객 질문.
+	 * @param PoiId   이번 질문에서 탭한 부위의 UUID. 비우면 전시물 전체를
+	 *                대상으로 답한다.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Docent|Chat")
+	void SendChatMessage(const FString& Message, const FString& PoiId);
+
+	/** 응답을 받는 중인지. 중복 전송을 막고 입력창을 잠그는 데 쓴다. */
+	UFUNCTION(BlueprintPure, Category = "Docent|Chat")
+	bool IsChatStreaming() const { return bIsChatStreaming; }
+
+	/** 현재 대화 세션 id. 아직 시작하지 않았으면 빈 문자열. */
+	UFUNCTION(BlueprintPure, Category = "Docent|Chat")
+	FString GetChatSessionId() const { return ChatSessionId; }
+
+	UPROPERTY(BlueprintAssignable, Category = "Docent|Chat")
+	FOnChatSessionReady OnChatSessionReady;
+
+	UPROPERTY(BlueprintAssignable, Category = "Docent|Chat")
+	FOnChatDelta OnChatDelta;
+
+	UPROPERTY(BlueprintAssignable, Category = "Docent|Chat")
+	FOnChatCompleted OnChatCompleted;
+
+	UPROPERTY(BlueprintAssignable, Category = "Docent|Chat")
+	FOnChatFailed OnChatFailed;
+
 	/** 이 기기의 익명 식별자. 서버의 device_uuid 로 전달된다. */
 	UFUNCTION(BlueprintPure, Category = "Docent")
 	FString GetDeviceUuid() const { return DeviceUuid; }
@@ -133,4 +213,27 @@ private:
 
 	/** 실패를 로그 + 델리게이트로 동시에 알린다. 실기기 디버깅용. */
 	void ReportFailure(const FString& Reason);
+
+	// ---------------------------------------------------------------- 챗봇
+
+	void OnSessionCreated(FHttpRequestPtr Request, FHttpResponsePtr Response, bool bConnectedSuccessfully);
+	void OnChatStreamComplete(FHttpRequestPtr Request, FHttpResponsePtr Response, bool bConnectedSuccessfully);
+
+	/** SSE 이벤트 하나를 처리한다. 반드시 게임 스레드에서 호출된다. */
+	void HandleSseEvent(const FString& EventName, const FString& Data);
+
+	/** 대화 실패를 로그 + OnChatFailed 로 알리고 스트리밍 상태를 정리한다. */
+	void ReportChatFailure(const FString& Reason, bool bPartial);
+
+	/** 발급받은 대화 세션. 비어 있으면 아직 시작 전이다. */
+	FString ChatSessionId;
+
+	/** 응답 수신 중 여부. 중복 전송 방지용. */
+	bool bIsChatStreaming = false;
+
+	/** 이번 턴에 지금까지 받은 조각을 이어 붙인 것. 게임 스레드에서만 만진다. */
+	FString ChatAccumulated;
+
+	/** done/error 프레임을 받았는지. 완료 콜백에서 조용한 끊김을 판별한다. */
+	bool bChatTerminated = false;
 };
