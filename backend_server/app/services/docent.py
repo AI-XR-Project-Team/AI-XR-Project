@@ -7,7 +7,7 @@
 import logging
 import uuid
 from dataclasses import dataclass
-from typing import Literal, Optional, Tuple
+from typing import List, Literal, Optional, Sequence, Tuple
 
 from sqlalchemy.orm import Session
 
@@ -56,15 +56,14 @@ def load_poi_context(
     return poi, exhibit, db.get(Dinosaur, exhibit.dinosaur_id)
 
 
-def build_docent_prompt(
-    poi: Poi, exhibit: Exhibit, dinosaur: Optional[Dinosaur]
-) -> str:
-    """DB 값을 모아 LLM 에 넘길 system 프롬프트를 만든다.
+def build_background_lines(
+    exhibit: Exhibit, dinosaur: Optional[Dinosaur]
+) -> List[str]:
+    """전시물·공룡 배경 컨텍스트. 부위 선택 여부와 무관한 공통부다.
 
-    `dinosaurs.ai_prompt_context` 가 종 배경지식의 핵심 소스이고,
-    `pois.docent_text` 는 부위별 사전 해설로서 힌트 역할을 한다.
+    `dinosaurs.ai_prompt_context` 가 종 배경지식의 핵심 소스다.
     """
-    lines = [PERSONA, "", "[전시물]", f"- 라벨: {exhibit.label}"]
+    lines = ["[전시물]", f"- 라벨: {exhibit.label}"]
     if exhibit.anchor_hint:
         lines.append(f"- 배치: {exhibit.anchor_hint}")
 
@@ -77,11 +76,102 @@ def build_docent_prompt(
         if dinosaur.ai_prompt_context:
             lines += ["", "[배경지식]", dinosaur.ai_prompt_context]
 
-    lines += ["", "[관람객이 보고 있는 부위]", f"- 부위: {poi.part_name}"]
+    return lines
+
+
+def build_poi_focus_lines(poi: Poi) -> List[str]:
+    """관람객이 지목한 부위. `pois.docent_text` 는 사전 해설 힌트다."""
+    lines = ["[관람객이 보고 있는 부위]", f"- 부위: {poi.part_name}"]
     if poi.docent_text:
         lines.append(f"- 기존 해설: {poi.docent_text}")
+    return lines
 
+
+def build_docent_prompt(
+    poi: Poi, exhibit: Exhibit, dinosaur: Optional[Dinosaur]
+) -> str:
+    """DB 값을 모아 LLM 에 넘길 system 프롬프트를 만든다(단발 질의용)."""
+    lines = [PERSONA, ""]
+    lines += build_background_lines(exhibit, dinosaur)
+    lines += [""]
+    lines += build_poi_focus_lines(poi)
     return "\n".join(lines)
+
+
+# 챗봇 페르소나. 단발 해설과 달리 대화가 이어진다는 점이 다르다.
+CHAT_PERSONA = (
+    "당신은 공룡 박물관의 AI 도슨트입니다. "
+    "관람객은 모바일 기기의 AR 카메라로 실제 크기의 전시물을 화면에 비춰 보며 "
+    "채팅으로 당신과 대화하고 있습니다.\n"
+    "- 한국어 존댓말로, 3~4문장 이내로 간결하게 답합니다.\n"
+    "- 아래 배경지식에 없는 내용은 지어내지 말고 모른다고 말합니다.\n"
+    "- 이전 대화의 맥락을 이어서 답합니다.\n"
+    "- 목록이나 표 없이 대화체로 답합니다."
+)
+
+
+def load_exhibit_context(
+    db: Session, exhibit_id: uuid.UUID
+) -> Optional[Tuple[Exhibit, Optional[Dinosaur], List[Poi]]]:
+    """전시물과 그 공룡·POI 목록을 함께 조회한다. 전시물이 없으면 None.
+
+    부위를 고르지 않은 자유대화에서 배경 컨텍스트를 만드는 데 쓴다.
+    """
+    exhibit = db.get(Exhibit, exhibit_id)
+    if exhibit is None:
+        return None
+    return exhibit, db.get(Dinosaur, exhibit.dinosaur_id), list(exhibit.pois)
+
+
+def build_chat_prompt(
+    exhibit: Exhibit,
+    dinosaur: Optional[Dinosaur],
+    pois: Sequence[Poi],
+    poi: Optional[Poi],
+) -> str:
+    """챗봇용 system 프롬프트.
+
+    부위를 탭했으면(`poi`) 그 부위를 중심으로, 탭하지 않았으면 전시물 전체를
+    대상으로 답하게 한다. 후자에서는 POI 목록을 배경지식에 함께 넣는다.
+    그래야 "꼬리는 왜 그렇게 길어요?" 처럼 부위를 말로만 지목한 질문에도
+    답할 수 있다.
+    """
+    lines = [CHAT_PERSONA, ""]
+    lines += build_background_lines(exhibit, dinosaur)
+
+    if poi is not None:
+        lines += [""]
+        lines += build_poi_focus_lines(poi)
+        return "\n".join(lines)
+
+    if pois:
+        lines += ["", "[이 전시물의 주요 부위]"]
+        for p in pois:
+            summary = f"- {p.part_name}"
+            if p.docent_text:
+                summary += f": {p.docent_text}"
+            lines.append(summary)
+
+    lines += [
+        "",
+        "관람객이 특정 부위를 지목하지 않았습니다. "
+        "전시물 전체를 대상으로 답하되, 질문에 부위가 언급되면 그 부위를 중심으로 설명하세요.",
+    ]
+    return "\n".join(lines)
+
+
+def build_chat_fallback(poi: Optional[Poi], exhibit: Exhibit) -> str:
+    """LLM 을 쓸 수 없을 때 돌려줄 대화용 폴백 문구.
+
+    부위가 지정됐으면 그 부위의 사전 해설이 가장 쓸모 있다. 자유대화에서는
+    해당하는 사전 해설이 없으므로 상태를 솔직히 알린다.
+    """
+    if poi is not None:
+        return build_fallback_answer(poi)
+    return (
+        f"'{exhibit.label}' 에 대한 답변을 지금 생성하지 못했습니다. "
+        "잠시 후 다시 물어봐 주세요."
+    )
 
 
 def build_fallback_answer(poi: Poi) -> str:
