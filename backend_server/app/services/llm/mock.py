@@ -3,7 +3,9 @@
 벤더가 확정되기 전에도 프롬프트 조립 · API 계약 · 폴백 · Swagger 를
 끝까지 검증할 수 있게 한다.
 """
-from app.services.llm.base import LlmClient, LlmError
+from typing import Iterator, Sequence
+
+from app.services.llm.base import ChatTurn, LlmClient, LlmError
 
 
 class MockLlmClient(LlmClient):
@@ -16,6 +18,8 @@ class MockLlmClient(LlmClient):
 
     _PREFIX = "[MOCK]"
     _MAX_CONTEXT_CHARS = 300
+    # 스트리밍 테스트가 chunk 경계를 실제로 다루도록 잘게 쪼갠다.
+    _CHUNK_CHARS = 12
 
     def generate(self, system_prompt: str, user_prompt: str) -> str:
         context_digest = " ".join(system_prompt.split())[: self._MAX_CONTEXT_CHARS]
@@ -23,6 +27,25 @@ class MockLlmClient(LlmClient):
             f"{self._PREFIX} \"{user_prompt}\" 에 대한 도슨트 응답입니다.\n"
             f"(조립된 컨텍스트 앞부분: {context_digest} …)"
         )
+
+    def stream(
+        self,
+        system_prompt: str,
+        history: Sequence[ChatTurn],
+        user_prompt: str,
+    ) -> Iterator[str]:
+        """응답을 여러 조각으로 쪼개 흘려보낸다.
+
+        기본 구현(단일 chunk)을 쓰면 SSE 프레이밍·누적 로직의 버그가 테스트에
+        드러나지 않는다. 여러 chunk 를 실제로 내보내 그 경로를 검증한다.
+        이전 대화가 반영됐는지 눈으로 확인할 수 있게 턴 수도 함께 싣는다.
+        """
+        answer = self.generate(system_prompt, user_prompt)
+        if history:
+            answer = f"{answer}\n(이전 대화 {len(history)}턴 반영)"
+
+        for i in range(0, len(answer), self._CHUNK_CHARS):
+            yield answer[i : i + self._CHUNK_CHARS]
 
 
 class FailingLlmClient(LlmClient):

@@ -18,11 +18,12 @@ API 키는 `.env` 의 `LLM_API_KEY` 로만 주입하며, `.env` 는 .gitignore �
     2.5 계열의 `thinking_budget=0` 을 3.x 에 보내면 400 INVALID_ARGUMENT 다.
 """
 import logging
+from typing import Iterator, List, Sequence
 
 from google import genai
 from google.genai import errors, types
 
-from app.services.llm.base import LlmClient, LlmError
+from app.services.llm.base import ChatTurn, LlmClient, LlmError
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +34,45 @@ _OK_FINISH_REASONS = {types.FinishReason.STOP, types.FinishReason.MAX_TOKENS}
 #   400 INVALID_ARGUMENT "Manually set deadline 4s is too short."
 # 즉 이 값은 KPI 가 아니라 '응답이 멎었을 때의 상한'이다. 정상 지연은 ~1.5초.
 _MIN_API_TIMEOUT_SEC = 10.0
+
+
+def _to_gemini_contents(
+    history: Sequence[ChatTurn], user_prompt: str
+) -> List[types.Content]:
+    """벤더 중립 ChatTurn 을 Gemini contents 로 변환한다.
+
+    Gemini 는 assistant 를 "model" 이라고 부른다. 이 표기 차이를 서비스 계층에
+    새어나가지 않게 여기서 흡수한다.
+    """
+    contents: List[types.Content] = []
+    for turn in history:
+        role = "model" if turn.role == "assistant" else "user"
+        contents.append(
+            types.Content(role=role, parts=[types.Part.from_text(text=turn.content)])
+        )
+    contents.append(
+        types.Content(role="user", parts=[types.Part.from_text(text=user_prompt)])
+    )
+    return contents
+
+
+def _raise_if_chunk_blocked(chunk: types.GenerateContentResponse) -> None:
+    """스트리밍 chunk 의 비정상 종료만 골라 LlmError 로 올린다.
+
+    단발 응답용 `_raise_if_blocked` 와 달리 candidates 가 비어 있어도 그냥
+    넘어간다. 스트리밍에서는 사용량 메타데이터만 담은 chunk 가 정상적으로
+    올 수 있어, 그걸 오류로 보면 멀쩡한 응답이 폴백으로 떨어진다.
+    """
+    feedback = chunk.prompt_feedback
+    if feedback is not None and feedback.block_reason is not None:
+        raise LlmError(f"Gemini 가 프롬프트를 차단했다: {feedback.block_reason}")
+
+    if not chunk.candidates:
+        return
+
+    reason = chunk.candidates[0].finish_reason
+    if reason is not None and reason not in _OK_FINISH_REASONS:
+        raise LlmError(f"Gemini 가 응답을 중단했다: {reason}")
 
 
 class GeminiLlmClient(LlmClient):
@@ -102,6 +142,39 @@ class GeminiLlmClient(LlmClient):
         if not answer:
             raise LlmError("Gemini 가 빈 응답을 반환했다")
         return answer
+
+    def stream(
+        self,
+        system_prompt: str,
+        history: Sequence[ChatTurn],
+        user_prompt: str,
+    ) -> Iterator[str]:
+        """멀티턴 대화를 스트리밍으로 생성한다.
+
+        `generate()` 와 달리 대화 전체를 contents 로 넘긴다. 이전 턴을 프롬프트
+        문자열에 녹이는 것보다 벤더 네이티브 형식이 맥락 유지에 유리하다.
+        """
+        config = self._config.model_copy(update={"system_instruction": system_prompt})
+        contents = _to_gemini_contents(history, user_prompt)
+
+        try:
+            stream = self._client.models.generate_content_stream(
+                model=self._model,
+                contents=contents,
+                config=config,
+            )
+            for chunk in stream:
+                # 안전 필터 차단은 예외가 아니라 chunk 의 finish_reason 으로 온다.
+                _raise_if_chunk_blocked(chunk)
+                text = chunk.text
+                if text:
+                    yield text
+        except LlmError:
+            raise
+        except errors.APIError as exc:
+            raise LlmError(f"Gemini 스트리밍 실패: {type(exc).__name__}: {exc}") from exc
+        except Exception as exc:
+            raise LlmError(f"Gemini 스트리밍 실패: {type(exc).__name__}: {exc}") from exc
 
     @staticmethod
     def _raise_if_blocked(response: types.GenerateContentResponse) -> None:
