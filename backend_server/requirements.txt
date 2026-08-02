@@ -4,6 +4,7 @@ sqlalchemy
 psycopg2-binary
 pydantic-settings
 google-genai
+networkx
 
 # 개발/테스트 (httpx 는 starlette TestClient 가 요구)
 pytest
