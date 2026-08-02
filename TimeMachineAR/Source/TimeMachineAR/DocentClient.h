@@ -103,6 +103,18 @@ private:
 	 */
 	FString DeviceUuid;
 
+	/**
+	 * ServerBaseUrl 의 공백·끝 슬래시를 정리하고 유효성을 검사한다.
+	 *
+	 * 설정이 비어 있거나 스킴이 없으면 컴파일 기본값으로 되돌린다. 이 방어가 없으면
+	 * 빈 값 + "/health" 가 그대로 요청돼 libcurl 이 "health" 를 호스트명으로 해석하고
+	 * "Couldn't resolve host name" 이라는, 원인과 무관해 보이는 에러가 난다.
+	 */
+	void NormalizeServerBaseUrl();
+
+	/** ServerBaseUrl 에 경로를 붙여 완전한 URL 을 만든다. */
+	FString BuildUrl(const FString& Path) const;
+
 	void OnAskComplete(FHttpRequestPtr Request, FHttpResponsePtr Response, bool bConnectedSuccessfully);
 	void OnHealthComplete(FHttpRequestPtr Request, FHttpResponsePtr Response, bool bConnectedSuccessfully);
 

@@ -10,9 +10,20 @@
 
 DEFINE_LOG_CATEGORY_STATIC(LogDocent, Log, All);
 
+/** 설정이 비었거나 망가졌을 때 되돌릴 값. 에디터 PIE 기준. */
+static const TCHAR* DefaultServerBaseUrl = TEXT("http://127.0.0.1:8000");
+
+/** 완료 콜백의 요청 포인터는 실패 경로에서 무효할 수 있어 역참조 전에 확인한다. */
+static FString SafeGetUrl(const FHttpRequestPtr& Request)
+{
+	return Request.IsValid() ? Request->GetURL() : TEXT("(알 수 없음)");
+}
+
 void UDocentClient::Initialize(FSubsystemCollectionBase& Collection)
 {
 	Super::Initialize(Collection);
+
+	NormalizeServerBaseUrl();
 
 	// 기기 익명 ID 는 최초 실행 때 한 번만 만들고 이후 재사용한다.
 	// 서버는 로그인 없이 이 값으로 관람객을 구분한다(users.device_uuid).
@@ -30,9 +41,36 @@ void UDocentClient::Initialize(FSubsystemCollectionBase& Collection)
 	UE_LOG(LogDocent, Log, TEXT("도슨트 클라이언트 초기화. 서버=%s device=%s"), *ServerBaseUrl, *DeviceUuid);
 }
 
+void UDocentClient::NormalizeServerBaseUrl()
+{
+	ServerBaseUrl.TrimStartAndEndInline();
+
+	// 끝 슬래시가 있으면 BuildUrl 에서 "//health" 가 된다.
+	while (ServerBaseUrl.EndsWith(TEXT("/")))
+	{
+		ServerBaseUrl.LeftChopInline(1);
+	}
+
+	const bool bHasScheme = ServerBaseUrl.StartsWith(TEXT("http://")) || ServerBaseUrl.StartsWith(TEXT("https://"));
+	if (ServerBaseUrl.IsEmpty() || !bHasScheme)
+	{
+		UE_LOG(LogDocent, Error,
+			TEXT("ServerBaseUrl 이 유효하지 않습니다(값=\"%s\"). DefaultGame.ini 의 ")
+			TEXT("[/Script/TimeMachineAR.DocentClient] ServerBaseUrl 을 확인하세요. ")
+			TEXT("http:// 또는 https:// 로 시작해야 합니다. 일단 %s 로 진행합니다."),
+			*ServerBaseUrl, DefaultServerBaseUrl);
+		ServerBaseUrl = DefaultServerBaseUrl;
+	}
+}
+
+FString UDocentClient::BuildUrl(const FString& Path) const
+{
+	return ServerBaseUrl + Path;
+}
+
 void UDocentClient::CheckHealth()
 {
-	const FString Url = ServerBaseUrl + TEXT("/health");
+	const FString Url = BuildUrl(TEXT("/health"));
 
 	const TSharedRef<IHttpRequest, ESPMode::ThreadSafe> Request = FHttpModule::Get().CreateRequest();
 	Request->SetURL(Url);
@@ -50,7 +88,11 @@ void UDocentClient::OnHealthComplete(FHttpRequestPtr Request, FHttpResponsePtr R
 	{
 		// 실기기에서 가장 흔한 실패: cleartext HTTP 차단, LAN IP 오기입,
 		// 서버가 0.0.0.0 이 아닌 127.0.0.1 로만 리슨, 방화벽.
-		ReportFailure(TEXT("서버에 연결하지 못했습니다. LAN IP / uvicorn --host 0.0.0.0 / 방화벽을 확인하세요."));
+		// 어떤 URL 로 나갔는지 함께 남긴다. 주소가 잘못된 경우와 네트워크가
+		// 막힌 경우는 증상이 같아서, URL 없이는 원인을 가릴 수 없다.
+		ReportFailure(FString::Printf(
+			TEXT("서버 연결 실패 (요청 URL: %s). 주소가 맞다면 uvicorn --host 0.0.0.0 / 방화벽 / adb reverse 를 확인하세요."),
+			*SafeGetUrl(Request)));
 		return;
 	}
 
@@ -80,7 +122,7 @@ void UDocentClient::AskDocent(const FString& PoiId, const FString& Question)
 	const TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&Payload);
 	FJsonSerializer::Serialize(Body, Writer);
 
-	const FString Url = ServerBaseUrl + TEXT("/docent/ask");
+	const FString Url = BuildUrl(TEXT("/docent/ask"));
 
 	const TSharedRef<IHttpRequest, ESPMode::ThreadSafe> Request = FHttpModule::Get().CreateRequest();
 	Request->SetURL(Url);
@@ -98,7 +140,9 @@ void UDocentClient::OnAskComplete(FHttpRequestPtr Request, FHttpResponsePtr Resp
 {
 	if (!bConnectedSuccessfully || !Response.IsValid())
 	{
-		ReportFailure(TEXT("서버에 연결하지 못했습니다. LAN IP / uvicorn --host 0.0.0.0 / 방화벽을 확인하세요."));
+		ReportFailure(FString::Printf(
+			TEXT("서버 연결 실패 (요청 URL: %s). 주소가 맞다면 uvicorn --host 0.0.0.0 / 방화벽 / adb reverse 를 확인하세요."),
+			*SafeGetUrl(Request)));
 		return;
 	}
 
