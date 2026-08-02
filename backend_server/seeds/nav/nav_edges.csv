@@ -1,0 +1,8 @@
+map_key,from_node_key,to_node_key,distance_cm,bidirectional,accessible
+floor1,n-entrance,j-lobby,,true,true
+floor1,j-lobby,wc-1,,true,true
+floor1,j-lobby,n-corridor-1,,true,true
+floor1,n-corridor-1,ex-tyranno,,true,true
+floor1,n-corridor-1,ex-triceratops,,true,true
+neuti4,s-start,j-bend,,true,true
+neuti4,j-bend,d-kitchen,,true,true
