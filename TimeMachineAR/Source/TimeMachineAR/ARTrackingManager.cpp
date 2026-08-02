@@ -1,8 +1,11 @@
 #include "ARTrackingManager.h"
+#include "ARSessionConfig.h"
 #include "ARTrackable.h"
 #include "ARPin.h"
 #include "DinoOverlayActor.h"
 #include "Kismet/GameplayStatics.h"
+#include "AndroidPermissionFunctionLibrary.h"
+#include "AndroidPermissionCallbackProxy.h"
 
 AARTrackingManager::AARTrackingManager()
 {
@@ -13,7 +16,51 @@ void AARTrackingManager::BeginPlay()
 {
 	Super::BeginPlay();
 
-	// AR 세션 시작
+	// 에디터에서 누락되었을 경우를 대비한 안전한 자동 로드
+	if (!SessionConfig)
+	{
+		SessionConfig = Cast<UARSessionConfig>(StaticLoadObject(UARSessionConfig::StaticClass(), nullptr, TEXT("/Game/Stuff/DA_ARSession.DA_ARSession")));
+	}
+
+	if (!OverlayActorClass)
+	{
+		OverlayActorClass = StaticLoadClass(ADinoOverlayActor::StaticClass(), nullptr, TEXT("/Game/Stuff/BP_DinoOverlay.BP_DinoOverlay_C"));
+	}
+
+	RequestCameraPermissionAndStart();
+}
+
+void AARTrackingManager::RequestCameraPermissionAndStart()
+{
+	const FString CameraPermission = TEXT("android.permission.CAMERA");
+
+	if (UAndroidPermissionFunctionLibrary::CheckPermission(CameraPermission))
+	{
+		StartARSessionInternal();
+	}
+	else
+	{
+		TArray<FString> Permissions;
+		Permissions.Add(CameraPermission);
+		UAndroidPermissionCallbackProxy* CallbackProxy = UAndroidPermissionFunctionLibrary::AcquirePermissions(Permissions);
+		if (CallbackProxy)
+		{
+			CallbackProxy->OnPermissionsGrantedDynamicDelegate.AddDynamic(this, &AARTrackingManager::OnPermissionsGranted);
+		}
+		else
+		{
+			StartARSessionInternal();
+		}
+	}
+}
+
+void AARTrackingManager::OnPermissionsGranted(const TArray<FString>& Permissions, const TArray<bool>& GrantResults)
+{
+	StartARSessionInternal();
+}
+
+void AARTrackingManager::StartARSessionInternal()
+{
 	if (SessionConfig)
 	{
 		UARBlueprintLibrary::StartARSession(SessionConfig);
@@ -44,6 +91,11 @@ void AARTrackingManager::CheckForTrackedImages()
 	// 현재 AR 시스템이 추적 중인 모든 이미지(마커)를 가져옴 (UE5 최신 API 반영)
 	TArray<UARTrackedGeometry*> TrackedGeometries = UARBlueprintLibrary::GetAllGeometriesByClass(UARTrackedImage::StaticClass());
 
+	if (GEngine)
+	{
+		GEngine->AddOnScreenDebugMessage(1, 0.5f, FColor::Green, FString::Printf(TEXT("[AR Status] Session Running | Detected Images: %d"), TrackedGeometries.Num()));
+	}
+
 	for (UARTrackedGeometry* TrackedGeometry : TrackedGeometries)
 	{
 		UARTrackedImage* TrackedImage = Cast<UARTrackedImage>(TrackedGeometry);
@@ -58,19 +110,22 @@ void AARTrackingManager::CheckForTrackedImages()
 			{
 				// 2. 해당 위치에 공룡 오버레이 액터 스폰
 				FActorSpawnParameters SpawnParams;
+				SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
 				SpawnedOverlay = GetWorld()->SpawnActor<ADinoOverlayActor>(OverlayActorClass, ImageTransform, SpawnParams);
 
 				if (SpawnedOverlay)
 				{
-					// 3. 스폰된 액터의 루트를 앵커(AR Pin)로 강제 고정시킴 (하이브리드 핸드오프!)
-					UARPin* NewAnchor = UARBlueprintLibrary::PinComponent(SpawnedOverlay->GetRootComponent(), ImageTransform, TrackedImage, FName("DinoHybridAnchor"));
+					// 3. 스폰 즉시 플래그를 true로 변경하여 중복 스폰 방지
+					bIsAnchored = true;
+
+					// 4. 스폰된 액터의 루트를 앵커(AR Pin)로 강제 고정 시도
+					UARBlueprintLibrary::PinComponent(SpawnedOverlay->GetRootComponent(), ImageTransform, TrackedImage, FName("DinoHybridAnchor"));
 					
-					if (NewAnchor)
+					if (GEngine)
 					{
-						// 4. 앵커 고정에 성공했으므로 플래그 변경 (더 이상 탐색하지 않음)
-						bIsAnchored = true; 
-						break;
+						GEngine->AddOnScreenDebugMessage(2, 5.0f, FColor::Cyan, TEXT("[AR] Dino Overlay Successfully Spawned & Anchored!"));
 					}
+					break;
 				}
 			}
 		}

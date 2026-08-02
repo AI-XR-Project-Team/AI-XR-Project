@@ -40,4 +40,10 @@ private:
 	ADinoOverlayActor* SpawnedOverlay;
 
 	void CheckForTrackedImages();
+
+	void RequestCameraPermissionAndStart();
+	void StartARSessionInternal();
+
+	UFUNCTION()
+	void OnPermissionsGranted(const TArray<FString>& Permissions, const TArray<bool>& GrantResults);
 };
