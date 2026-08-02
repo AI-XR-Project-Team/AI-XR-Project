@@ -5,7 +5,7 @@
 """
 from fastapi import FastAPI
 
-from app.routers import dinosaurs, docent, exhibits, health
+from app.routers import dinosaurs, docent, exhibits, health, maps
 
 app = FastAPI(
     title="공룡 박물관 AR API",
@@ -17,3 +17,4 @@ app.include_router(health.router, tags=["health"])
 app.include_router(dinosaurs.router, tags=["dinosaurs"])
 app.include_router(exhibits.router, tags=["exhibits"])
 app.include_router(docent.router, tags=["docent"])
+app.include_router(maps.router, tags=["maps"])
