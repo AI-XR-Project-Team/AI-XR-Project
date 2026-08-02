@@ -28,3 +28,6 @@ Thumbs.db
 *.opendb
 *.sdf
 *.opensdf
+*.apk
+*.obb
+TimeMachineAR/Plugins/_MetaXR_Disabled/
