@@ -5,7 +5,7 @@
 좌표계·단위 규약은 `docs/navigation-server-design.md` §5 참조.
 """
 import uuid
-from typing import List, Optional
+from typing import List, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -64,6 +64,14 @@ class RouteRequest(BaseModel):
     # `from` 은 파이썬 예약어라 필드명은 from_, JSON 키는 alias 로 "from".
     from_: Pose = Field(..., alias="from", description="현재 위치 pose(맵 좌표).")
     to: RouteTarget = Field(..., description="목적지(node_id 또는 좌표).")
+    accessible_only: bool = Field(
+        False, description="true 면 계단 등(accessible=false) 간선을 제외한 경로만 탐색."
+    )
+
+
+# 리라우트는 입력·출력이 route 와 동일하다(앱이 이탈 감지 시 새 pose 로 재호출할 뿐).
+# 명세상 이름만 구분하고 스키마는 그대로 재사용한다.
+RerouteRequest = RouteRequest
 
 
 class Waypoint(BaseModel):
@@ -76,8 +84,25 @@ class Waypoint(BaseModel):
     node_type: str = Field(..., description="junction|waypoint|exhibit|entrance|facility (UI 태그)")
 
 
+class Step(BaseModel):
+    """사람이 읽는 방향 안내 한 줄. 앱이 화살표와 함께 표시한다."""
+
+    instruction: str = Field(..., description="안내 문안(예: '앞으로 8m 직진하세요').")
+    distance_cm: Optional[float] = Field(
+        None, description="직진 step 의 이동 거리(cm). 회전/도착엔 없음."
+    )
+    turn: Optional[Literal["left", "right", "straight"]] = Field(
+        None, description="회전 방향. straight=직진 구간, 도착 step 엔 없음."
+    )
+    arrive: bool = Field(False, description="목적지 도착 step 이면 true.")
+
+
 class RouteResponse(BaseModel):
     total_distance_cm: float = Field(..., description="경로 총 거리(cm).")
     waypoints: List[Waypoint] = Field(
         ..., description="출발 스냅 노드부터 목적지 노드까지 순서대로."
+    )
+    steps: List[Step] = Field(
+        default_factory=list,
+        description="웨이포인트를 따라가는 방향 안내(직진/좌우회전/도착).",
     )
