@@ -70,6 +70,19 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Docent")
 	void CheckHealth();
 
+	/**
+	 * 서버 주소를 런타임에 바꾼다 (이번 실행에만 적용, 저장하지 않음).
+	 *
+	 * 실기기에서는 ini 를 고치려면 재패키징해야 하므로, 주소 후보를 빠르게
+	 * 바꿔가며 시험할 때 쓴다. 영구 설정은 DefaultGame.ini 의 ServerBaseUrl 이다.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Docent")
+	void SetServerBaseUrl(const FString& NewBaseUrl);
+
+	/** 현재 적용 중인 서버 주소. 설정이 제대로 로드됐는지 화면에 찍어볼 때 쓴다. */
+	UFUNCTION(BlueprintPure, Category = "Docent")
+	FString GetServerBaseUrl() const { return ServerBaseUrl; }
+
 	UPROPERTY(BlueprintAssignable, Category = "Docent")
 	FOnDocentAnswered OnAnswered;
 

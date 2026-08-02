@@ -63,6 +63,13 @@ void UDocentClient::NormalizeServerBaseUrl()
 	}
 }
 
+void UDocentClient::SetServerBaseUrl(const FString& NewBaseUrl)
+{
+	ServerBaseUrl = NewBaseUrl;
+	NormalizeServerBaseUrl();
+	UE_LOG(LogDocent, Log, TEXT("서버 주소를 %s 로 변경했습니다(이번 실행에만 적용)."), *ServerBaseUrl);
+}
+
 FString UDocentClient::BuildUrl(const FString& Path) const
 {
 	return ServerBaseUrl + Path;
