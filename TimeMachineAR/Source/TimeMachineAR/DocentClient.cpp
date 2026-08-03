@@ -9,6 +9,7 @@
 #include "Serialization/JsonSerializer.h"
 #include "Misc/Guid.h"
 #include "Misc/ConfigCacheIni.h"
+#include "HAL/IConsoleManager.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogDocent, Log, All);
 
@@ -41,7 +42,73 @@ void UDocentClient::Initialize(FSubsystemCollectionBase& Collection)
 	}
 
 	UE_LOG(LogDocent, Log, TEXT("도슨트 클라이언트 초기화. 서버=%s device=%s"), *ServerBaseUrl, *DeviceUuid);
+
+#if !UE_BUILD_SHIPPING
+	RegisterDebugConsoleCommands();
+#endif
 }
+
+void UDocentClient::Deinitialize()
+{
+#if !UE_BUILD_SHIPPING
+	for (IConsoleObject* Command : DebugConsoleCommands)
+	{
+		IConsoleManager::Get().UnregisterConsoleObject(Command);
+	}
+	DebugConsoleCommands.Reset();
+#endif
+
+	Super::Deinitialize();
+}
+
+#if !UE_BUILD_SHIPPING
+void UDocentClient::RegisterDebugConsoleCommands()
+{
+	// 람다가 this 를 강하게 붙들면 서브시스템이 죽은 뒤에도 호출될 수 있다.
+	TWeakObjectPtr<UDocentClient> WeakThis(this);
+
+	DebugConsoleCommands.Add(IConsoleManager::Get().RegisterConsoleCommand(
+		TEXT("Docent.Health"),
+		TEXT("도슨트 서버에 GET /health 를 보낸다. 실기기 연결 진단용."),
+		FConsoleCommandDelegate::CreateLambda([WeakThis]()
+		{
+			if (UDocentClient* Self = WeakThis.Get())
+			{
+				Self->CheckHealth();
+			}
+		})));
+
+	DebugConsoleCommands.Add(IConsoleManager::Get().RegisterConsoleCommand(
+		TEXT("Docent.StartSession"),
+		TEXT("대화 세션을 연다. 인자: <ExhibitId>"),
+		FConsoleCommandWithArgsDelegate::CreateLambda([WeakThis](const TArray<FString>& Args)
+		{
+			UDocentClient* Self = WeakThis.Get();
+			if (Self == nullptr)
+			{
+				return;
+			}
+			Self->StartChatSession(Args.Num() > 0 ? Args[0] : FString());
+		})));
+
+	DebugConsoleCommands.Add(IConsoleManager::Get().RegisterConsoleCommand(
+		TEXT("Docent.Ask"),
+		TEXT("현재 세션에 질문을 보낸다. 인자: <질문...>"),
+		FConsoleCommandWithArgsDelegate::CreateLambda([WeakThis](const TArray<FString>& Args)
+		{
+			UDocentClient* Self = WeakThis.Get();
+			if (Self == nullptr)
+			{
+				return;
+			}
+			// 콘솔은 공백으로 인자를 쪼개므로 질문을 다시 이어 붙인다.
+			Self->SendChatMessage(FString::Join(Args, TEXT(" ")), FString());
+		})));
+
+	UE_LOG(LogDocent, Log,
+		TEXT("진단 콘솔 명령 등록: Docent.Health / Docent.StartSession <ExhibitId> / Docent.Ask <질문>"));
+}
+#endif
 
 void UDocentClient::NormalizeServerBaseUrl()
 {
@@ -372,6 +439,10 @@ void UDocentClient::HandleSseEvent(const FString& EventName, const FString& Data
 		if (Json->TryGetStringField(TEXT("text"), Text) && !Text.IsEmpty())
 		{
 			ChatAccumulated += Text;
+			// 조각이 실제로 나뉘어 도착하는지는 이 줄들의 타임스탬프 간격으로만 알 수 있다.
+			// 평소에는 꺼 두고, 진단할 때 콘솔에서 "Log LogDocent Verbose" 로 켠다.
+			UE_LOG(LogDocent, Verbose, TEXT("[chat] delta +%d자 (누적 %d자)"),
+				Text.Len(), ChatAccumulated.Len());
 			OnChatDelta.Broadcast(Text);
 		}
 		return;

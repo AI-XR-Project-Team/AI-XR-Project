@@ -85,6 +85,7 @@ class TIMEMACHINEAR_API UDocentClient : public UGameInstanceSubsystem
 
 public:
 	virtual void Initialize(FSubsystemCollectionBase& Collection) override;
+	virtual void Deinitialize() override;
 
 	/**
 	 * POI 에 대한 도슨트 응답을 요청한다 (POST /docent/ask).
@@ -236,4 +237,22 @@ private:
 
 	/** done/error 프레임을 받았는지. 완료 콜백에서 조용한 끊김을 판별한다. */
 	bool bChatTerminated = false;
+
+#if !UE_BUILD_SHIPPING
+	/**
+	 * 실기기 진단용 콘솔 명령을 등록한다 (Docent.Health / Docent.StartSession / Docent.Ask).
+	 *
+	 * 서브시스템의 Exec 함수는 콘솔에서 잡히지 않는다. UGameInstance 가
+	 * ProcessConsoleExec 을 오버라이드하지 않아 서브시스템까지 내려가지 않기 때문이다.
+	 * 그래서 Exec 대신 콘솔 명령으로 등록한다.
+	 *
+	 * 패키징된 APK 에서는 UI 없이 이렇게 호출할 수 있다:
+	 *   adb shell "am broadcast -a android.intent.action.RUN -e cmd 'Docent.Health'"
+	 * (GameActivity 는 Shipping 이 아닐 때만 이 리시버를 등록한다.)
+	 */
+	void RegisterDebugConsoleCommands();
+
+	/** 등록한 콘솔 명령. Deinitialize 에서 해제하지 않으면 다음 실행 때 중복 등록된다. */
+	TArray<IConsoleObject*> DebugConsoleCommands;
+#endif
 };
