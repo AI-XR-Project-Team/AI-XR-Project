@@ -8,6 +8,7 @@
 #include "Components/ScrollBox.h"
 #include "Components/TextBlock.h"
 #include "Engine/GameInstance.h"
+#include "Framework/Application/SlateApplication.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogDocentChat, Log, All);
 
@@ -30,6 +31,23 @@ void UDocentChatWidget::NativeConstruct()
 		// 전송 버튼이 키보드에 가리는 경우가 있다.
 		InputBox->OnTextCommitted.AddUniqueDynamic(this, &UDocentChatWidget::HandleTextCommitted);
 	}
+	if (CloseButton != nullptr)
+	{
+		CloseButton->OnClicked.AddUniqueDynamic(this, &UDocentChatWidget::HandleCloseClicked);
+	}
+	if (OpenButton != nullptr)
+	{
+		OpenButton->OnClicked.AddUniqueDynamic(this, &UDocentChatWidget::HandleOpenClicked);
+	}
+
+	// 여는 버튼이 없으면 닫힌 채로 시작할 수 없다. 다시 열 방법이 사라진다.
+	const bool bCanReopen = (OpenButton != nullptr);
+	if (!bStartOpen && !bCanReopen)
+	{
+		UE_LOG(LogDocentChat, Warning,
+			TEXT("OpenButton 이 없어 닫힌 채로 시작할 수 없습니다. 열린 상태로 진행합니다."));
+	}
+	ApplyOpenState(bStartOpen || !bCanReopen);
 
 	BuildQuickQuestions();
 
@@ -87,6 +105,14 @@ void UDocentChatWidget::NativeDestruct()
 	if (InputBox != nullptr)
 	{
 		InputBox->OnTextCommitted.RemoveDynamic(this, &UDocentChatWidget::HandleTextCommitted);
+	}
+	if (CloseButton != nullptr)
+	{
+		CloseButton->OnClicked.RemoveDynamic(this, &UDocentChatWidget::HandleCloseClicked);
+	}
+	if (OpenButton != nullptr)
+	{
+		OpenButton->OnClicked.RemoveDynamic(this, &UDocentChatWidget::HandleOpenClicked);
 	}
 
 	Super::NativeDestruct();
@@ -153,6 +179,62 @@ void UDocentChatWidget::ClearMessages()
 		ChatScroll->ClearChildren();
 	}
 	StreamingBubble = nullptr;
+}
+
+void UDocentChatWidget::ShowChat()
+{
+	ApplyOpenState(true);
+}
+
+void UDocentChatWidget::HideChat()
+{
+	ApplyOpenState(false);
+}
+
+void UDocentChatWidget::ToggleChat()
+{
+	ApplyOpenState(!bIsOpen);
+}
+
+void UDocentChatWidget::ApplyOpenState(bool bOpen)
+{
+	bIsOpen = bOpen;
+
+	if (ChatPanel != nullptr)
+	{
+		// SelfHitTestInvisible 이 아니라 Visible 이다. 패널 안의 버튼·입력창이
+		// 터치를 받아야 한다.
+		ChatPanel->SetVisibility(bOpen ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
+	}
+	else
+	{
+		// 패널을 따로 두지 않은 구성. 이 경우 OpenButton 도 같이 숨겨지므로
+		// 다시 열려면 바깥에서 ShowChat 을 불러야 한다.
+		SetVisibility(bOpen ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
+	}
+
+	if (OpenButton != nullptr)
+	{
+		OpenButton->SetVisibility(bOpen ? ESlateVisibility::Collapsed : ESlateVisibility::Visible);
+	}
+
+	if (!bOpen && FSlateApplication::IsInitialized())
+	{
+		// 포커스를 놓지 않으면 창을 닫아도 안드로이드 가상 키보드가 남는다.
+		FSlateApplication::Get().ClearKeyboardFocus(EFocusCause::SetDirectly);
+	}
+
+	OnChatOpenChanged(bOpen);
+}
+
+void UDocentChatWidget::HandleCloseClicked()
+{
+	HideChat();
+}
+
+void UDocentChatWidget::HandleOpenClicked()
+{
+	ShowChat();
 }
 
 void UDocentChatWidget::HandleSessionReady(const FString& SessionId)

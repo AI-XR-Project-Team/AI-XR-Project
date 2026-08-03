@@ -60,6 +60,27 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Docent|Chat")
 	void ClearMessages();
 
+	// ------------------------------------------------------------ 열고 닫기
+
+	/**
+	 * 채팅창을 연다.
+	 *
+	 * AR 앱이라 채팅창이 떠 있는 동안 카메라 영상이 가려진다. 관람객이
+	 * 전시물을 보려면 닫을 수 있어야 한다.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Docent|Chat")
+	void ShowChat();
+
+	/** 채팅창을 닫는다. 세션과 대화 내용은 유지되므로 다시 열면 이어진다. */
+	UFUNCTION(BlueprintCallable, Category = "Docent|Chat")
+	void HideChat();
+
+	UFUNCTION(BlueprintCallable, Category = "Docent|Chat")
+	void ToggleChat();
+
+	UFUNCTION(BlueprintPure, Category = "Docent|Chat")
+	bool IsChatOpen() const { return bIsOpen; }
+
 protected:
 	virtual void NativeConstruct() override;
 	virtual void NativeDestruct() override;
@@ -80,6 +101,23 @@ protected:
 
 	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "Docent|Chat")
 	TObjectPtr<UTextBlock> DocentNameText;
+
+	/**
+	 * 열고 닫을 대상. 보통 헤더·대화·입력을 감싼 패널이다.
+	 *
+	 * 이 위젯 자체가 아니라 별도 패널을 숨기는 이유는, 루트를 숨기면 채팅창을
+	 * 다시 열 버튼까지 같이 사라지기 때문이다. OpenButton 은 이 패널 밖에 둔다.
+	 */
+	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "Docent|Chat")
+	TObjectPtr<UWidget> ChatPanel;
+
+	/** 채팅창을 닫는 버튼. 보통 헤더의 X. */
+	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "Docent|Chat")
+	TObjectPtr<UButton> CloseButton;
+
+	/** 닫힌 상태에서 다시 여는 버튼. ChatPanel 밖에 있어야 한다. */
+	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "Docent|Chat")
+	TObjectPtr<UButton> OpenButton;
 
 	// ------------------------------------------------------------ 클래스 기본값
 
@@ -121,6 +159,16 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Docent|Chat")
 	FString ExhibitId;
 
+	/**
+	 * 처음부터 채팅창을 펼쳐 둘지.
+	 *
+	 * AR 앱이므로 false 가 자연스럽다 — 전시물을 먼저 보고 궁금할 때 연다.
+	 * 다만 OpenButton 이 없으면 다시 열 방법이 없으므로, 그 경우에는 이 값과
+	 * 무관하게 열린 채로 시작한다.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "Docent|Chat")
+	bool bStartOpen = true;
+
 	// ------------------------------------------------------------ 확장 지점
 
 	/** 세션이 열려 입력이 가능해진 시점. 로딩 표시를 걷어내는 용도. */
@@ -131,6 +179,10 @@ protected:
 	UFUNCTION(BlueprintImplementableEvent, Category = "Docent|Chat")
 	void OnStreamingChanged(bool bStreaming);
 
+	/** 열림 상태가 바뀐 직후. 슬라이드 인/아웃 애니메이션을 붙이는 자리. */
+	UFUNCTION(BlueprintImplementableEvent, Category = "Docent|Chat")
+	void OnChatOpenChanged(bool bOpen);
+
 private:
 	// 도슨트 델리게이트는 전부 다이나믹이라 핸들러가 UFUNCTION 이어야 한다.
 	UFUNCTION() void HandleSessionReady(const FString& SessionId);
@@ -139,6 +191,11 @@ private:
 	UFUNCTION() void HandleFailed(const FString& Reason, bool bPartial);
 	UFUNCTION() void HandleSendClicked();
 	UFUNCTION() void HandleTextCommitted(const FText& Text, ETextCommit::Type CommitMethod);
+	UFUNCTION() void HandleCloseClicked();
+	UFUNCTION() void HandleOpenClicked();
+
+	/** 열림 상태를 위젯에 반영한다. ShowChat/HideChat 의 공통부. */
+	void ApplyOpenState(bool bOpen);
 
 	/** 빠른 질문 칩의 네이티브 델리게이트 수신부. */
 	void HandleQuickChipClicked(const FString& Question);
@@ -160,4 +217,6 @@ private:
 	FString FocusedPoiId;
 
 	bool bHasAskedOnce = false;
+
+	bool bIsOpen = true;
 };
