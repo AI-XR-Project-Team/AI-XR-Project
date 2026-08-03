@@ -8,7 +8,7 @@
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
 -- ---------------------------------------------------------------------
--- users : 관람객 (로그인 없음, Quest 3 익명 device UUID)
+-- users : 관람객 (로그인 없음, 모바일 기기 익명 device UUID)
 -- ---------------------------------------------------------------------
 CREATE TABLE users (
     id          UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
