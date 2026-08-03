@@ -121,7 +121,7 @@ Android 모두 동작한다.
 | 항목 | 설정 |
 |---|---|
 | INTERNET 권한 | `+ExtraPermissions="android.permission.INTERNET"` |
-| 평문 HTTP | `+ExtraApplicationNodeTags="android:usesCleartextTraffic=\"true\""` |
+| 평문 HTTP | `+ExtraApplicationNodeTags="android:usesCleartextTraffic='true'"` (§8.2) |
 | 서버 주소 | `DefaultGame.ini` 의 `ServerBaseUrl` (재빌드 없이 변경) |
 
 `MinSDKVersion=32` 라 API 28+ 의 평문 차단이 적용된다. UE 5.4 에는 전용 설정이 없어
@@ -144,9 +144,9 @@ Android 모두 동작한다.
 - [x] SSE `data` 가 개행 포함 응답에도 한 줄 JSON 으로 유지됨
 - [x] UE5 에서 `GET /health` 왕복 성공 (에디터 PIE 실측)
 - [x] `pytest` 45건 통과
-- [ ] **UE5 C++ 컴파일** — 이 개발 환경에 UE 빌드 환경이 없어 미검증
-- [ ] **실제 PostgreSQL 조회 경로** — Docker 부재로 미검증 (SQLite 로 대체 검증)
-- [ ] **실기기 SSE 수신** — APK 빌드 후 확인 필요
+- [x] **UE5 C++ 컴파일** — Win64(MSVC) / Android(clang 14, aarch64) 양쪽 통과
+- [x] **실제 PostgreSQL 조회 경로** — Docker + postgres:16 에서 전 경로 확인
+- [x] **실기기 SSE 수신** — 패키징 APK 로 갤럭시 S25+ 에서 확인
 - [ ] UMG 챗 위젯 / POI 터치 (§7)
 
 ### 검증 메모 (2026-08-02)
@@ -191,10 +191,8 @@ $adb = "C:\Program Files (x86)\Android\android-sdk\platform-tools\adb.exe"
 
 ## 6. 리스크
 
-- **실기기 SSE 수신 미검증** — 알고리즘과 API 선택은 근거를 확인했으나 APK 에서 실제로
-  조각이 흘러오는지는 확인이 남았다. 실패 시 대비책은 이미 코드에 있다
-  (`SetResponseBodyReceiveStreamDelegate` 실패 → `/docent/chat` 비스트리밍 전환).
-- **실 PostgreSQL 미검증** — SQLite 로 전 경로를 돌렸으나 방언 차이가 남는다.
+- ~~실기기 SSE 수신 미검증~~ — 해소됨. 아래 §8 참조.
+- ~~실 PostgreSQL 미검증~~ — 해소됨. postgres:16 에서 세션 생성·스트리밍·이력 조회 확인.
 - **프롬프트 길이** — 부위 미지정 대화는 POI 목록이 모두 들어가 전시물이 커지면 프롬프트가
   길어진다. TTFT 가 나빠지면 상위 N 개만 싣도록 조정한다.
 - **동시 접속** — 스트리밍은 요청당 워커 스레드를 오래 점유한다. 관람객이 늘면 async
@@ -216,3 +214,103 @@ $adb = "C:\Program Files (x86)\Android\android-sdk\platform-tools\adb.exe"
 - `APoiMarkerActor` — 빌보드 + 콜리전, `PoiId` 보유
 - `AARTrackingManager` 가 앵커 확정 후 `GET /exhibits/{id}` 로 POI 를 받아 스폰
 - 터치 → `GetHitResultUnderFinger` → 히트한 `PoiId` 를 채팅창에 전달
+
+## 8. 실기기 검증 (2026-08-03)
+
+갤럭시 S25+ (SM-S936N) · 패키징 APK(Development) · `adb reverse` 터널.
+
+### 8.1 결과
+
+```
+LogDocent: 도슨트 클라이언트 초기화. 서버=http://127.0.0.1:8000 device=android-EAD7BA15-...
+LogDocent: [health] 200 {"status":"ok"}
+LogDocent: [chat] 세션 준비됨: 8f7b43e4-2029-45b0-8203-627f2edc6b57
+LogDocent: [chat] POST .../docent/chat/stream poi=(전체) q=이 공룡의 이빨은 어떻게 생겼어?
+[709] delta +1자   (누적 1자)
+[710] delta +44자  (누적 70자)
+[715] delta +38자  (누적 108자)
+[719] delta +32자  (누적 140자)
+LogDocent: [chat] 완료 source=llm ttft=543ms total=773ms len=140
+```
+
+대괄호 안은 **게임 프레임 번호**다. 709·710·715·719 로 서로 다르므로 응답을 모았다가 한 번에
+뿌린 게 아니라 조각으로 도착했다. Android libcurl 에서 `SetResponseBodyReceiveStreamDelegate`
+가 동작하고, 워커 스레드 → 게임 스레드 마샬링과 바이트 단위 SSE 파서도 실기기에서 성립한다.
+비스트리밍 폴백 경로는 타지 않았다.
+
+멀티턴도 확인했다. "이 공룡 언제 살았어?" → "그때 지구는 어땠는데?" 에서 두 번째 질문의
+"그때" 를 앞턴의 백악기 후기로 해석했다.
+
+### 8.2 매니페스트 이스케이프 함정
+
+`ExtraApplicationNodeTags` 는 `<application>` 여는 태그에 **문자열 그대로** 삽입된다. ini 파서는
+값의 바깥 따옴표만 벗겨낼 뿐 `\"` 를 `"` 로 되돌려 주지 않으므로, 역슬래시가 매니페스트까지
+새어 나가 UBT 의 `XDocument.Parse` 가 깨진다.
+
+```
+AndroidManifest.xml is invalid System.Xml.XmlException:
+'\' is an unexpected token. Line 22, position 44.
+```
+
+XML 은 속성값에 작은따옴표도 허용하므로 이스케이프 없이 중첩한다.
+
+```ini
++ExtraApplicationNodeTags="android:usesCleartextTraffic='true'"
+```
+
+**이걸 놓치면 APK 가 서버에 아예 붙지 못한다.** API 28+ 는 평문 HTTP 를 기본 차단한다.
+
+### 8.3 UI 없이 대화 경로를 확인하는 법
+
+서브시스템의 `Exec` 함수는 콘솔에 잡히지 않는다. `UGameInstance` 가 `ProcessConsoleExec` 을
+오버라이드하지 않아 서브시스템까지 내려가지 않기 때문이다. 그래서 `UDocentClient` 는 `Exec`
+대신 콘솔 명령을 등록한다(`#if !UE_BUILD_SHIPPING`).
+
+```powershell
+$adb = "C:\Program Files (x86)\Android\android-sdk\platform-tools\adb.exe"
+& $adb reverse tcp:8000 tcp:8000     # USB 를 뽑거나 재부팅하면 사라진다. 매번 다시 건다
+
+function Send-UECmd($c) { & $adb shell "am broadcast -a android.intent.action.RUN -e cmd '$c'" }
+Send-UECmd "Log LogDocent Verbose"   # 델타 로그는 Verbose 라 평소엔 꺼져 있다
+Send-UECmd "Docent.Health"
+Send-UECmd "Docent.StartSession bf32d486-15e1-49cc-96d7-5b6a4ee1fb45"
+Send-UECmd "Docent.Ask 이 공룡의 이빨은 어떻게 생겼어?"
+
+& $adb logcat -d | Select-String "LogDocent"
+```
+
+`GameActivity` 는 Shipping 이 아닐 때만 이 브로드캐스트 리시버를 연다.
+
+### 8.4 Android 툴체인 (UE 5.4)
+
+`SetupAndroid.bat` 은 Android Studio 설치를 전제한다. 없으면 아래를 직접 맞춘다. 관리자 권한이
+없으면 `Program Files` 의 SDK 는 못 건드리므로 **사용자 폴더에 따로 구성**한다.
+
+| 필요 | 값 |
+|---|---|
+| NDK | `25.1.8937393` (r25b) |
+| platform | `android-33` |
+| build-tools | `33.0.1` |
+| cmake | `3.22.1` |
+| JDK | **17 이상** — UBT 가 `$JAVA_HOME/release` 의 `JAVA_VERSION` 을 읽어 17 미만이면 거부한다 |
+
+환경변수 `ANDROID_HOME` / `NDKROOT` / `JAVA_HOME` 로 찾는다
+(`AndroidPlatformSDK.cs`). `cmdline-tools` 는 `latest` 라는 이름이어야 `sdkmanager` 가 잡힌다.
+
+패키징 명령. 도슨트 BP 노드가 `TestMap` 에 있는데 `GameDefaultMap` 은 `AR_MainMap` 이므로
+`-cmdline` 으로 부팅 맵을 넘겨야 한다(넘기지 않으면 도슨트 호출이 아예 안 일어난다).
+
+```
+RunUAT.bat BuildCookRun -project=<path>.uproject -noP4 -nocompileeditor
+  -platform=Android -cookflavor=ASTC -clientconfig=Development
+  -map="/Game/Stuff/Maps/TestMap+/Game/Stuff/Maps/AR_MainMap"
+  -cmdline="/Game/Stuff/Maps/TestMap"
+  -build -cook -stage -pak -package -archive -archivedirectory=<out>
+```
+
+`INSTALL_FAILED_VERIFICATION_FAILURE` 가 나면 기기의 ADB 설치 검증을 끈다(개발자 옵션의
+"USB 를 통해 설치한 앱 확인" 과 같다. adb 설치에만 적용된다).
+
+```
+adb shell settings put global verifier_verify_adb_installs 0   # 되돌리기: ... 1
+```
