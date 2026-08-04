@@ -22,6 +22,29 @@
 		<log text="TimeMachineAR: 가상 키보드 인셋 조회 메서드를 주입한다"/>
 	</init>
 
+	<!--
+		UE 가 키보드 바로 위에 띄우는 네이티브 입력 뷰를 시각적으로만 감춘다.
+
+		VirtualKeyboardInput 은 AppCompatEditText 를 상속했고 배경이 기본 흰색이다.
+		어두운 채팅 UI 위에서 전체 폭 흰 띠로 보인다(실기기에서 40px 확인).
+
+		지우거나 GONE 으로 두면 안 된다. 실제로 키를 받는 것이 이 뷰이고, 입력된
+		글자는 nativeVirtualKeyboardChanged 로 Slate 에 전달된다. 없애면 한글 입력
+		자체가 끊긴다. 알파만 0 으로 두면 보이지만 않을 뿐 입력 경로는 살아 있다.
+
+		onCreate 의 createVirtualKeyboardInput() 이후에 끼워 넣어야 하므로
+		gameActivityOnCreateFinalAdditions 를 쓴다.
+	-->
+	<gameActivityOnCreateFinalAdditions>
+		<insert>
+		if (newVirtualKeyboardInput != null)
+		{
+			newVirtualKeyboardInput.setAlpha(0.0f);
+			newVirtualKeyboardInput.setBackgroundColor(android.graphics.Color.TRANSPARENT);
+		}
+		</insert>
+	</gameActivityOnCreateFinalAdditions>
+
 	<gameActivityClassAdditions>
 		<insert>
 	/**
