@@ -10,8 +10,10 @@
 #include "Components/Spacer.h"
 #include "Components/TextBlock.h"
 #include "Engine/GameInstance.h"
+#include "Engine/World.h"
 #include "Framework/Application/SlateApplication.h"
 #include "GenericPlatform/GenericApplication.h"
+#include "TimerManager.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogDocentChat, Log, All);
 
@@ -57,7 +59,13 @@ void UDocentChatWidget::NativeConstruct()
 				{
 					if (UDocentChatWidget* Self = WeakThis.Get())
 					{
-						Self->ApplyKeyboardInset(static_cast<float>(KeyboardRect.Bottom - KeyboardRect.Top));
+						Self->ReportedKeyboardPixels = static_cast<float>(KeyboardRect.Bottom - KeyboardRect.Top);
+						UE_LOG(LogDocentChat, Log, TEXT("[키보드] 플랫폼 보고: %.0fpx"),
+							Self->ReportedKeyboardPixels);
+						if (Self->bInputFocused)
+						{
+							Self->ApplyKeyboardInset(Self->ResolveKeyboardPixels());
+						}
 					}
 				});
 
@@ -66,10 +74,18 @@ void UDocentChatWidget::NativeConstruct()
 				{
 					if (UDocentChatWidget* Self = WeakThis.Get())
 					{
+						Self->ReportedKeyboardPixels = 0.0f;
 						Self->ApplyKeyboardInset(0.0f);
 					}
 				});
 		}
+	}
+
+	// 포커스 감시. 0.1 초면 키보드가 올라오는 동안(대략 250ms)에 따라붙는다.
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().SetTimer(
+			InputFocusTimer, this, &UDocentChatWidget::PollInputFocus, 0.1f, /*bLoop=*/true);
 	}
 
 	// 여는 버튼이 없으면 닫힌 채로 시작할 수 없다. 다시 열 방법이 사라진다.
@@ -163,6 +179,11 @@ void UDocentChatWidget::NativeDestruct()
 	}
 	KeyboardShownHandle.Reset();
 	KeyboardHiddenHandle.Reset();
+
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(InputFocusTimer);
+	}
 
 	Super::NativeDestruct();
 }
@@ -297,6 +318,44 @@ void UDocentChatWidget::ApplyOpenState(bool bOpen)
 	OnChatOpenChanged(bOpen);
 }
 
+void UDocentChatWidget::PollInputFocus()
+{
+#if PLATFORM_ANDROID || PLATFORM_IOS
+	if (InputBox == nullptr || KeyboardSpacer == nullptr)
+	{
+		return;
+	}
+
+	const bool bFocused = bIsOpen && InputBox->HasKeyboardFocus();
+	if (bFocused == bInputFocused)
+	{
+		return;
+	}
+
+	bInputFocused = bFocused;
+	ApplyKeyboardInset(bFocused ? ResolveKeyboardPixels() : 0.0f);
+#endif
+}
+
+float UDocentChatWidget::ResolveKeyboardPixels() const
+{
+	const float ViewportHeight = UWidgetLayoutLibrary::GetViewportSize(const_cast<UDocentChatWidget*>(this)).Y;
+	if (ViewportHeight <= 0.0f)
+	{
+		return 0.0f;
+	}
+
+	// 보고값이 화면의 15~75% 범위면 쓴다. 이 범위를 벗어나면 창이 리사이즈되지
+	// 않아 0 이나 화면 전체로 잡힌 경우다.
+	if (ReportedKeyboardPixels > ViewportHeight * 0.15f &&
+		ReportedKeyboardPixels < ViewportHeight * 0.75f)
+	{
+		return ReportedKeyboardPixels;
+	}
+
+	return ViewportHeight * KeyboardHeightRatio;
+}
+
 void UDocentChatWidget::ApplyKeyboardInset(float KeyboardPixels)
 {
 	if (KeyboardSpacer == nullptr)
@@ -304,15 +363,17 @@ void UDocentChatWidget::ApplyKeyboardInset(float KeyboardPixels)
 		return;
 	}
 
-	// 이벤트가 주는 값은 실제 픽셀이고 위젯 좌표는 DPI 스케일이 나눠진 값이다.
-	// 그대로 넣으면 고해상도 기기에서 키보드보다 훨씬 크게 밀린다. S25+ 는
-	// 스케일이 1.33 이라 33% 더 밀린다.
+	// 픽셀을 위젯 좌표로 바꾼다. 그대로 넣으면 고해상도 기기에서 키보드보다
+	// 훨씬 크게 밀린다. S25+ 는 스케일이 1.33 이라 33% 더 밀린다.
 	const float Scale = UWidgetLayoutLibrary::GetViewportScale(this);
 	const float SlateUnits = (Scale > 0.0f) ? (KeyboardPixels / Scale) : KeyboardPixels;
 
 	// 안전영역이 이미 하단 제스처 바만큼 여백을 주고 있어서 그만큼 겹친다.
 	// 몇십 단위라 눈에 띄지 않으므로 빼지 않는다.
 	KeyboardSpacer->SetSize(FVector2D(0.0f, FMath::Max(0.0f, SlateUnits)));
+
+	UE_LOG(LogDocentChat, Log, TEXT("[키보드] 여백 %.0fpx -> %.0f단위 (스케일 %.2f, 보고 %.0fpx)"),
+		KeyboardPixels, SlateUnits, Scale, ReportedKeyboardPixels);
 
 	// 밀린 만큼 마지막 말풍선이 가려지므로 다시 맨 아래로 보낸다.
 	ScrollToLatest();

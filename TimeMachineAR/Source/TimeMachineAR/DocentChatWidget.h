@@ -215,6 +215,17 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Docent|Chat")
 	bool bStartOpen = true;
 
+	/**
+	 * 가상 키보드가 가릴 화면 비율. 플랫폼이 알려 주는 값을 못 믿을 때 쓴다.
+	 *
+	 * 안드로이드는 전체화면 창에서 adjustResize 를 무시하고, UE 는 몰입 모드가
+	 * 기본이다. 그래서 GameActivity 가 getWindowVisibleDisplayFrame 으로 재는
+	 * 키보드 높이가 0 이나 화면 전체로 잡힌다. 그 값이 터무니없으면 이 비율로
+	 * 대신 민다. 한국어 키보드가 대략 화면의 35~40% 를 차지한다.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "Docent|Chat", meta = (ClampMin = "0.0", ClampMax = "0.8"))
+	float KeyboardHeightRatio = 0.38f;
+
 	// ------------------------------------------------------------ 확장 지점
 
 	/** 세션이 열려 입력이 가능해진 시점. 로딩 표시를 걷어내는 용도. */
@@ -250,9 +261,27 @@ private:
 	 */
 	void ApplyKeyboardInset(float KeyboardPixels);
 
+	/**
+	 * 입력창 포커스를 주기적으로 확인해 키보드 여백을 켜고 끈다.
+	 *
+	 * 포커스 변화를 알려 주는 UMG 이벤트가 없고, NativeTick 은 위젯 틱 빈도가
+	 * Auto 라 블루프린트 Tick 이 없으면 아예 불리지 않는다. 그래서 타이머로 본다.
+	 */
+	void PollInputFocus();
+
+	/** 이번에 밀어야 할 키보드 높이(픽셀). 보고값이 미덥지 않으면 비율로 계산한다. */
+	float ResolveKeyboardPixels() const;
+
 	// 플랫폼 애플리케이션은 위젯보다 오래 산다. 소멸 시 반드시 해제한다.
 	FDelegateHandle KeyboardShownHandle;
 	FDelegateHandle KeyboardHiddenHandle;
+
+	FTimerHandle InputFocusTimer;
+
+	/** 플랫폼이 마지막으로 알려 준 키보드 높이(픽셀). 0 이면 아직 못 믿는다. */
+	float ReportedKeyboardPixels = 0.0f;
+
+	bool bInputFocused = false;
 
 	/** 빠른 질문 칩의 네이티브 델리게이트 수신부. */
 	void HandleQuickChipClicked(const FString& Question);
