@@ -11,6 +11,7 @@ class UDocentQuickChip;
 class UEditableTextBox;
 class UPanelWidget;
 class UScrollBox;
+class USpacer;
 class UTextBlock;
 
 /**
@@ -31,6 +32,8 @@ class UTextBlock;
  *   - OpenButton       (Button)            : 선택. 닫힌 상태에서 다시 열기
  *   - EmptyStateBox    (아무 위젯)          : 선택. 첫 질문 전 아바타+인사말
  *   - GreetingLabel    (Text Block)        : 선택. EmptyStateBox 안의 인사말
+ *   - ChatBackdrop     (아무 위젯)          : 선택. 안전영역 밖의 배경
+ *   - KeyboardSpacer   (Spacer)            : 선택. ChatPanel 의 마지막 자식
  *
  * 그리고 클래스 기본값에서 BubbleClass / ChipClass 를 지정해야 한다.
  */
@@ -138,6 +141,27 @@ protected:
 	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "Docent|Chat")
 	TObjectPtr<UButton> OpenButton;
 
+	/**
+	 * 채팅창 뒤를 덮는 배경. ChatPanel 과 함께 보였다 사라진다.
+	 *
+	 * 배경만 ChatPanel 밖에 두는 이유는 노치 아래까지 꽉 채워야 하기 때문이다.
+	 * 안전영역 안에 넣으면 화면 맨 위에 배경 없는 띠가 남는다. 대신 밖에 있는
+	 * 만큼 열림 상태를 여기서 따로 챙겨 주지 않으면, 채팅을 닫아도 배경만 남아
+	 * AR 카메라를 통째로 가린다.
+	 */
+	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "Docent|Chat")
+	TObjectPtr<UWidget> ChatBackdrop;
+
+	/**
+	 * 가상 키보드가 차지하는 높이를 대신 밀어 주는 빈 칸.
+	 *
+	 * ChatPanel 의 마지막 자식이어야 한다. 키보드가 올라오면 이 칸의 높이를
+	 * 키보드만큼 늘려서 세로 박스가 다시 흐르게 하고, 그 결과 입력창이 키보드
+	 * 위로 올라온다. 없으면 아무 일도 하지 않는다.
+	 */
+	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "Docent|Chat")
+	TObjectPtr<USpacer> KeyboardSpacer;
+
 	// ------------------------------------------------------------ 클래스 기본값
 
 	UPROPERTY(EditDefaultsOnly, Category = "Docent|Chat")
@@ -218,6 +242,17 @@ private:
 
 	/** 열림 상태를 위젯에 반영한다. ShowChat/HideChat 의 공통부. */
 	void ApplyOpenState(bool bOpen);
+
+	/**
+	 * 가상 키보드가 가리는 높이를 레이아웃에 반영한다.
+	 *
+	 * @param KeyboardPixels 키보드 높이(실제 픽셀). 숨겨졌으면 0.
+	 */
+	void ApplyKeyboardInset(float KeyboardPixels);
+
+	// 플랫폼 애플리케이션은 위젯보다 오래 산다. 소멸 시 반드시 해제한다.
+	FDelegateHandle KeyboardShownHandle;
+	FDelegateHandle KeyboardHiddenHandle;
 
 	/** 빠른 질문 칩의 네이티브 델리게이트 수신부. */
 	void HandleQuickChipClicked(const FString& Question);

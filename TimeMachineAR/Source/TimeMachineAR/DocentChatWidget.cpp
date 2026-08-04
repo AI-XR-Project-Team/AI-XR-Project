@@ -4,11 +4,14 @@
 #include "DocentQuickChip.h"
 #include "Components/Button.h"
 #include "Components/EditableTextBox.h"
+#include "Blueprint/WidgetLayoutLibrary.h"
 #include "Components/PanelWidget.h"
 #include "Components/ScrollBox.h"
+#include "Components/Spacer.h"
 #include "Components/TextBlock.h"
 #include "Engine/GameInstance.h"
 #include "Framework/Application/SlateApplication.h"
+#include "GenericPlatform/GenericApplication.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogDocentChat, Log, All);
 
@@ -38,6 +41,35 @@ void UDocentChatWidget::NativeConstruct()
 	if (OpenButton != nullptr)
 	{
 		OpenButton->OnClicked.AddUniqueDynamic(this, &UDocentChatWidget::HandleOpenClicked);
+	}
+
+	// 안드로이드 가상 키보드. Slate 는 이 이벤트를 아무도 받지 않아서, 받아 두지
+	// 않으면 키보드가 화면 아래 절반을 덮은 채 입력창을 가린다. 안드로이드에서만
+	// 브로드캐스트되고 다른 플랫폼에서는 조용히 아무 일도 일어나지 않는다.
+	if (FSlateApplication::IsInitialized())
+	{
+		if (const TSharedPtr<GenericApplication> PlatformApp = FSlateApplication::Get().GetPlatformApplication())
+		{
+			TWeakObjectPtr<UDocentChatWidget> WeakThis(this);
+
+			KeyboardShownHandle = PlatformApp->OnVirtualKeyboardShown().AddLambda(
+				[WeakThis](FPlatformRect KeyboardRect)
+				{
+					if (UDocentChatWidget* Self = WeakThis.Get())
+					{
+						Self->ApplyKeyboardInset(static_cast<float>(KeyboardRect.Bottom - KeyboardRect.Top));
+					}
+				});
+
+			KeyboardHiddenHandle = PlatformApp->OnVirtualKeyboardHidden().AddLambda(
+				[WeakThis]()
+				{
+					if (UDocentChatWidget* Self = WeakThis.Get())
+					{
+						Self->ApplyKeyboardInset(0.0f);
+					}
+				});
+		}
 	}
 
 	// 여는 버튼이 없으면 닫힌 채로 시작할 수 없다. 다시 열 방법이 사라진다.
@@ -120,6 +152,17 @@ void UDocentChatWidget::NativeDestruct()
 	{
 		OpenButton->OnClicked.RemoveDynamic(this, &UDocentChatWidget::HandleOpenClicked);
 	}
+
+	if (FSlateApplication::IsInitialized())
+	{
+		if (const TSharedPtr<GenericApplication> PlatformApp = FSlateApplication::Get().GetPlatformApplication())
+		{
+			PlatformApp->OnVirtualKeyboardShown().Remove(KeyboardShownHandle);
+			PlatformApp->OnVirtualKeyboardHidden().Remove(KeyboardHiddenHandle);
+		}
+	}
+	KeyboardShownHandle.Reset();
+	KeyboardHiddenHandle.Reset();
 
 	Super::NativeDestruct();
 }
@@ -226,18 +269,53 @@ void UDocentChatWidget::ApplyOpenState(bool bOpen)
 		SetVisibility(bOpen ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
 	}
 
+	// 배경은 안전영역 밖이라 ChatPanel 에 딸려 가지 않는다. 따로 접어 주지 않으면
+	// 채팅을 닫아도 배경만 남아 AR 카메라가 보이지 않는다.
+	if (ChatBackdrop != nullptr)
+	{
+		ChatBackdrop->SetVisibility(bOpen ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
+	}
+
 	if (OpenButton != nullptr)
 	{
 		OpenButton->SetVisibility(bOpen ? ESlateVisibility::Collapsed : ESlateVisibility::Visible);
 	}
 
-	if (!bOpen && FSlateApplication::IsInitialized())
+	if (!bOpen)
 	{
-		// 포커스를 놓지 않으면 창을 닫아도 안드로이드 가상 키보드가 남는다.
-		FSlateApplication::Get().ClearKeyboardFocus(EFocusCause::SetDirectly);
+		// 키보드가 내려가므로 밀어 둔 만큼도 같이 되돌린다. OnVirtualKeyboardHidden
+		// 이 오기는 하지만, 그 사이 한 프레임 동안 빈 칸이 남는다.
+		ApplyKeyboardInset(0.0f);
+
+		if (FSlateApplication::IsInitialized())
+		{
+			// 포커스를 놓지 않으면 창을 닫아도 안드로이드 가상 키보드가 남는다.
+			FSlateApplication::Get().ClearKeyboardFocus(EFocusCause::SetDirectly);
+		}
 	}
 
 	OnChatOpenChanged(bOpen);
+}
+
+void UDocentChatWidget::ApplyKeyboardInset(float KeyboardPixels)
+{
+	if (KeyboardSpacer == nullptr)
+	{
+		return;
+	}
+
+	// 이벤트가 주는 값은 실제 픽셀이고 위젯 좌표는 DPI 스케일이 나눠진 값이다.
+	// 그대로 넣으면 고해상도 기기에서 키보드보다 훨씬 크게 밀린다. S25+ 는
+	// 스케일이 1.33 이라 33% 더 밀린다.
+	const float Scale = UWidgetLayoutLibrary::GetViewportScale(this);
+	const float SlateUnits = (Scale > 0.0f) ? (KeyboardPixels / Scale) : KeyboardPixels;
+
+	// 안전영역이 이미 하단 제스처 바만큼 여백을 주고 있어서 그만큼 겹친다.
+	// 몇십 단위라 눈에 띄지 않으므로 빼지 않는다.
+	KeyboardSpacer->SetSize(FVector2D(0.0f, FMath::Max(0.0f, SlateUnits)));
+
+	// 밀린 만큼 마지막 말풍선이 가려지므로 다시 맨 아래로 보낸다.
+	ScrollToLatest();
 }
 
 void UDocentChatWidget::HandleCloseClicked()
