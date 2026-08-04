@@ -15,7 +15,45 @@
 #include "GenericPlatform/GenericApplication.h"
 #include "TimerManager.h"
 
+#if PLATFORM_ANDROID
+#include "Android/AndroidApplication.h"
+#include "Android/AndroidJNI.h"
+#endif
+
 DEFINE_LOG_CATEGORY_STATIC(LogDocentChat, Log, All);
+
+namespace
+{
+#if PLATFORM_ANDROID
+/**
+ * 가상 키보드가 화면 아래에서 차지하는 비율(0~1). 알 수 없으면 -1.
+ *
+ * GameActivity 에 UPL 로 심어 둔 메서드를 부른다. 안드로이드 11 의
+ * WindowInsets.Type.ime() 를 읽으므로 창이 리사이즈되지 않는 몰입 모드에서도
+ * 정확하다. 자세한 배경은 TimeMachineAR_UPL.xml 주석에 있다.
+ */
+float QueryImeInsetRatio()
+{
+	JNIEnv* Env = FAndroidApplication::GetJavaEnv();
+	if (Env == nullptr)
+	{
+		return -1.0f;
+	}
+
+	// UPL 주입이 빠진 빌드에서도 죽지 않게 선택 조회로 찾는다.
+	static jmethodID Method = FJavaWrapper::FindMethod(
+		Env, FJavaWrapper::GameActivityClassID,
+		"AndroidThunkJava_GetImeInsetPermyriad", "()I", /*bIsOptional=*/true);
+	if (Method == nullptr)
+	{
+		return -1.0f;
+	}
+
+	const int32 Permyriad = FJavaWrapper::CallIntMethod(Env, FJavaWrapper::GameActivityThis, Method);
+	return (Permyriad < 0) ? -1.0f : (Permyriad / 10000.0f);
+}
+#endif
+}
 
 void UDocentChatWidget::NativeConstruct()
 {
@@ -326,14 +364,18 @@ void UDocentChatWidget::PollInputFocus()
 		return;
 	}
 
-	const bool bFocused = bIsOpen && InputBox->HasKeyboardFocus();
-	if (bFocused == bInputFocused)
+	bInputFocused = bIsOpen && InputBox->HasKeyboardFocus();
+
+	// 포커스 변화만 보면 안 된다. 키보드가 올라오는 동안 IME 인셋이 0 에서부터
+	// 자라기 때문에, 포커스를 얻은 그 순간에는 아직 0 으로 잡힌다.
+	const float Target = bInputFocused ? ResolveKeyboardPixels() : 0.0f;
+	if (FMath::IsNearlyEqual(Target, AppliedKeyboardPixels, 1.0f))
 	{
 		return;
 	}
 
-	bInputFocused = bFocused;
-	ApplyKeyboardInset(bFocused ? ResolveKeyboardPixels() : 0.0f);
+	AppliedKeyboardPixels = Target;
+	ApplyKeyboardInset(Target);
 #endif
 }
 
@@ -345,14 +387,28 @@ float UDocentChatWidget::ResolveKeyboardPixels() const
 		return 0.0f;
 	}
 
-	// 보고값이 화면의 15~75% 범위면 쓴다. 이 범위를 벗어나면 창이 리사이즈되지
-	// 않아 0 이나 화면 전체로 잡힌 경우다.
+#if PLATFORM_ANDROID
+	// 1순위. 안드로이드가 알려 주는 실제 IME 높이라 기기·키보드앱과 무관하게 맞다.
+	// 0 은 "키보드가 아직 안 올라왔다" 는 정상값이므로 그대로 쓴다. 올라오는
+	// 동안 값이 자라고, 폴링이 그걸 따라간다. -1 일 때만 알 수 없는 경우다.
+	const float ImeRatio = QueryImeInsetRatio();
+	if (ImeRatio >= 0.0f)
+	{
+		return ViewportHeight * ImeRatio;
+	}
+#endif
+
+	// 2순위. UE 가 자체적으로 잰 값. 몰입 모드에서는 0 이나 음수로 나오므로
+	// 화면의 15~75% 라는 그럴듯한 범위 안일 때만 믿는다.
 	if (ReportedKeyboardPixels > ViewportHeight * 0.15f &&
 		ReportedKeyboardPixels < ViewportHeight * 0.75f)
 	{
 		return ReportedKeyboardPixels;
 	}
 
+	// 3순위. 둘 다 실패했을 때의 어림값. 기기마다 어긋난다.
+	UE_LOG(LogDocentChat, Warning,
+		TEXT("[키보드] 실제 높이를 알 수 없어 비율 %.2f 로 대신합니다."), KeyboardHeightRatio);
 	return ViewportHeight * KeyboardHeightRatio;
 }
 

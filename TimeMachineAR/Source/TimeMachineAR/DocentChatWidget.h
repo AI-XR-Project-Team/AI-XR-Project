@@ -281,6 +281,9 @@ private:
 	/** 플랫폼이 마지막으로 알려 준 키보드 높이(픽셀). 0 이면 아직 못 믿는다. */
 	float ReportedKeyboardPixels = 0.0f;
 
+	/** 지금 레이아웃에 들어가 있는 여백(픽셀). 같은 값을 매 폴마다 다시 넣지 않는다. */
+	float AppliedKeyboardPixels = 0.0f;
+
 	bool bInputFocused = false;
 
 	/** 빠른 질문 칩의 네이티브 델리게이트 수신부. */
