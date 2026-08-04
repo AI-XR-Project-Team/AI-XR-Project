@@ -26,5 +26,11 @@ class Settings(BaseSettings):
     # 실측상 low 만 돼도 4초대로 뛰므로 도슨트는 minimal 고정.
     LLM_THINKING_LEVEL: str = "minimal"
 
+    # --- 챗봇 대화 (feature/mobile-docent-chat) ---
+    # 프롬프트에 실어 보낼 최근 메시지 개수(질문 1건 = 1, 답변 1건 = 1).
+    # 8 이면 주고받은 대화 4쌍이다. 전체 이력을 매번 넣으면 첫 토큰까지의
+    # 지연과 토큰 비용이 함께 늘어난다.
+    CHAT_HISTORY_TURNS: int = 8
+
 
 settings = Settings()

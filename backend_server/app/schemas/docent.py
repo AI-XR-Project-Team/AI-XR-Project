@@ -10,7 +10,7 @@ class DocentAskRequest(BaseModel):
             "example": {
                 "poi_id": "00000000-0000-0000-0000-000000000000",
                 "question": "이 공룡은 무엇을 먹었나요?",
-                "device_uuid": "quest3-anonymous-0001",
+                "device_uuid": "android-anonymous-0001",
             }
         }
     )
@@ -28,7 +28,7 @@ class DocentAskRequest(BaseModel):
         None,
         max_length=128,
         description=(
-            "Quest 3 익명 기기 식별자. 향후 Q&A 로그 적재용으로 미리 받아두며 "
+            "모바일 기기 익명 식별자. 향후 Q&A 로그 적재용으로 미리 받아두며 "
             "현재는 사용하지 않는다."
         ),
     )
