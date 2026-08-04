@@ -53,8 +53,14 @@ void UDocentChatWidget::NativeConstruct()
 
 	// 인사말은 서버를 거치지 않는다. 창을 열자마자 보여야 하는데 LLM 왕복을
 	// 기다리면 빈 화면이 남는다.
-	if (!GreetingText.IsEmpty())
+	if (GreetingLabel != nullptr)
 	{
+		GreetingLabel->SetText(GreetingText);
+	}
+	if (EmptyStateBox == nullptr && !GreetingText.IsEmpty())
+	{
+		// 빈 상태 블록이 없는 구성. 인사말을 보여 줄 자리가 말풍선뿐이다.
+		// 블록이 있는데도 여기서 붙이면 같은 문장이 화면에 두 번 나온다.
 		AddBubble(/*bIsUser=*/false, GreetingText.ToString());
 	}
 
@@ -161,6 +167,13 @@ void UDocentChatWidget::SendQuestion(const FString& Question)
 	if (!bHasAskedOnce)
 	{
 		bHasAskedOnce = true;
+
+		// 빈 상태(아바타 + 인사말)는 첫 질문과 함께 걷어낸다. 대화가 시작된
+		// 뒤에도 화면 절반을 차지하면 말풍선이 들어갈 자리가 없다.
+		if (EmptyStateBox != nullptr)
+		{
+			EmptyStateBox->SetVisibility(ESlateVisibility::Collapsed);
+		}
 		if (bHideChipsAfterFirstQuestion && QuickQuestionBox != nullptr)
 		{
 			QuickQuestionBox->SetVisibility(ESlateVisibility::Collapsed);

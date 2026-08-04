@@ -24,8 +24,13 @@ class UTextBlock;
  *   - ChatScroll  (Scroll Box)        : 필수. 말풍선이 여기 직접 붙는다
  *   - InputBox    (Editable Text Box) : 필수
  *   - SendButton  (Button)            : 필수
- *   - QuickQuestionBox (Vertical/Wrap Box) : 선택. 빠른 질문 칩이 붙는 자리
+ *   - QuickQuestionBox (Wrap/Vertical Box) : 선택. 빠른 질문 칩이 붙는 자리
  *   - DocentNameText   (Text Block)        : 선택. 헤더의 도슨트 이름
+ *   - ChatPanel        (아무 위젯)          : 선택. 열고 닫을 대상
+ *   - CloseButton      (Button)            : 선택. 채팅창 닫기
+ *   - OpenButton       (Button)            : 선택. 닫힌 상태에서 다시 열기
+ *   - EmptyStateBox    (아무 위젯)          : 선택. 첫 질문 전 아바타+인사말
+ *   - GreetingLabel    (Text Block)        : 선택. EmptyStateBox 안의 인사말
  *
  * 그리고 클래스 기본값에서 BubbleClass / ChipClass 를 지정해야 한다.
  */
@@ -103,6 +108,20 @@ protected:
 	TObjectPtr<UTextBlock> DocentNameText;
 
 	/**
+	 * 첫 질문 전까지만 보이는 블록. 큰 아바타와 인사말이 들어간다.
+	 *
+	 * ChatScroll 과 같은 자리에 겹쳐 두고(오버레이) 첫 질문에서 접는다.
+	 * 스크롤 안에 넣으면 ClearMessages 의 ClearChildren 에 같이 지워지고,
+	 * 대화가 시작된 뒤에도 첫 말풍선 위에 그대로 남는다.
+	 */
+	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "Docent|Chat")
+	TObjectPtr<UWidget> EmptyStateBox;
+
+	/** EmptyStateBox 안의 인사말 텍스트. GreetingText 가 여기 들어간다. */
+	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "Docent|Chat")
+	TObjectPtr<UTextBlock> GreetingLabel;
+
+	/**
 	 * 열고 닫을 대상. 보통 헤더·대화·입력을 감싼 패널이다.
 	 *
 	 * 이 위젯 자체가 아니라 별도 패널을 숨기는 이유는, 루트를 숨기면 채팅창을
@@ -134,6 +153,9 @@ protected:
 	/**
 	 * 창을 열면 먼저 뜨는 인사말. 클라이언트가 직접 만들며 LLM 을 부르지 않는다.
 	 * 빈 값이면 인사말을 띄우지 않는다.
+	 *
+	 * 표시 위치는 WBP 구성에 따라 갈린다. EmptyStateBox 가 있으면 그 안의
+	 * GreetingLabel 에 들어가고, 없으면 예전처럼 첫 말풍선으로 붙는다.
 	 */
 	UPROPERTY(EditDefaultsOnly, Category = "Docent|Chat", meta = (MultiLine = true))
 	FText GreetingText = FText::FromString(
