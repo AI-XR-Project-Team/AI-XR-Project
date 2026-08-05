@@ -340,6 +340,13 @@ void UDocentChatWidget::ApplyOpenState(bool bOpen)
 		OpenButton->SetVisibility(bOpen ? ESlateVisibility::Collapsed : ESlateVisibility::Visible);
 	}
 
+	// 하단 바는 AR 화면의 것이다. 채팅이 덮고 있는 동안에는 눌러 봐야 보이지도
+	// 않는 화면을 조작하게 되므로 같이 접는다.
+	if (BottomBar != nullptr)
+	{
+		BottomBar->SetVisibility(bOpen ? ESlateVisibility::Collapsed : ESlateVisibility::Visible);
+	}
+
 	if (!bOpen)
 	{
 		// 키보드가 내려가므로 밀어 둔 만큼도 같이 되돌린다. OnVirtualKeyboardHidden

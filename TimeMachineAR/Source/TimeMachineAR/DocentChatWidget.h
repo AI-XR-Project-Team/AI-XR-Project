@@ -142,6 +142,15 @@ protected:
 	TObjectPtr<UButton> OpenButton;
 
 	/**
+	 * AR 화면 하단 바. 채팅이 열리면 접히고, 닫히면 다시 나온다.
+	 *
+	 * ChatPanel 밖에 있어야 한다. 안에 두면 채팅을 닫을 때 같이 사라져서
+	 * 다시 열 방법이 없어진다. OpenButton 을 이 바 안에 넣어 두면 된다.
+	 */
+	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "Docent|Chat")
+	TObjectPtr<UWidget> BottomBar;
+
+	/**
 	 * 채팅창 뒤를 덮는 배경. ChatPanel 과 함께 보였다 사라진다.
 	 *
 	 * 배경만 ChatPanel 밖에 두는 이유는 노치 아래까지 꽉 채워야 하기 때문이다.
