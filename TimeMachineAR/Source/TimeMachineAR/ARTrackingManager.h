@@ -12,8 +12,20 @@ class UARPin;
 /** 스캔이 켜지거나 꺼졌을 때. 하단 바가 버튼 모양을 바꾸는 데 쓴다. */
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnScanStateChanged, bool, bIsScanning);
 
-/** 마커를 찾아 오버레이를 붙였을 때. */
-DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnMarkerFound);
+/**
+ * 마커를 찾아 오버레이를 붙였을 때.
+ *
+ * 네비게이션이 여기에 붙는다. 마커의 월드 pose 와 code 를 같이 넘기는 이유는,
+ * 네비가 "이 마커가 지도상 어디인지"를 서버에서 조회해(GET /maps/{id}/markers)
+ * 맵↔월드 변환을 세워야 하기 때문이다. 실내에는 GPS 가 없으므로 마커 하나가
+ * 유일한 측위 기준점이다. docs/nav-server-integration-guide.md §5 참조.
+ *
+ * @param Pin        오버레이를 고정한 앵커. 트래킹이 갱신되면 따라 움직인다.
+ * @param MarkerPose 마커의 월드 트랜스폼. 맵↔월드 변환의 한쪽 항이다.
+ * @param MarkerCode UARSessionConfig 후보 이미지의 이름. 서버 마커 code 와 맞춘다.
+ */
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(FOnMarkerFound,
+	UARPin*, Pin, const FTransform&, MarkerPose, const FString&, MarkerCode);
 
 UCLASS()
 class TIMEMACHINEAR_API AARTrackingManager : public AActor

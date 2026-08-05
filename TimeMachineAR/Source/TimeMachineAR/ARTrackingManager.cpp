@@ -1,6 +1,7 @@
 #include "ARTrackingManager.h"
 #include "ARSessionConfig.h"
 #include "ARTrackable.h"
+#include "ARTypes.h"
 #include "ARPin.h"
 #include "DinoOverlayActor.h"
 #include "Kismet/GameplayStatics.h"
@@ -182,9 +183,17 @@ void AARTrackingManager::CheckForTrackedImages()
 						GEngine->AddOnScreenDebugMessage(2, 5.0f, FColor::Cyan, TEXT("[AR] Dino Overlay Successfully Spawned & Anchored!"));
 					}
 
-					// 5. 찾았으니 스캔을 끝낸다. UI 가 "스캔 중" 표시를 지울 수 있게 알린다.
+					// 5. 어느 마커인지 알아낸다. 네비게이션이 이 code 로 서버에서
+					//    마커의 지도 좌표를 조회한다.
+					FString MarkerCode;
+					if (const UARCandidateImage* Candidate = TrackedImage->GetDetectedImage())
+					{
+						MarkerCode = Candidate->GetFriendlyName();
+					}
+
+					// 6. 찾았으니 스캔을 끝낸다. UI 가 "스캔 중" 표시를 지울 수 있게 알린다.
 					StopScan();
-					OnMarkerFound.Broadcast();
+					OnMarkerFound.Broadcast(OverlayPin, ImageTransform, MarkerCode);
 					break;
 				}
 			}
