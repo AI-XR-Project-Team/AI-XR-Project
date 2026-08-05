@@ -1,0 +1,5 @@
+code,map_key,marker_type,pos_x_cm,pos_y_cm,pos_z_cm,heading_deg,note
+MARK-ENTRANCE-01,floor1,qr,0,-10,150,90,정문 안쪽 벽 눈높이 150cm
+MARK-LOBBY-01,floor1,qr,10,600,150,180,로비 분기 기둥
+MARK-TYRANNO-01,floor1,qr,-410,1400,150,0,티라노 전시 안내판 옆
+MARK-NEUTI4-START,neuti4,qr,280,150,150,180,시작 마커 - 동측 벽 시작점 옆, 정면 서향(실내). 폰 화면 QR 거치 고정
