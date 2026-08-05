@@ -28,6 +28,61 @@ void AARTrackingManager::BeginPlay()
 	}
 
 	RequestCameraPermissionAndStart();
+
+	// 세션은 바로 켜되(카메라 프리뷰가 나와야 하므로), 마커 탐색은 버튼이 시작한다.
+	if (bAutoScanOnStart)
+	{
+		StartScan();
+	}
+}
+
+AARTrackingManager* AARTrackingManager::Get(const UObject* WorldContextObject)
+{
+	return Cast<AARTrackingManager>(UGameplayStatics::GetActorOfClass(
+		WorldContextObject, AARTrackingManager::StaticClass()));
+}
+
+void AARTrackingManager::StartScan()
+{
+	// 다시 스캔하려면 먼저 붙여 둔 것을 걷어낸다. 그러지 않으면 bIsAnchored 때문에
+	// Tick 이 곧바로 되돌아 나가 아무 일도 일어나지 않는다.
+	ClearOverlay();
+
+	if (bIsScanning)
+	{
+		return;
+	}
+
+	bIsScanning = true;
+	OnScanStateChanged.Broadcast(true);
+}
+
+void AARTrackingManager::StopScan()
+{
+	if (!bIsScanning)
+	{
+		return;
+	}
+
+	bIsScanning = false;
+	OnScanStateChanged.Broadcast(false);
+}
+
+void AARTrackingManager::ClearOverlay()
+{
+	if (OverlayPin)
+	{
+		UARBlueprintLibrary::RemovePin(OverlayPin);
+		OverlayPin = nullptr;
+	}
+
+	if (SpawnedOverlay)
+	{
+		SpawnedOverlay->Destroy();
+		SpawnedOverlay = nullptr;
+	}
+
+	bIsAnchored = false;
 }
 
 void AARTrackingManager::RequestCameraPermissionAndStart()
@@ -79,8 +134,8 @@ void AARTrackingManager::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
-	// 아직 앵커(AR Pin)가 생성되지 않았다면 마커를 계속 탐색
-	if (!bIsAnchored)
+	// 스캔 중이고, 아직 앵커(AR Pin)가 생성되지 않았다면 마커를 계속 탐색
+	if (bIsScanning && !bIsAnchored)
 	{
 		CheckForTrackedImages();
 	}
@@ -119,12 +174,17 @@ void AARTrackingManager::CheckForTrackedImages()
 					bIsAnchored = true;
 
 					// 4. 스폰된 액터의 루트를 앵커(AR Pin)로 강제 고정 시도
-					UARBlueprintLibrary::PinComponent(SpawnedOverlay->GetRootComponent(), ImageTransform, TrackedImage, FName("DinoHybridAnchor"));
-					
+					//    다시 스캔할 때 걷어내야 하므로 핀을 들고 있는다.
+					OverlayPin = UARBlueprintLibrary::PinComponent(SpawnedOverlay->GetRootComponent(), ImageTransform, TrackedImage, FName("DinoHybridAnchor"));
+
 					if (GEngine)
 					{
 						GEngine->AddOnScreenDebugMessage(2, 5.0f, FColor::Cyan, TEXT("[AR] Dino Overlay Successfully Spawned & Anchored!"));
 					}
+
+					// 5. 찾았으니 스캔을 끝낸다. UI 가 "스캔 중" 표시를 지울 수 있게 알린다.
+					StopScan();
+					OnMarkerFound.Broadcast();
 					break;
 				}
 			}
