@@ -82,9 +82,12 @@ public:
 	/**
 	 * 레벨에 놓인 매니저를 찾아 준다. 위젯에서 참조를 들고 다니지 않아도 되도록.
 	 * 레벨에 하나만 놓는 것을 전제로 한다.
+	 *
+	 * 이름을 Get 으로 줄이지 않는다. 블루프린트 검색에서 엔진의 수많은 Get 노드에
+	 * 파묻혀 찾을 수가 없다.
 	 */
-	UFUNCTION(BlueprintCallable, Category = "AR Tracking", meta = (WorldContext = "WorldContextObject"))
-	static AARTrackingManager* Get(const UObject* WorldContextObject);
+	UFUNCTION(BlueprintPure, Category = "AR Tracking", meta = (WorldContext = "WorldContextObject"))
+	static AARTrackingManager* GetARTrackingManager(const UObject* WorldContextObject);
 
 private:
 	// 하이브리드 트래킹 핸드오프 상태 플래그

@@ -37,7 +37,7 @@ void AARTrackingManager::BeginPlay()
 	}
 }
 
-AARTrackingManager* AARTrackingManager::Get(const UObject* WorldContextObject)
+AARTrackingManager* AARTrackingManager::GetARTrackingManager(const UObject* WorldContextObject)
 {
 	return Cast<AARTrackingManager>(UGameplayStatics::GetActorOfClass(
 		WorldContextObject, AARTrackingManager::StaticClass()));
