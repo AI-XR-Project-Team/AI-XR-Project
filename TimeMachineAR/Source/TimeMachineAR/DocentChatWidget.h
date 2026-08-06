@@ -11,6 +11,7 @@ class UDocentQuickChip;
 class UEditableTextBox;
 class UPanelWidget;
 class UScrollBox;
+class USpacer;
 class UTextBlock;
 
 /**
@@ -24,8 +25,15 @@ class UTextBlock;
  *   - ChatScroll  (Scroll Box)        : 필수. 말풍선이 여기 직접 붙는다
  *   - InputBox    (Editable Text Box) : 필수
  *   - SendButton  (Button)            : 필수
- *   - QuickQuestionBox (Vertical/Wrap Box) : 선택. 빠른 질문 칩이 붙는 자리
+ *   - QuickQuestionBox (Wrap/Vertical Box) : 선택. 빠른 질문 칩이 붙는 자리
  *   - DocentNameText   (Text Block)        : 선택. 헤더의 도슨트 이름
+ *   - ChatPanel        (아무 위젯)          : 선택. 열고 닫을 대상
+ *   - CloseButton      (Button)            : 선택. 채팅창 닫기
+ *   - OpenButton       (Button)            : 선택. 닫힌 상태에서 다시 열기
+ *   - EmptyStateBox    (아무 위젯)          : 선택. 첫 질문 전 아바타+인사말
+ *   - GreetingLabel    (Text Block)        : 선택. EmptyStateBox 안의 인사말
+ *   - ChatBackdrop     (아무 위젯)          : 선택. 안전영역 밖의 배경
+ *   - KeyboardSpacer   (Spacer)            : 선택. ChatPanel 의 마지막 자식
  *
  * 그리고 클래스 기본값에서 BubbleClass / ChipClass 를 지정해야 한다.
  */
@@ -103,6 +111,20 @@ protected:
 	TObjectPtr<UTextBlock> DocentNameText;
 
 	/**
+	 * 첫 질문 전까지만 보이는 블록. 큰 아바타와 인사말이 들어간다.
+	 *
+	 * ChatScroll 과 같은 자리에 겹쳐 두고(오버레이) 첫 질문에서 접는다.
+	 * 스크롤 안에 넣으면 ClearMessages 의 ClearChildren 에 같이 지워지고,
+	 * 대화가 시작된 뒤에도 첫 말풍선 위에 그대로 남는다.
+	 */
+	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "Docent|Chat")
+	TObjectPtr<UWidget> EmptyStateBox;
+
+	/** EmptyStateBox 안의 인사말 텍스트. GreetingText 가 여기 들어간다. */
+	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "Docent|Chat")
+	TObjectPtr<UTextBlock> GreetingLabel;
+
+	/**
 	 * 열고 닫을 대상. 보통 헤더·대화·입력을 감싼 패널이다.
 	 *
 	 * 이 위젯 자체가 아니라 별도 패널을 숨기는 이유는, 루트를 숨기면 채팅창을
@@ -119,6 +141,36 @@ protected:
 	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "Docent|Chat")
 	TObjectPtr<UButton> OpenButton;
 
+	/**
+	 * AR 화면 하단 바. 채팅이 열리면 접히고, 닫히면 다시 나온다.
+	 *
+	 * ChatPanel 밖에 있어야 한다. 안에 두면 채팅을 닫을 때 같이 사라져서
+	 * 다시 열 방법이 없어진다. OpenButton 을 이 바 안에 넣어 두면 된다.
+	 */
+	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "Docent|Chat")
+	TObjectPtr<UWidget> BottomBar;
+
+	/**
+	 * 채팅창 뒤를 덮는 배경. ChatPanel 과 함께 보였다 사라진다.
+	 *
+	 * 배경만 ChatPanel 밖에 두는 이유는 노치 아래까지 꽉 채워야 하기 때문이다.
+	 * 안전영역 안에 넣으면 화면 맨 위에 배경 없는 띠가 남는다. 대신 밖에 있는
+	 * 만큼 열림 상태를 여기서 따로 챙겨 주지 않으면, 채팅을 닫아도 배경만 남아
+	 * AR 카메라를 통째로 가린다.
+	 */
+	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "Docent|Chat")
+	TObjectPtr<UWidget> ChatBackdrop;
+
+	/**
+	 * 가상 키보드가 차지하는 높이를 대신 밀어 주는 빈 칸.
+	 *
+	 * ChatPanel 의 마지막 자식이어야 한다. 키보드가 올라오면 이 칸의 높이를
+	 * 키보드만큼 늘려서 세로 박스가 다시 흐르게 하고, 그 결과 입력창이 키보드
+	 * 위로 올라온다. 없으면 아무 일도 하지 않는다.
+	 */
+	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "Docent|Chat")
+	TObjectPtr<USpacer> KeyboardSpacer;
+
 	// ------------------------------------------------------------ 클래스 기본값
 
 	UPROPERTY(EditDefaultsOnly, Category = "Docent|Chat")
@@ -134,6 +186,9 @@ protected:
 	/**
 	 * 창을 열면 먼저 뜨는 인사말. 클라이언트가 직접 만들며 LLM 을 부르지 않는다.
 	 * 빈 값이면 인사말을 띄우지 않는다.
+	 *
+	 * 표시 위치는 WBP 구성에 따라 갈린다. EmptyStateBox 가 있으면 그 안의
+	 * GreetingLabel 에 들어가고, 없으면 예전처럼 첫 말풍선으로 붙는다.
 	 */
 	UPROPERTY(EditDefaultsOnly, Category = "Docent|Chat", meta = (MultiLine = true))
 	FText GreetingText = FText::FromString(
@@ -169,6 +224,17 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Docent|Chat")
 	bool bStartOpen = true;
 
+	/**
+	 * 가상 키보드가 가릴 화면 비율. 플랫폼이 알려 주는 값을 못 믿을 때 쓴다.
+	 *
+	 * 안드로이드는 전체화면 창에서 adjustResize 를 무시하고, UE 는 몰입 모드가
+	 * 기본이다. 그래서 GameActivity 가 getWindowVisibleDisplayFrame 으로 재는
+	 * 키보드 높이가 0 이나 화면 전체로 잡힌다. 그 값이 터무니없으면 이 비율로
+	 * 대신 민다. 한국어 키보드가 대략 화면의 35~40% 를 차지한다.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "Docent|Chat", meta = (ClampMin = "0.0", ClampMax = "0.8"))
+	float KeyboardHeightRatio = 0.38f;
+
 	// ------------------------------------------------------------ 확장 지점
 
 	/** 세션이 열려 입력이 가능해진 시점. 로딩 표시를 걷어내는 용도. */
@@ -196,6 +262,38 @@ private:
 
 	/** 열림 상태를 위젯에 반영한다. ShowChat/HideChat 의 공통부. */
 	void ApplyOpenState(bool bOpen);
+
+	/**
+	 * 가상 키보드가 가리는 높이를 레이아웃에 반영한다.
+	 *
+	 * @param KeyboardPixels 키보드 높이(실제 픽셀). 숨겨졌으면 0.
+	 */
+	void ApplyKeyboardInset(float KeyboardPixels);
+
+	/**
+	 * 입력창 포커스를 주기적으로 확인해 키보드 여백을 켜고 끈다.
+	 *
+	 * 포커스 변화를 알려 주는 UMG 이벤트가 없고, NativeTick 은 위젯 틱 빈도가
+	 * Auto 라 블루프린트 Tick 이 없으면 아예 불리지 않는다. 그래서 타이머로 본다.
+	 */
+	void PollInputFocus();
+
+	/** 이번에 밀어야 할 키보드 높이(픽셀). 보고값이 미덥지 않으면 비율로 계산한다. */
+	float ResolveKeyboardPixels() const;
+
+	// 플랫폼 애플리케이션은 위젯보다 오래 산다. 소멸 시 반드시 해제한다.
+	FDelegateHandle KeyboardShownHandle;
+	FDelegateHandle KeyboardHiddenHandle;
+
+	FTimerHandle InputFocusTimer;
+
+	/** 플랫폼이 마지막으로 알려 준 키보드 높이(픽셀). 0 이면 아직 못 믿는다. */
+	float ReportedKeyboardPixels = 0.0f;
+
+	/** 지금 레이아웃에 들어가 있는 여백(픽셀). 같은 값을 매 폴마다 다시 넣지 않는다. */
+	float AppliedKeyboardPixels = 0.0f;
+
+	bool bInputFocused = false;
 
 	/** 빠른 질문 칩의 네이티브 델리게이트 수신부. */
 	void HandleQuickChipClicked(const FString& Question);
