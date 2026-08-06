@@ -4,56 +4,13 @@
 #include "DocentQuickChip.h"
 #include "Components/Button.h"
 #include "Components/EditableTextBox.h"
-#include "Blueprint/WidgetLayoutLibrary.h"
 #include "Components/PanelWidget.h"
 #include "Components/ScrollBox.h"
-#include "Components/Spacer.h"
 #include "Components/TextBlock.h"
 #include "Engine/GameInstance.h"
-#include "Engine/World.h"
 #include "Framework/Application/SlateApplication.h"
-#include "GenericPlatform/GenericApplication.h"
-#include "TimerManager.h"
-
-#if PLATFORM_ANDROID
-#include "Android/AndroidApplication.h"
-#include "Android/AndroidJNI.h"
-#endif
 
 DEFINE_LOG_CATEGORY_STATIC(LogDocentChat, Log, All);
-
-namespace
-{
-#if PLATFORM_ANDROID
-/**
- * 가상 키보드가 화면 아래에서 차지하는 비율(0~1). 알 수 없으면 -1.
- *
- * GameActivity 에 UPL 로 심어 둔 메서드를 부른다. 안드로이드 11 의
- * WindowInsets.Type.ime() 를 읽으므로 창이 리사이즈되지 않는 몰입 모드에서도
- * 정확하다. 자세한 배경은 TimeMachineAR_UPL.xml 주석에 있다.
- */
-float QueryImeInsetRatio()
-{
-	JNIEnv* Env = FAndroidApplication::GetJavaEnv();
-	if (Env == nullptr)
-	{
-		return -1.0f;
-	}
-
-	// UPL 주입이 빠진 빌드에서도 죽지 않게 선택 조회로 찾는다.
-	static jmethodID Method = FJavaWrapper::FindMethod(
-		Env, FJavaWrapper::GameActivityClassID,
-		"AndroidThunkJava_GetImeInsetPermyriad", "()I", /*bIsOptional=*/true);
-	if (Method == nullptr)
-	{
-		return -1.0f;
-	}
-
-	const int32 Permyriad = FJavaWrapper::CallIntMethod(Env, FJavaWrapper::GameActivityThis, Method);
-	return (Permyriad < 0) ? -1.0f : (Permyriad / 10000.0f);
-}
-#endif
-}
 
 void UDocentChatWidget::NativeConstruct()
 {
@@ -83,49 +40,6 @@ void UDocentChatWidget::NativeConstruct()
 		OpenButton->OnClicked.AddUniqueDynamic(this, &UDocentChatWidget::HandleOpenClicked);
 	}
 
-	// 안드로이드 가상 키보드. Slate 는 이 이벤트를 아무도 받지 않아서, 받아 두지
-	// 않으면 키보드가 화면 아래 절반을 덮은 채 입력창을 가린다. 안드로이드에서만
-	// 브로드캐스트되고 다른 플랫폼에서는 조용히 아무 일도 일어나지 않는다.
-	if (FSlateApplication::IsInitialized())
-	{
-		if (const TSharedPtr<GenericApplication> PlatformApp = FSlateApplication::Get().GetPlatformApplication())
-		{
-			TWeakObjectPtr<UDocentChatWidget> WeakThis(this);
-
-			KeyboardShownHandle = PlatformApp->OnVirtualKeyboardShown().AddLambda(
-				[WeakThis](FPlatformRect KeyboardRect)
-				{
-					if (UDocentChatWidget* Self = WeakThis.Get())
-					{
-						Self->ReportedKeyboardPixels = static_cast<float>(KeyboardRect.Bottom - KeyboardRect.Top);
-						UE_LOG(LogDocentChat, Log, TEXT("[키보드] 플랫폼 보고: %.0fpx"),
-							Self->ReportedKeyboardPixels);
-						if (Self->bInputFocused)
-						{
-							Self->ApplyKeyboardInset(Self->ResolveKeyboardPixels());
-						}
-					}
-				});
-
-			KeyboardHiddenHandle = PlatformApp->OnVirtualKeyboardHidden().AddLambda(
-				[WeakThis]()
-				{
-					if (UDocentChatWidget* Self = WeakThis.Get())
-					{
-						Self->ReportedKeyboardPixels = 0.0f;
-						Self->ApplyKeyboardInset(0.0f);
-					}
-				});
-		}
-	}
-
-	// 포커스 감시. 0.1 초면 키보드가 올라오는 동안(대략 250ms)에 따라붙는다.
-	if (UWorld* World = GetWorld())
-	{
-		World->GetTimerManager().SetTimer(
-			InputFocusTimer, this, &UDocentChatWidget::PollInputFocus, 0.1f, /*bLoop=*/true);
-	}
-
 	// 여는 버튼이 없으면 닫힌 채로 시작할 수 없다. 다시 열 방법이 사라진다.
 	const bool bCanReopen = (OpenButton != nullptr);
 	if (!bStartOpen && !bCanReopen)
@@ -139,14 +53,8 @@ void UDocentChatWidget::NativeConstruct()
 
 	// 인사말은 서버를 거치지 않는다. 창을 열자마자 보여야 하는데 LLM 왕복을
 	// 기다리면 빈 화면이 남는다.
-	if (GreetingLabel != nullptr)
+	if (!GreetingText.IsEmpty())
 	{
-		GreetingLabel->SetText(GreetingText);
-	}
-	if (EmptyStateBox == nullptr && !GreetingText.IsEmpty())
-	{
-		// 빈 상태 블록이 없는 구성. 인사말을 보여 줄 자리가 말풍선뿐이다.
-		// 블록이 있는데도 여기서 붙이면 같은 문장이 화면에 두 번 나온다.
 		AddBubble(/*bIsUser=*/false, GreetingText.ToString());
 	}
 
@@ -207,22 +115,6 @@ void UDocentChatWidget::NativeDestruct()
 		OpenButton->OnClicked.RemoveDynamic(this, &UDocentChatWidget::HandleOpenClicked);
 	}
 
-	if (FSlateApplication::IsInitialized())
-	{
-		if (const TSharedPtr<GenericApplication> PlatformApp = FSlateApplication::Get().GetPlatformApplication())
-		{
-			PlatformApp->OnVirtualKeyboardShown().Remove(KeyboardShownHandle);
-			PlatformApp->OnVirtualKeyboardHidden().Remove(KeyboardHiddenHandle);
-		}
-	}
-	KeyboardShownHandle.Reset();
-	KeyboardHiddenHandle.Reset();
-
-	if (UWorld* World = GetWorld())
-	{
-		World->GetTimerManager().ClearTimer(InputFocusTimer);
-	}
-
 	Super::NativeDestruct();
 }
 
@@ -269,13 +161,6 @@ void UDocentChatWidget::SendQuestion(const FString& Question)
 	if (!bHasAskedOnce)
 	{
 		bHasAskedOnce = true;
-
-		// 빈 상태(아바타 + 인사말)는 첫 질문과 함께 걷어낸다. 대화가 시작된
-		// 뒤에도 화면 절반을 차지하면 말풍선이 들어갈 자리가 없다.
-		if (EmptyStateBox != nullptr)
-		{
-			EmptyStateBox->SetVisibility(ESlateVisibility::Collapsed);
-		}
 		if (bHideChipsAfterFirstQuestion && QuickQuestionBox != nullptr)
 		{
 			QuickQuestionBox->SetVisibility(ESlateVisibility::Collapsed);
@@ -328,111 +213,18 @@ void UDocentChatWidget::ApplyOpenState(bool bOpen)
 		SetVisibility(bOpen ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
 	}
 
-	// 배경은 안전영역 밖이라 ChatPanel 에 딸려 가지 않는다. 따로 접어 주지 않으면
-	// 채팅을 닫아도 배경만 남아 AR 카메라가 보이지 않는다.
-	if (ChatBackdrop != nullptr)
-	{
-		ChatBackdrop->SetVisibility(bOpen ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
-	}
-
 	if (OpenButton != nullptr)
 	{
 		OpenButton->SetVisibility(bOpen ? ESlateVisibility::Collapsed : ESlateVisibility::Visible);
 	}
 
-	if (!bOpen)
+	if (!bOpen && FSlateApplication::IsInitialized())
 	{
-		// 키보드가 내려가므로 밀어 둔 만큼도 같이 되돌린다. OnVirtualKeyboardHidden
-		// 이 오기는 하지만, 그 사이 한 프레임 동안 빈 칸이 남는다.
-		ApplyKeyboardInset(0.0f);
-
-		if (FSlateApplication::IsInitialized())
-		{
-			// 포커스를 놓지 않으면 창을 닫아도 안드로이드 가상 키보드가 남는다.
-			FSlateApplication::Get().ClearKeyboardFocus(EFocusCause::SetDirectly);
-		}
+		// 포커스를 놓지 않으면 창을 닫아도 안드로이드 가상 키보드가 남는다.
+		FSlateApplication::Get().ClearKeyboardFocus(EFocusCause::SetDirectly);
 	}
 
 	OnChatOpenChanged(bOpen);
-}
-
-void UDocentChatWidget::PollInputFocus()
-{
-#if PLATFORM_ANDROID || PLATFORM_IOS
-	if (InputBox == nullptr || KeyboardSpacer == nullptr)
-	{
-		return;
-	}
-
-	bInputFocused = bIsOpen && InputBox->HasKeyboardFocus();
-
-	// 포커스 변화만 보면 안 된다. 키보드가 올라오는 동안 IME 인셋이 0 에서부터
-	// 자라기 때문에, 포커스를 얻은 그 순간에는 아직 0 으로 잡힌다.
-	const float Target = bInputFocused ? ResolveKeyboardPixels() : 0.0f;
-	if (FMath::IsNearlyEqual(Target, AppliedKeyboardPixels, 1.0f))
-	{
-		return;
-	}
-
-	AppliedKeyboardPixels = Target;
-	ApplyKeyboardInset(Target);
-#endif
-}
-
-float UDocentChatWidget::ResolveKeyboardPixels() const
-{
-	const float ViewportHeight = UWidgetLayoutLibrary::GetViewportSize(const_cast<UDocentChatWidget*>(this)).Y;
-	if (ViewportHeight <= 0.0f)
-	{
-		return 0.0f;
-	}
-
-#if PLATFORM_ANDROID
-	// 1순위. 안드로이드가 알려 주는 실제 IME 높이라 기기·키보드앱과 무관하게 맞다.
-	// 0 은 "키보드가 아직 안 올라왔다" 는 정상값이므로 그대로 쓴다. 올라오는
-	// 동안 값이 자라고, 폴링이 그걸 따라간다. -1 일 때만 알 수 없는 경우다.
-	const float ImeRatio = QueryImeInsetRatio();
-	if (ImeRatio >= 0.0f)
-	{
-		return ViewportHeight * ImeRatio;
-	}
-#endif
-
-	// 2순위. UE 가 자체적으로 잰 값. 몰입 모드에서는 0 이나 음수로 나오므로
-	// 화면의 15~75% 라는 그럴듯한 범위 안일 때만 믿는다.
-	if (ReportedKeyboardPixels > ViewportHeight * 0.15f &&
-		ReportedKeyboardPixels < ViewportHeight * 0.75f)
-	{
-		return ReportedKeyboardPixels;
-	}
-
-	// 3순위. 둘 다 실패했을 때의 어림값. 기기마다 어긋난다.
-	UE_LOG(LogDocentChat, Warning,
-		TEXT("[키보드] 실제 높이를 알 수 없어 비율 %.2f 로 대신합니다."), KeyboardHeightRatio);
-	return ViewportHeight * KeyboardHeightRatio;
-}
-
-void UDocentChatWidget::ApplyKeyboardInset(float KeyboardPixels)
-{
-	if (KeyboardSpacer == nullptr)
-	{
-		return;
-	}
-
-	// 픽셀을 위젯 좌표로 바꾼다. 그대로 넣으면 고해상도 기기에서 키보드보다
-	// 훨씬 크게 밀린다. S25+ 는 스케일이 1.33 이라 33% 더 밀린다.
-	const float Scale = UWidgetLayoutLibrary::GetViewportScale(this);
-	const float SlateUnits = (Scale > 0.0f) ? (KeyboardPixels / Scale) : KeyboardPixels;
-
-	// 안전영역이 이미 하단 제스처 바만큼 여백을 주고 있어서 그만큼 겹친다.
-	// 몇십 단위라 눈에 띄지 않으므로 빼지 않는다.
-	KeyboardSpacer->SetSize(FVector2D(0.0f, FMath::Max(0.0f, SlateUnits)));
-
-	UE_LOG(LogDocentChat, Log, TEXT("[키보드] 여백 %.0fpx -> %.0f단위 (스케일 %.2f, 보고 %.0fpx)"),
-		KeyboardPixels, SlateUnits, Scale, ReportedKeyboardPixels);
-
-	// 밀린 만큼 마지막 말풍선이 가려지므로 다시 맨 아래로 보낸다.
-	ScrollToLatest();
 }
 
 void UDocentChatWidget::HandleCloseClicked()
