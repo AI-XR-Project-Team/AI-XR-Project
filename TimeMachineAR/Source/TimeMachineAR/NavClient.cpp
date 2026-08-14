@@ -14,10 +14,15 @@ DEFINE_LOG_CATEGORY_STATIC(LogNav, Log, All);
 /** 설정이 비었거나 망가졌고 도슨트 폴백도 없을 때 되돌릴 값. 에디터 PIE 기준. */
 static const TCHAR* NavDefaultServerBaseUrl = TEXT("http://127.0.0.1:8000");
 
-/** 완료 콜백의 요청 포인터는 실패 경로에서 무효할 수 있어 역참조 전에 확인한다. */
-static FString SafeGetUrl(const FHttpRequestPtr& Request)
+// Unity 빌드가 이 파일과 DocentClient.cpp 를 한 번역 단위로 합치므로, 같은 이름의
+// 헬퍼를 파일마다 네임스페이스로 가둔다. static 이나 익명 네임스페이스로는 막을 수 없다.
+namespace NavClientPrivate
 {
-	return Request.IsValid() ? Request->GetURL() : TEXT("(알 수 없음)");
+	/** 완료 콜백의 요청 포인터는 실패 경로에서 무효할 수 있어 역참조 전에 확인한다. */
+	FString SafeGetUrl(const FHttpRequestPtr& Request)
+	{
+		return Request.IsValid() ? Request->GetURL() : TEXT("(알 수 없음)");
+	}
 }
 
 /** 공백·끝 슬래시를 정리하고, http(s):// 스킴이 있으면 true. */
@@ -189,7 +194,7 @@ void UNavClient::OnMarkersComplete(FHttpRequestPtr Request, FHttpResponsePtr Res
 	{
 		ReportFailure(-1, FString::Printf(
 			TEXT("마커 조회 실패 (URL: %s). uvicorn --host 0.0.0.0 / 방화벽 / 같은 WiFi 를 확인하세요."),
-			*SafeGetUrl(Request)));
+			*NavClientPrivate::SafeGetUrl(Request)));
 		return;
 	}
 
@@ -235,7 +240,7 @@ void UNavClient::OnDestinationsComplete(FHttpRequestPtr Request, FHttpResponsePt
 	if (!bConnectedSuccessfully || !Response.IsValid())
 	{
 		ReportFailure(-1, FString::Printf(
-			TEXT("목적지 조회 실패 (URL: %s)."), *SafeGetUrl(Request)));
+			TEXT("목적지 조회 실패 (URL: %s)."), *NavClientPrivate::SafeGetUrl(Request)));
 		return;
 	}
 
@@ -331,7 +336,7 @@ void UNavClient::OnRouteComplete(FHttpRequestPtr Request, FHttpResponsePtr Respo
 	if (!bConnectedSuccessfully || !Response.IsValid())
 	{
 		ReportFailure(-1, FString::Printf(
-			TEXT("경로 요청 실패 (URL: %s)."), *SafeGetUrl(Request)));
+			TEXT("경로 요청 실패 (URL: %s)."), *NavClientPrivate::SafeGetUrl(Request)));
 		return;
 	}
 
