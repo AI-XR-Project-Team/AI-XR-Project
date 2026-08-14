@@ -16,10 +16,15 @@ DEFINE_LOG_CATEGORY_STATIC(LogDocent, Log, All);
 /** 설정이 비었거나 망가졌을 때 되돌릴 값. 에디터 PIE 기준. */
 static const TCHAR* DefaultServerBaseUrl = TEXT("http://127.0.0.1:8000");
 
-/** 완료 콜백의 요청 포인터는 실패 경로에서 무효할 수 있어 역참조 전에 확인한다. */
-static FString SafeGetUrl(const FHttpRequestPtr& Request)
+// Unity 빌드가 이 파일과 NavClient.cpp 를 한 번역 단위로 합치므로, 같은 이름의
+// 헬퍼를 파일마다 네임스페이스로 가둔다. static 이나 익명 네임스페이스로는 막을 수 없다.
+namespace DocentClientPrivate
 {
-	return Request.IsValid() ? Request->GetURL() : TEXT("(알 수 없음)");
+	/** 완료 콜백의 요청 포인터는 실패 경로에서 무효할 수 있어 역참조 전에 확인한다. */
+	FString SafeGetUrl(const FHttpRequestPtr& Request)
+	{
+		return Request.IsValid() ? Request->GetURL() : TEXT("(알 수 없음)");
+	}
 }
 
 void UDocentClient::Initialize(FSubsystemCollectionBase& Collection)
@@ -168,7 +173,7 @@ void UDocentClient::OnHealthComplete(FHttpRequestPtr Request, FHttpResponsePtr R
 		// 막힌 경우는 증상이 같아서, URL 없이는 원인을 가릴 수 없다.
 		ReportFailure(FString::Printf(
 			TEXT("서버 연결 실패 (요청 URL: %s). 주소가 맞다면 uvicorn --host 0.0.0.0 / 방화벽 / adb reverse 를 확인하세요."),
-			*SafeGetUrl(Request)));
+			*DocentClientPrivate::SafeGetUrl(Request)));
 		return;
 	}
 
@@ -218,7 +223,7 @@ void UDocentClient::OnAskComplete(FHttpRequestPtr Request, FHttpResponsePtr Resp
 	{
 		ReportFailure(FString::Printf(
 			TEXT("서버 연결 실패 (요청 URL: %s). 주소가 맞다면 uvicorn --host 0.0.0.0 / 방화벽 / adb reverse 를 확인하세요."),
-			*SafeGetUrl(Request)));
+			*DocentClientPrivate::SafeGetUrl(Request)));
 		return;
 	}
 
@@ -302,7 +307,7 @@ void UDocentClient::OnSessionCreated(FHttpRequestPtr Request, FHttpResponsePtr R
 	{
 		ReportChatFailure(
 			FString::Printf(TEXT("세션 생성 실패 — 서버에 연결하지 못했습니다 (URL: %s)."),
-				*SafeGetUrl(Request)),
+				*DocentClientPrivate::SafeGetUrl(Request)),
 			/*bPartial=*/false);
 		return;
 	}
@@ -495,7 +500,7 @@ void UDocentClient::OnChatStreamComplete(FHttpRequestPtr Request, FHttpResponseP
 	{
 		ReportChatFailure(
 			FString::Printf(TEXT("대화 요청 실패 (URL: %s). 서버 연결을 확인하세요."),
-				*SafeGetUrl(Request)),
+				*DocentClientPrivate::SafeGetUrl(Request)),
 			!ChatAccumulated.IsEmpty());
 		return;
 	}
