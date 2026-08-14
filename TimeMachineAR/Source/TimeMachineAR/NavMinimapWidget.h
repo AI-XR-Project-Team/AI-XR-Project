@@ -1,0 +1,244 @@
+#pragma once
+
+#include "CoreMinimal.h"
+#include "Blueprint/UserWidget.h"
+#include "NavTypes.h"
+#include "NavMinimapWidget.generated.h"
+
+class UWidget;
+
+/**
+ * 우측 상단 2D 미니맵. 경로를 위에서 내려다본 그림으로 그린다.
+ *
+ * nav-test-app 의 MinimapView(Android Canvas) 를 UE 로 옮긴 것이다. 다만 그림이
+ * 다르다 — 노드는 채운 점이 아니라 빨간 링이고, 노드 사이는 선 하나가 아니라
+ * 폭이 있는 띠이며, 띠 안에 진행 방향 셰브론이 2m 간격으로 반복된다.
+ *
+ * ## 왜 C++ 로 직접 그리는가
+ *
+ * UMG 위젯을 쌓아서는 못 그린다. 경로는 임의의 각도로 꺾이는데 Image 나 Border 로
+ * 기울어진 띠를 만들려면 회전 변환을 위젯마다 걸어야 하고, 셰브론은 경로 길이에
+ * 따라 개수가 매번 달라져서 미리 배치해 둘 수가 없다. Slate 의 NativePaint 는
+ * Android 의 onDraw(Canvas) 와 같은 층위라 원본 로직을 거의 그대로 옮길 수 있다.
+ *
+ * 그래서 이 클래스는 **경로만** 그린다. 배경·테두리·빈 상태 문구는 WBP 가 맡는다
+ * (팀 원칙: 로직은 C++, WBP 는 배치·스타일). 배경까지 C++ 에서 그리면 브러시
+ * 에셋을 코드가 들고 있어야 해서 디자이너가 색 하나 못 바꾼다.
+ *
+ * ## WBP 로 상속할 때
+ *
+ * 필수 자식 위젯은 없다. 선택 자식:
+ *   - EmptyHint (아무 위젯) : 경로가 없을 때만 보인다. "목적지를 선택하세요" 같은 안내.
+ *
+ * 미니맵 크기는 WBP 에서 이 위젯을 감싼 슬롯이 정한다. 이 클래스는 주어진
+ * 영역에 경로를 꽉 채워 넣는다(fit-to-bounds).
+ *
+ * ## 좌표
+ *
+ * 입력은 전부 **서버 맵 좌표(cm)** 다. +X 오른쪽, +Y 안쪽(위). 화면에 그릴 때
+ * y 를 뒤집어 +Y 가 미니맵 위쪽으로 가게 한다. Z(높이)는 무시한다 — 층 개념이
+ * 아직 없고, 위에서 내려다본 그림에 높이는 안 쓰인다.
+ *
+ * 지도는 **북쪽 고정**이다(맵 +Y 가 항상 위). 진행 방향 고정(heading-up)은
+ * 실시간 측위가 붙은 뒤에 선택지가 된다.
+ *
+ * ## 측위와의 관계
+ *
+ * SetCurrentPose 는 API 만 뚫어 두었고 지금은 아무도 부르지 않는다. 서버는
+ * 맵 좌표만 다루고(측위 비종속), 앱에는 아직 "지금 내가 맵 어디인가"를 매
+ * 프레임 알려주는 계층이 없다. 그 계층이 생기면 매 프레임 SetCurrentPose 만
+ * 부르면 되고 이 파일은 손대지 않는다.
+ *
+ * 계약 원문: docs/nav-server-integration-guide.md
+ */
+UCLASS(Abstract)
+class TIMEMACHINEAR_API UNavMinimapWidget : public UUserWidget
+{
+	GENERATED_BODY()
+
+public:
+	// ------------------------------------------------------------------ 데이터
+
+	/** 경로 응답 전체를 넣는다. waypoints 만 쓰고 steps 는 무시한다. */
+	UFUNCTION(BlueprintCallable, Category = "Nav|Minimap")
+	void SetRoute(const FNavRoute& InRoute);
+
+	/** 웨이포인트만 따로 넣고 싶을 때. SetRoute 가 내부적으로 이걸 부른다. */
+	UFUNCTION(BlueprintCallable, Category = "Nav|Minimap")
+	void SetWaypoints(const TArray<FNavWaypoint>& InWaypoints);
+
+	/** 경로를 지운다. EmptyHint 가 있으면 다시 보인다. */
+	UFUNCTION(BlueprintCallable, Category = "Nav|Minimap")
+	void ClearRoute();
+
+	UFUNCTION(BlueprintPure, Category = "Nav|Minimap")
+	bool HasRoute() const { return RouteXY.Num() > 0; }
+
+	/**
+	 * 현재 위치를 갱신한다. 측위 계층이 매 프레임 부를 자리다.
+	 *
+	 * @param PosXCm/PosYCm 맵 좌표(cm)
+	 * @param HeadingDeg    바라보는 방향. +X 축 기준 CCW(도)
+	 * @param bHasHeading   false 면 방향 삼각형 없이 점만 찍는다
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Nav|Minimap")
+	void SetCurrentPose(float PosXCm, float PosYCm, float HeadingDeg, bool bHasHeading = true);
+
+	/** 현재 위치 표시를 끈다. 측위를 잃었을 때. */
+	UFUNCTION(BlueprintCallable, Category = "Nav|Minimap")
+	void ClearCurrentPose();
+
+	// ------------------------------------------------------------------ 스타일
+	//
+	// 전부 WBP 클래스 기본값에서 바꿀 수 있다. 기본값은 기획 스케치의 색을 그대로 뒀다.
+
+	/** 경로 띠의 색. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Nav|Minimap|Style")
+	FLinearColor PathColor = FLinearColor(0.12f, 0.12f, 0.92f, 1.f);
+
+	/** 경로 띠의 폭(px). 통로의 실제 폭이 아니라 보기용 굵기다. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Nav|Minimap|Style",
+		meta = (ClampMin = "1.0"))
+	float PathBandWidthPx = 12.f;
+
+	/** 띠를 이루는 두 줄의 굵기(px). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Nav|Minimap|Style",
+		meta = (ClampMin = "0.5"))
+	float PathLineThicknessPx = 1.5f;
+
+	/**
+	 * 셰브론 간격(맵 cm). 기본 200 = 2m.
+	 *
+	 * 화면이 아니라 실제 거리 기준이다. 그래야 "화살표 세 개 = 6m" 처럼 읽힌다.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Nav|Minimap|Style",
+		meta = (ClampMin = "10.0"))
+	float ArrowSpacingCm = 200.f;
+
+	/**
+	 * 셰브론이 화면에서 이 간격보다 촘촘해지면 2m 의 정수배로 벌린다(0 이면 끔).
+	 *
+	 * 미니맵은 경로 전체를 상자에 맞춰 줄이므로 경로가 길수록 축척이 작아진다.
+	 * 50m 경로를 그대로 2m 마다 찍으면 화살표 25개가 뭉개져 띠가 시커메진다.
+	 * 정수배로만 벌리는 이유는 "한 칸 = 2m" 라는 의미를 유지하기 위해서다
+	 * (4m, 6m 은 되지만 3.7m 은 안 된다).
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Nav|Minimap|Style",
+		meta = (ClampMin = "0.0"))
+	float MinArrowSpacingPx = 14.f;
+
+	/** 셰브론의 앞뒤 길이(px). 커질수록 뾰족해진다. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Nav|Minimap|Style",
+		meta = (ClampMin = "1.0"))
+	float ArrowLengthPx = 7.f;
+
+	/** 셰브론 굵기(px). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Nav|Minimap|Style",
+		meta = (ClampMin = "0.5"))
+	float ArrowThicknessPx = 1.5f;
+
+	/** 노드 링의 색. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Nav|Minimap|Style")
+	FLinearColor NodeRingColor = FLinearColor(0.87f, 0.16f, 0.13f, 1.f);
+
+	/** 노드 링의 반지름(px). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Nav|Minimap|Style",
+		meta = (ClampMin = "2.0"))
+	float NodeRingRadiusPx = 9.f;
+
+	/** 노드 링의 선 굵기(px). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Nav|Minimap|Style",
+		meta = (ClampMin = "0.5"))
+	float NodeRingThicknessPx = 3.f;
+
+	/**
+	 * true 면 출발/도착 노드를 아래 색으로 따로 칠한다. 기본은 꺼져 있어
+	 * 스케치대로 전부 같은 빨강이다.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Nav|Minimap|Style")
+	bool bDistinguishEndpoints = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Nav|Minimap|Style",
+		meta = (EditCondition = "bDistinguishEndpoints"))
+	FLinearColor StartNodeColor = FLinearColor(0.30f, 0.69f, 0.31f, 1.f);
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Nav|Minimap|Style",
+		meta = (EditCondition = "bDistinguishEndpoints"))
+	FLinearColor DestNodeColor = FLinearColor(0.96f, 0.26f, 0.21f, 1.f);
+
+	/** 현재 위치 점의 색. 측위가 붙기 전에는 쓰이지 않는다. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Nav|Minimap|Style")
+	FLinearColor CurrentPoseColor = FLinearColor(0.13f, 0.59f, 0.95f, 1.f);
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Nav|Minimap|Style",
+		meta = (ClampMin = "2.0"))
+	float CurrentPoseRadiusPx = 7.f;
+
+	// ------------------------------------------------------------------ 여백
+
+	/** 미니맵 테두리 안쪽 여백(px). 노드 링이 잘리지 않을 만큼은 줘야 한다. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Nav|Minimap|Layout",
+		meta = (ClampMin = "0.0"))
+	float PaddingPx = 14.f;
+
+	/**
+	 * 경로 경계 바깥으로 더 잡는 여유(맵 cm).
+	 *
+	 * 없으면 직선 경로일 때 rangeY 가 0 이 되어 축척이 폭주한다. 경계에 딱 붙는
+	 * 그림을 막는 역할도 겸한다.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Nav|Minimap|Layout",
+		meta = (ClampMin = "1.0"))
+	float WorldPaddingCm = 60.f;
+
+	/**
+	 * true 면 UMG 디자이너에서 ㄱ자 샘플 경로를 그려 준다.
+	 *
+	 * 실기기에 올리지 않고도 색·굵기·간격을 맞출 수 있어야 한다. 실행 중에는
+	 * 무시된다(IsDesignTime 으로 가른다).
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Nav|Minimap|Layout")
+	bool bPreviewInDesigner = true;
+
+protected:
+	virtual void NativeConstruct() override;
+
+	virtual int32 NativePaint(const FPaintArgs& Args, const FGeometry& AllottedGeometry,
+		const FSlateRect& MyCullingRect, FSlateWindowElementList& OutDrawElements,
+		int32 LayerId, const FWidgetStyle& InWidgetStyle, bool bParentEnabled) const override;
+
+	/** 경로가 없을 때만 보이는 안내. 없어도 된다. */
+	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "Nav|Minimap")
+	TObjectPtr<UWidget> EmptyHint;
+
+private:
+	/** 경로(맵 cm). Z 는 버린다. */
+	TArray<FVector2D> RouteXY;
+
+	FVector2D CurrentXY = FVector2D::ZeroVector;
+	float CurrentHeadingDeg = 0.f;
+	bool bHasCurrent = false;
+	bool bCurrentHasHeading = false;
+
+	/** EmptyHint 를 경로 유무에 맞춘다. */
+	void RefreshEmptyHint();
+
+	/** 디자이너 미리보기용 ㄱ자 경로(맵 cm). */
+	static void BuildPreviewRoute(TArray<FVector2D>& Out);
+
+	// --------------------------------------------------------------- 그리기 조각
+	//
+	// 전부 NativePaint 에서만 부른다. 좌표 인자는 이미 로컬(px) 로 투영된 값이다.
+
+	/** 선분 하나를 폭 있는 띠(평행선 두 줄)로 그린다. */
+	void PaintBand(FSlateWindowElementList& Out, int32 Layer, const FPaintGeometry& Geom,
+		const FVector2D& A, const FVector2D& B) const;
+
+	/** 폴리라인을 따라 실제 거리 기준 간격으로 셰브론을 찍는다. */
+	void PaintChevrons(FSlateWindowElementList& Out, int32 Layer, const FPaintGeometry& Geom,
+		const TArray<FVector2D>& LocalPts, const TArray<FVector2D>& WorldPts, float Scale) const;
+
+	/** 원을 다각형 폴리라인으로 그린다. Slate 에 원 프리미티브가 없다. */
+	void PaintRing(FSlateWindowElementList& Out, int32 Layer, const FPaintGeometry& Geom,
+		const FVector2D& Center, float Radius, float Thickness, const FLinearColor& Color) const;
+};
