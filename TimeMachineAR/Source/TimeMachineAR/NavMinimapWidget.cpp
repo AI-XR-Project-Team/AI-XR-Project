@@ -84,7 +84,10 @@ void UNavMinimapWidget::OpenFullMap()
 			TEXT("FullMapWidgetClass 를 WBP_NavMinimapFull 로 지정하세요."));
 		return;
 	}
-	if (FullMapInstance.IsValid())
+	// 이미 화면에 떠 있으면 중복 오픈 방지. 단 RemoveFromParent 로 닫힌 위젯은
+	// UObject 가 바로 파괴되지 않아 IsValid 만으론 "닫힘"을 구분 못 한다(닫아도 계속
+	// valid → 재오픈이 막힘). 그래서 IsInViewport 로 실제 표시 여부를 본다.
+	if (FullMapInstance.IsValid() && FullMapInstance->IsInViewport())
 	{
 		return;   // 이미 떠 있다.
 	}
