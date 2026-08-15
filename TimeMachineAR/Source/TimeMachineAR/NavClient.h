@@ -18,6 +18,7 @@ DECLARE_LOG_CATEGORY_EXTERN(LogNav, Log, All);
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnNavMarkersReceived, const TArray<FNavMarker>&, Markers);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnNavDestinationsReceived, const TArray<FNavDestination>&, Destinations);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnNavGraphReceived, const FNavGraph&, Graph);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnNavRouteReceived, const FNavRoute&, Route);
 /** 네트워크 실패(-1) / 비-200(HTTP 코드) / JSON 파싱 실패(-2)를 모두 여기로 수렴한다. */
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnNavRequestFailed, int32, StatusCode, const FString&, Reason);
@@ -54,6 +55,14 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Nav")
 	void GetDestinations(const FString& MapId);
 
+	/**
+	 * GET /maps/{id}/graph. 전체 지도(노드·엣지·벽·구조물)를 한 번에 받는다.
+	 * 성공 시 OnGraphReceived, 실패 시 OnRequestFailed. 길찾기 화면을 열 때 한 번
+	 * 호출해 캐시하면 된다(맵은 세션 중 바뀌지 않음).
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Nav")
+	void GetGraph(const FString& MapId);
+
 	// ------------------------------------------------------------------ 경로
 
 	/** POST /navigation/route. 성공 시 OnRouteReceived, 실패 시 OnRequestFailed. */
@@ -73,6 +82,9 @@ public:
 
 	UPROPERTY(BlueprintAssignable, Category = "Nav")
 	FOnNavDestinationsReceived OnDestinationsReceived;
+
+	UPROPERTY(BlueprintAssignable, Category = "Nav")
+	FOnNavGraphReceived OnGraphReceived;
 
 	UPROPERTY(BlueprintAssignable, Category = "Nav")
 	FOnNavRouteReceived OnRouteReceived;
@@ -156,11 +168,13 @@ private:
 	static bool ParseMarkerObject(const TSharedPtr<FJsonObject>& Obj, FNavMarker& Out);
 	static bool ParseMarkersArray(const FString& Content, TArray<FNavMarker>& Out);
 	static bool ParseDestinationsArray(const FString& Content, TArray<FNavDestination>& Out);
+	static bool ParseGraph(const FString& Content, FNavGraph& Out);
 	static bool ParseRoute(const FString& Content, FNavRoute& Out);
 
 	// 공개 API 완료 콜백
 	void OnMarkersComplete(FHttpRequestPtr Request, FHttpResponsePtr Response, bool bConnectedSuccessfully);
 	void OnDestinationsComplete(FHttpRequestPtr Request, FHttpResponsePtr Response, bool bConnectedSuccessfully);
+	void OnGraphComplete(FHttpRequestPtr Request, FHttpResponsePtr Response, bool bConnectedSuccessfully);
 	void OnRouteComplete(FHttpRequestPtr Request, FHttpResponsePtr Response, bool bConnectedSuccessfully);
 
 	/** HTTP 실패/비-200/파싱 실패를 로그 + OnRequestFailed 로 동시에 알린다. */

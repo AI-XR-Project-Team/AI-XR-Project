@@ -163,3 +163,143 @@ struct FNavMapPose
 	UPROPERTY(BlueprintReadWrite, Category = "Nav")
 	bool bHasHeading = false;
 };
+
+// ==================================================================== 전체 지도(그래프)
+//
+// GET /maps/{id}/graph 응답. 전체 미니맵(UNavFullMapWidget)이 벽·구조물·전체 노드·
+// 전체 엣지를 한 번에 그리는 데 쓴다. 서버 schemas/maps.py 의 GraphRead 와 1:1.
+
+/** 그래프 노드 1개. 전체 지도에 링으로 찍고, 터치하면 목적지로 고른다. */
+USTRUCT(BlueprintType)
+struct FNavMapNode
+{
+	GENERATED_BODY()
+
+	/** 노드 UUID. 목적지로 고르면 RequestRoute 의 to 로 넘긴다. */
+	UPROPERTY(BlueprintReadOnly, Category = "Nav")
+	FString NodeId;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Nav")
+	float PosXCm = 0.f;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Nav")
+	float PosYCm = 0.f;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Nav")
+	float PosZCm = 0.f;
+
+	/** "junction" | "waypoint" | "exhibit" | "entrance" | "facility". */
+	UPROPERTY(BlueprintReadOnly, Category = "Nav")
+	FString NodeType;
+
+	/** 화면 표시 이름(있을 수 있음). 예: "A지점". */
+	UPROPERTY(BlueprintReadOnly, Category = "Nav")
+	FString Label;
+};
+
+/** 그래프 엣지 1개. 전체 엣지는 옅은 회색으로 그린다. */
+USTRUCT(BlueprintType)
+struct FNavMapEdge
+{
+	GENERATED_BODY()
+
+	UPROPERTY(BlueprintReadOnly, Category = "Nav")
+	FString FromNodeId;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Nav")
+	FString ToNodeId;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Nav")
+	float DistanceCm = 0.f;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Nav")
+	bool bBidirectional = true;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Nav")
+	bool bAccessible = true;
+};
+
+/** 내부 구조물(축 정렬 사각형, 맵 cm). 전체 지도에 채워서 그린다. */
+USTRUCT(BlueprintType)
+struct FNavObstacle
+{
+	GENERATED_BODY()
+
+	UPROPERTY(BlueprintReadOnly, Category = "Nav")
+	float X0 = 0.f;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Nav")
+	float Y0 = 0.f;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Nav")
+	float X1 = 0.f;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Nav")
+	float Y1 = 0.f;
+};
+
+/** GET /maps/{id}/graph 전체 응답. 세션 중 한 번 받아 캐시한다(맵은 안 바뀜). */
+USTRUCT(BlueprintType)
+struct FNavGraph
+{
+	GENERATED_BODY()
+
+	UPROPERTY(BlueprintReadOnly, Category = "Nav")
+	FString MapId;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Nav")
+	FString CoordSystem;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Nav")
+	TArray<FNavMapNode> Nodes;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Nav")
+	TArray<FNavMapEdge> Edges;
+
+	/** 벽 폐곡선 꼭짓점(맵 cm), 순서대로. 없으면 빈 배열. */
+	UPROPERTY(BlueprintReadOnly, Category = "Nav")
+	TArray<FVector2D> Outline;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Nav")
+	TArray<FNavObstacle> Obstacles;
+};
+
+// ==================================================================== 경로 진행률
+//
+// UNavRouteProgress 가 매 틱 계산하는 값. 경로 폴리라인 위에서 내가 어디쯤인지.
+// 미니맵·배너·이탈 판정이 공유한다. 상태 없이 매번 다시 계산한다(spec §3.3).
+
+/** 경로 위 진행 상태 스냅샷. */
+USTRUCT(BlueprintType)
+struct FNavProgress
+{
+	GENERATED_BODY()
+
+	/** 현재 세그먼트 s (waypoints[s] → waypoints[s+1]). 경로 없으면 INDEX_NONE. */
+	UPROPERTY(BlueprintReadOnly, Category = "Nav")
+	int32 SegmentIndex = INDEX_NONE;
+
+	/** 그 세그먼트 안에서의 진행률 0..1. */
+	UPROPERTY(BlueprintReadOnly, Category = "Nav")
+	float SegmentT = 0.f;
+
+	/** 목적지까지 남은 거리(cm). */
+	UPROPERTY(BlueprintReadOnly, Category = "Nav")
+	float RemainingCm = 0.f;
+
+	/** 경로에서 옆으로 벗어난 수직거리(cm). */
+	UPROPERTY(BlueprintReadOnly, Category = "Nav")
+	float LateralOffsetCm = 0.f;
+
+	/** LateralOffsetCm > 임계 → true. 4단계는 로그만 남긴다(자동 reroute 는 5단계). */
+	UPROPERTY(BlueprintReadOnly, Category = "Nav")
+	bool bOffRoute = false;
+
+	/** 목적지 도착이면 true. */
+	UPROPERTY(BlueprintReadOnly, Category = "Nav")
+	bool bArrived = false;
+
+	/** 경로/투영이 유효해 값이 채워졌으면 true(경로 없음/미측위면 false). */
+	UPROPERTY(BlueprintReadOnly, Category = "Nav")
+	bool bValid = false;
+};

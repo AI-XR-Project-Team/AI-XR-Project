@@ -113,8 +113,8 @@ def _node_pos(graph: nx.DiGraph, node_id) -> Tuple[float, float, float]:
 def snap_to_graph(graph: nx.DiGraph, x: float, y: float, z: float):
     """(x,y,z) 에 가장 가까운 노드 id 를 반환. 빈 그래프면 None.
 
-    MVP 는 최단 노드 스냅이다. 사용자가 엣지 중간에 있으면 살짝 튈 수 있으며,
-    엣지 투영 스냅은 개선 과제(spec §7).
+    최단 '노드' 스냅. 사용자가 엣지 중간에 있으면 살짝 튈 수 있다. 엣지 투영
+    스냅은 `snap_to_edge` 를 쓴다. 이 함수는 하위 호환·폴백용으로 남긴다.
     """
     best_id = None
     best_dist = math.inf
@@ -124,6 +124,68 @@ def snap_to_graph(graph: nx.DiGraph, x: float, y: float, z: float):
             best_dist = d
             best_id = node_id
     return best_id
+
+
+# 엣지 끝점 이 임계 거리(cm) 안이면 "그 노드 위에 서 있다"로 보고 노드 스냅으로
+# 되돌린다. 측위 오차보다 작은 진입 거리는 무시해, 노드 근처(외길 맵 포함)에서
+# 기존 노드 스냅과 동일한 결과를 보장한다(회귀 안전). 이보다 멀면 엣지 투영.
+NODE_SNAP_EPS_CM = 50.0
+
+
+def _project_to_segment(p, a, b):
+    """점 p 를 선분 a-b 에 투영. 반환 (foot, du, dv, lateral).
+
+    foot = 선분 위 가장 가까운 점(끝점으로 클램프), du/dv = foot 에서 a/b 까지의
+    '선분 위' 거리(진입 거리), lateral = p 에서 선분까지의 수직 거리. 전부 3D cm.
+    """
+    ax, ay, az = a
+    bx, by, bz = b
+    px, py, pz = p
+    abx, aby, abz = bx - ax, by - ay, bz - az
+    ab2 = abx * abx + aby * aby + abz * abz
+    if ab2 == 0.0:  # 길이 0 엣지(데이터 이상) — a 로 취급
+        foot, t = a, 0.0
+    else:
+        t = ((px - ax) * abx + (py - ay) * aby + (pz - az) * abz) / ab2
+        t = max(0.0, min(1.0, t))
+        foot = (ax + t * abx, ay + t * aby, az + t * abz)
+    seg_len = math.sqrt(ab2)
+    du = t * seg_len
+    dv = (1.0 - t) * seg_len
+    lateral = _euclidean(p, foot)
+    return foot, du, dv, lateral
+
+
+def snap_to_edge(graph: nx.DiGraph, x: float, y: float, z: float):
+    """(x,y,z) 를 가장 가까운 '엣지'에 투영해 A* 진입 후보를 낸다(spec §3.2).
+
+    반환: [(node_id, entry_dist_cm, foot_or_None), ...]
+      - 가장 가까운 엣지의 끝점까지가 NODE_SNAP_EPS_CM 이내면 그 노드로 스냅한
+        단일 후보 [(node, 0.0, None)] — 노드 스냅과 동일(외길·회귀 안전).
+      - 엣지 중간이면 양 끝점 두 후보 [(u, du, foot), (v, dv, foot)].
+        호출측이 각 끝점에서 A* 를 돌려 (진입거리 + 경로비용) 이 작은 쪽을 고른다.
+      - 엣지가 하나도 없으면 노드 스냅으로 폴백.
+    foot=None 은 "노드 위" — 경로 폴리라인 앞에 투영점을 끼우지 않는다.
+    """
+    p = (x, y, z)
+    best = None  # (lateral, u, v, foot, du, dv)
+    for u, v in graph.edges():
+        foot, du, dv, lateral = _project_to_segment(
+            p, _node_pos(graph, u), _node_pos(graph, v)
+        )
+        if best is None or lateral < best[0]:
+            best = (lateral, u, v, foot, du, dv)
+
+    if best is None:  # 엣지 없음 — 노드 스냅 폴백
+        nid = snap_to_graph(graph, x, y, z)
+        return [(nid, 0.0, None)] if nid is not None else []
+
+    _, u, v, foot, du, dv = best
+    if du <= NODE_SNAP_EPS_CM:
+        return [(u, 0.0, None)]
+    if dv <= NODE_SNAP_EPS_CM:
+        return [(v, 0.0, None)]
+    return [(u, du, foot), (v, dv, foot)]
 
 
 def find_route(graph: nx.DiGraph, start, goal) -> Optional[Tuple[List[dict], float]]:
