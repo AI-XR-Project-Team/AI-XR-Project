@@ -30,6 +30,35 @@ struct FDinoStat
 };
 
 /**
+ * 카드 가운데 탭 하나 (소개 / 특징 / 서식지 / 발견).
+ *
+ * 탭 개수를 넷으로 고정하지 않는다. 종마다 할 얘기가 다르다 — 화석이 한 점만
+ * 나온 종에 "발견" 탭을 억지로 채우는 것보다, 그 종에 있는 탭만 두는 편이 낫다.
+ * 카드가 이 배열을 그대로 순회해 탭 버튼을 만든다.
+ */
+USTRUCT(BlueprintType)
+struct FDinoTab
+{
+	GENERATED_BODY()
+
+	/** 탭 버튼에 찍히는 글자. 예: 특징 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Dino")
+	FText Label;
+
+	/** 본문 위 굵은 제목. 비우면 줄이 접힌다. 예: 강력한 턱과 이빨 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Dino")
+	FText Heading;
+
+	/** 탭 본문. 두세 문장 분량을 전제로 한다. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Dino", meta = (MultiLine = "true"))
+	FText Body;
+
+	/** 본문 위 사진. 없으면 이미지 칸이 통째로 접힌다. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Dino")
+	TObjectPtr<UTexture2D> Image;
+};
+
+/**
  * 공룡 한 종의 정보 카드 내용.
  *
  * 서버(dinosaurs 테이블)에는 이름·학명·시대·전장 정도만 있고 식성·무게·
@@ -68,9 +97,24 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Dino|태그")
 	FText PeriodSub;
 
-	/** 소개 탭 본문. 두세 문장 분량을 전제로 한다. */
+	/**
+	 * 소개 탭 본문.
+	 *
+	 * Tabs 가 비었을 때만 쓴다. 탭 기능이 없던 시절의 필드라 남겨 두었다 —
+	 * 이미 만들어 둔 DA 가 탭을 채우기 전까지 빈 카드가 되지 않게 하려는 것이다.
+	 * 새로 만드는 DA 는 Tabs 에 "소개" 탭을 넣는 쪽을 쓴다.
+	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Dino|본문", meta = (MultiLine = "true"))
 	FText IntroText;
+
+	/**
+	 * 카드 가운데 탭. 첫 번째 탭이 카드를 열었을 때 선택된다.
+	 *
+	 * 비워 두면 카드가 IntroText 로 탭 하나를 만들어 낸다. 그래서 탭을 안 쓰는
+	 * DA 도 그대로 동작한다.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Dino|본문")
+	TArray<FDinoTab> Tabs;
 
 	/**
 	 * 요약 타일. 레퍼런스 기준 네 칸(크기·무게·식성·기간)이지만 개수는 자유다.
