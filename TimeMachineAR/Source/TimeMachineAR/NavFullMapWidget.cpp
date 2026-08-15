@@ -32,26 +32,20 @@ FReply UNavFullMapWidget::NativeOnMouseButtonDown(const FGeometry& InGeometry,
 {
 	const FVector2D Abs = InMouseEvent.GetScreenSpacePosition();
 
+	// 노드를 눌렀으면 목적지로 알리고, 그 밖의 아무 곳이나 눌러도 닫는다.
+	// (MapView 가 배경을 꽉 채우면 "바깥"이 없어 닫히지 않던 문제를 없앤다 — 노드가
+	//  아닌 모든 터치는 닫기로 본다. 노드만 선택, 나머지는 전부 dismiss.)
 	if (MapView != nullptr)
 	{
-		const FGeometry& MapGeom = MapView->GetCachedGeometry();
-		if (MapGeom.IsUnderLocation(Abs))
+		const FVector2D Local = MapView->GetCachedGeometry().AbsoluteToLocal(Abs);
+		FString NodeId;
+		if (MapView->FindNodeAtLocal(Local, MapView->NodeHitRadiusPx, NodeId))
 		{
-			// 지도 영역 안 — 노드를 골랐는지 본다.
-			const FVector2D Local = MapGeom.AbsoluteToLocal(Abs);
-			FString NodeId;
-			if (MapView->FindNodeAtLocal(Local, MapView->NodeHitRadiusPx, NodeId))
-			{
-				MapView->SetDestinationNode(NodeId);
-				OnDestinationChosen.Broadcast(NodeId);
-				Close();   // 목적지를 골랐으니 전체 지도를 닫는다.
-			}
-			// 지도 안이지만 노드가 아니면 열어 둔 채로 소비만 한다.
-			return FReply::Handled();
+			MapView->SetDestinationNode(NodeId);
+			OnDestinationChosen.Broadcast(NodeId);
 		}
 	}
 
-	// 지도 바깥 → 닫기.
 	Close();
 	return FReply::Handled();
 }

@@ -11,8 +11,9 @@ class UTextBlock;
 /**
  * 전체 지도 오버레이. UNavMinimapWidget(Full 모드)을 품고, 반투명 배경과 터치 처리를 얹는다.
  *
- * 화면 전체를 덮는 위젯이라 "바깥 터치로 닫기"가 단순하다 — 루트가 화면을 덮으므로
- * NativeOnMouseButtonDown 에서 MapView 영역 안인지, 그 안의 어떤 노드인지만 보면 된다.
+ * 화면 전체를 덮는 위젯이라 닫기가 단순하다 — NativeOnMouseButtonDown 에서 노드를
+ * 눌렀으면 목적지로 알리고, 그 밖의 아무 곳이나 누르면 닫는다(MapView 가 배경을
+ * 꽉 채워 "바깥"이 없어도 닫힌다).
  *
  * ## 띄우기/닫기 (spec §2.1, §3.5)
  *
