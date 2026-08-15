@@ -232,16 +232,15 @@ bool UNavLocalizer::TryLocalizeFromTrackedImages()
 
 void UNavLocalizer::SolveTransform(const FTransform& MarkerWorld)
 {
-	// 두 방위의 차이가 곧 맵→월드 회전이다.
-	//   서버 heading : 맵 +X 축 기준 CCW(도)
-	//   UE yaw       : 월드 +X 축 기준 CCW(도)  ← 규약이 같아서 그냥 뺀다
-	// 축 규약이 같은 것은 우연이 아니라, 서버 좌표계를 처음부터 UE 기준으로
-	// 정해 두었기 때문이다(docs/nav-server-integration-guide.md).
-	const float MapHeadingDeg = AnchorMarker.HeadingDeg + MarkerHeadingOffsetDeg;
+	// 서버 맵은 오른손 좌표계(+X=오른쪽, +Y=앞), UE 월드는 왼손 좌표계다.
+	// 둘은 거울상이라 순수 회전만으로는 못 맞춘다 — 좌우(측면)가 뒤집힌다.
+	// 그래서 맵 Y 축을 반전해 왼손 프레임(맵')으로 바꾼 뒤 회전+평행이동한다.
+	// Y 를 뒤집으면 회전 방향도 반대가 되므로 heading 부호도 반전한다.
+	const float MapHeadingDeg = -(AnchorMarker.HeadingDeg + MarkerHeadingOffsetDeg);
 	const float YawOffsetDeg = FRotator::NormalizeAxis(MarkerWorld.Rotator().Yaw - MapHeadingDeg);
 
 	const FRotator Rot(0.f, YawOffsetDeg, 0.f);
-	const FVector MarkerMap(AnchorMarker.PosXCm, AnchorMarker.PosYCm, AnchorMarker.PosZCm);
+	const FVector MarkerMap(AnchorMarker.PosXCm, -AnchorMarker.PosYCm, AnchorMarker.PosZCm);
 
 	// 회전만 걸면 마커가 원점 근처에 놓인다. 실제 마커 자리로 밀어 준다.
 	const FVector Translation = MarkerWorld.GetLocation() - Rot.RotateVector(MarkerMap);
@@ -263,8 +262,9 @@ void UNavLocalizer::UpdateCurrentPose()
 	CurrentPose.PosYCm = MapPoint.Y;
 	// 카메라는 눈높이에 있다. 바닥 렌더가 공중에 뜨지 않도록 마커 높이로 눌러 준다.
 	CurrentPose.PosZCm = bSnapHeightToMarker ? AnchorMarker.PosZCm : MapPoint.Z;
+	// 맵' 는 Y 를 뒤집은 왼손 프레임이라, 서버 맵 heading 은 부호가 반대다.
 	CurrentPose.HeadingDeg = FRotator::NormalizeAxis(
-		Cam->GetCameraRotation().Yaw - MapToWorldXf.Rotator().Yaw);
+		MapToWorldXf.Rotator().Yaw - Cam->GetCameraRotation().Yaw);
 	CurrentPose.bHasHeading = true;
 
 	OnPoseUpdated.Broadcast(CurrentPose);
@@ -274,11 +274,18 @@ void UNavLocalizer::UpdateCurrentPose()
 
 FVector UNavLocalizer::MapToWorld(float PosXCm, float PosYCm, float PosZCm) const
 {
-	const FVector P(PosXCm, PosYCm, PosZCm);
-	return bLocalized ? MapToWorldXf.TransformPosition(P) : P;
+	// 맵(오른손) → 맵'(왼손): Y 반전 후 변환.
+	const FVector P(PosXCm, -PosYCm, PosZCm);
+	return bLocalized ? MapToWorldXf.TransformPosition(P) : FVector(PosXCm, PosYCm, PosZCm);
 }
 
 FVector UNavLocalizer::WorldToMap(const FVector& WorldLocation) const
 {
-	return bLocalized ? MapToWorldXf.InverseTransformPosition(WorldLocation) : WorldLocation;
+	if (!bLocalized)
+	{
+		return WorldLocation;
+	}
+	// 맵'(왼손) → 맵(오른손): 역변환 후 Y 를 되돌린다.
+	const FVector P = MapToWorldXf.InverseTransformPosition(WorldLocation);
+	return FVector(P.X, -P.Y, P.Z);
 }
