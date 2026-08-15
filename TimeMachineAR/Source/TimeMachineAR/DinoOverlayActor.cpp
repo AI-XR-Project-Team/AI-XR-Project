@@ -1,6 +1,9 @@
 #include "DinoOverlayActor.h"
+#include "DinoInfoData.h"
 #include "Components/StaticMeshComponent.h"
 #include "Materials/MaterialInstanceDynamic.h"
+
+DEFINE_LOG_CATEGORY_STATIC(LogDinoOverlay, Log, All);
 
 ADinoOverlayActor::ADinoOverlayActor()
 {
@@ -14,6 +17,17 @@ ADinoOverlayActor::ADinoOverlayActor()
 
 	FleshMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("FleshMesh"));
 	FleshMesh->SetupAttachment(Root);
+
+	// 탭을 받으려면 트레이스에 걸려야 한다. 물리는 끈다(QueryOnly) — AR 앵커에
+	// 핀으로 고정된 액터라 물리가 개입하면 위치가 흔들린다.
+	// 클릭 판정은 기본 트레이스 채널인 Visibility 로 들어온다.
+	for (UStaticMeshComponent* Mesh : { BoneMesh, FleshMesh })
+	{
+		Mesh->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+		Mesh->SetCollisionResponseToAllChannels(ECR_Ignore);
+		Mesh->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
+		Mesh->SetGenerateOverlapEvents(false);
+	}
 }
 
 void ADinoOverlayActor::BeginPlay()
@@ -65,4 +79,40 @@ void ADinoOverlayActor::StartReveal()
 		bIsRevealing = true;
 		CurrentRevealTime = 0.0f;
 	}
+}
+
+void ADinoOverlayActor::NotifyActorOnClicked(FKey ButtonPressed)
+{
+	Super::NotifyActorOnClicked(ButtonPressed);
+
+	HandleTapped();
+}
+
+void ADinoOverlayActor::NotifyActorOnInputTouchBegin(const ETouchIndex::Type FingerIndex)
+{
+	Super::NotifyActorOnInputTouchBegin(FingerIndex);
+
+	HandleTapped();
+}
+
+void ADinoOverlayActor::HandleTapped()
+{
+	if (!bClickable)
+	{
+		return;
+	}
+
+	if (DinoInfo == nullptr)
+	{
+		// 카드를 열 수 없다는 뜻이지 탭이 안 먹은 게 아니다. 구분이 안 되면
+		// 콜리전 문제인지 데이터 누락인지 현장에서 가릴 수가 없다.
+		UE_LOG(LogDinoOverlay, Warning,
+			TEXT("공룡을 탭했지만 DinoInfo 가 비어 있습니다. "
+				 "BP_DinoOverlay 의 DinoInfo 에 DA_Dino_* 를 지정하세요."));
+		return;
+	}
+
+	UE_LOG(LogDinoOverlay, Log, TEXT("[overlay] 탭: %s"), *DinoInfo->NameKo.ToString());
+
+	OnDinoClicked.Broadcast(DinoInfo);
 }

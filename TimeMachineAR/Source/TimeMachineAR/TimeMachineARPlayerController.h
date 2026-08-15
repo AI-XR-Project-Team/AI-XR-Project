@@ -15,7 +15,10 @@ UCLASS()
 class TIMEMACHINEAR_API ATimeMachineARPlayerController : public APlayerController
 {
 	GENERATED_BODY()
-	
+
+public:
+	ATimeMachineARPlayerController();
+
 protected:
 
 	/** Input Mapping Context to be used for player input */

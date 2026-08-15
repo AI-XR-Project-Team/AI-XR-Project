@@ -6,6 +6,16 @@
 #include "NavTypes.h"
 #include "NavClient.generated.h"
 
+/**
+ * 네비 계층 공용 로그 카테고리. NavClient.cpp 에서 딱 한 번 정의한다.
+ *
+ * NavClient 와 NavLocalizer 가 같은 태그를 써야 `adb logcat -s LogNav:V` 하나로
+ * 네비 전체를 볼 수 있다. 다만 파일마다 DEFINE_LOG_CATEGORY_STATIC 을 두면 안 된다 —
+ * unity 빌드가 두 파일을 한 번역 단위로 합치는 순간 카테고리 타입이 중복 정의되어
+ * 컴파일이 깨진다. 묶음 구성은 파일이 추가될 때마다 바뀌므로 언젠가 반드시 터진다.
+ */
+DECLARE_LOG_CATEGORY_EXTERN(LogNav, Log, All);
+
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnNavMarkersReceived, const TArray<FNavMarker>&, Markers);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnNavDestinationsReceived, const TArray<FNavDestination>&, Destinations);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnNavRouteReceived, const FNavRoute&, Route);

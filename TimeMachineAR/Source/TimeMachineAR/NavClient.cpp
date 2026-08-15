@@ -9,7 +9,8 @@
 #include "Misc/ConfigCacheIni.h"
 #include "HAL/IConsoleManager.h"
 
-DEFINE_LOG_CATEGORY_STATIC(LogNav, Log, All);
+// 선언은 NavClient.h. 네비 계층이 태그를 공유하므로 여기서만 정의한다.
+DEFINE_LOG_CATEGORY(LogNav);
 
 /** 설정이 비었거나 망가졌고 도슨트 폴백도 없을 때 되돌릴 값. 에디터 PIE 기준. */
 static const TCHAR* NavDefaultServerBaseUrl = TEXT("http://127.0.0.1:8000");

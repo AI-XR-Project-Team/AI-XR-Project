@@ -10,9 +10,8 @@
 #include "Engine/World.h"
 #include "Kismet/GameplayStatics.h"
 
-// NavClient.cpp 와 같은 이름의 static 카테고리. 파일마다 따로 정의되지만 로그
-// 태그는 같아서 `adb logcat -s LogNav:V` 하나로 네비 전체를 볼 수 있다.
-DEFINE_LOG_CATEGORY_STATIC(LogNav, Log, All);
+// LogNav 는 NavClient.h 에서 선언하고 NavClient.cpp 에서 정의한다. 여기서 따로
+// DEFINE_LOG_CATEGORY_STATIC 을 두면 unity 빌드에서 중복 정의로 깨진다.
 
 UNavLocalizer* UNavLocalizer::GetNavLocalizer(const UObject* WorldContextObject)
 {
