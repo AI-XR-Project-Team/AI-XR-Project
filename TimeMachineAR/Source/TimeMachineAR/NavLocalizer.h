@@ -243,6 +243,17 @@ public:
 		meta = (ClampMin = "0.1"))
 	float PoorQualityHoldSeconds = 1.5f;
 
+	/**
+	 * 경고를 내리기(회복 판정) 전에 품질이 이만큼(초) 연속으로 좋아야 한다(5-B1).
+	 *
+	 * 흔들 때 추적 품질은 좋음↔나쁨을 프레임 단위로 깜빡인다. 좋은 프레임 하나에
+	 * 곧바로 경고를 내리면 배너가 떨린다 — 이 시간만큼 "계속 좋아야" 회복으로 본다.
+	 * 그동안 누적 저하 타이머도 지우지 않아, 깜빡이는 흔들림도 결국 임계를 넘긴다.
+	 */
+	UPROPERTY(Config, EditAnywhere, BlueprintReadWrite, Category = "Nav|Localizer|Calibration",
+		meta = (ClampMin = "0.05"))
+	float QualityRecoverSeconds = 0.5f;
+
 	// ------------------------------------------------------------------ Subsystem
 
 	virtual void Initialize(FSubsystemCollectionBase& Collection) override;
@@ -298,8 +309,10 @@ private:
 	FString LastMapId;
 
 	// --- 추적 품질 감지(5-B1) ---
-	/** 품질이 나쁜 상태로 이어진 누적 시간(초). 정상으로 돌아오면 0 으로 리셋. */
+	/** 품질이 나쁜 상태로 이어진 누적 시간(초). 좋은 상태가 충분히 지속돼야 0 으로 리셋. */
 	float SecondsPoorQuality = 0.f;
+	/** 품질이 좋은 상태로 이어진 누적 시간(초). 깜빡임 방어용(QualityRecoverSeconds). */
+	float SecondsGoodQuality = 0.f;
 	/** 현재 "저하" 로 보고 경고를 띄운 상태인가(래치 — 상승/하강 에지에만 방송). */
 	bool bTrackingDegraded = false;
 

@@ -125,6 +125,7 @@ void UNavLocalizer::ResetLocalization()
 	CurrentPose = FNavMapPose();
 	// 품질 감지 상태도 함께 리셋한다. 재탐색 중에는 경고를 띄우지 않는다.
 	SecondsPoorQuality = 0.f;
+	SecondsGoodQuality = 0.f;
 	bTrackingDegraded = false;
 }
 
@@ -229,32 +230,44 @@ void UNavLocalizer::Tick(float DeltaTime)
 
 void UNavLocalizer::MonitorTrackingQuality(float DeltaTime)
 {
-	// 좋은 품질 = 위치까지 잡히는 상태. 그 외(NotTracking / OrientationOnly)는 나쁨.
+	// ⚠️ ARCore 함정: GetTrackingQuality() 는 이분법이다 — pose 가 있으면 무조건
+	// OrientationAndPosition, 완전히 잃으면 NotTracking(OrientationOnly 는 안 나옴,
+	// GoogleARCoreXRTrackingSystem.cpp). 흔들림은 Quality 가 아니라
+	// GetTrackingQualityReason()(ExcessiveMotion 등)에 담긴다. 그래서 Quality 저하
+	// "또는" Reason≠None 을 저하로 본다 — Quality 만 보면 흔들림을 절대 못 잡는다.
 	const EARTrackingQuality Quality = UARBlueprintLibrary::GetTrackingQuality();
-	const bool bGood = (Quality == EARTrackingQuality::OrientationAndPosition);
+	const EARTrackingQualityReason Reason = UARBlueprintLibrary::GetTrackingQualityReason();
+	const bool bBad = (Quality != EARTrackingQuality::OrientationAndPosition)
+		|| (Reason != EARTrackingQualityReason::None);
 
-	if (bGood)
+	if (bBad)
+	{
+		// 나쁜 상태가 이어진 시간을 쌓는다. 임계를 넘는 순간 한 번만 경고.
+		SecondsPoorQuality += DeltaTime;
+		SecondsGoodQuality = 0.f;
+		if (!bTrackingDegraded && SecondsPoorQuality >= PoorQualityHoldSeconds)
+		{
+			bTrackingDegraded = true;
+			const FString Msg = QualityReasonText(Reason);
+			UE_LOG(LogNav, Warning, TEXT("[Localizer] 추적 품질 저하 %.1f초 지속(Q=%d,R=%d): %s"),
+				SecondsPoorQuality, static_cast<int32>(Quality), static_cast<int32>(Reason), *Msg);
+			OnTrackingDegraded.Broadcast(Msg);
+		}
+		return;
+	}
+
+	// 좋은 상태. 단 좋은 프레임 하나로 곧바로 지우지 않는다 — 흔들 때 품질이 좋음↔나쁨을
+	// 깜빡이므로, QualityRecoverSeconds 만큼 "연속으로" 좋아야 누적 저하를 지우고 회복 처리.
+	SecondsGoodQuality += DeltaTime;
+	if (SecondsGoodQuality >= QualityRecoverSeconds)
 	{
 		SecondsPoorQuality = 0.f;
 		if (bTrackingDegraded)
 		{
 			bTrackingDegraded = false;
-			UE_LOG(LogNav, Log, TEXT("[Localizer] 추적 품질 회복."));
+			UE_LOG(LogNav, Log, TEXT("[Localizer] 추적 품질 회복(%.1f초 연속 양호)."), SecondsGoodQuality);
 			OnTrackingRecovered.Broadcast();
 		}
-		return;
-	}
-
-	// 나쁜 상태가 이어진 시간을 쌓는다. 지속 시간 게이트를 넘는 순간 한 번만 경고한다
-	// (한 프레임 튐으로 배너가 깜빡이지 않게).
-	SecondsPoorQuality += DeltaTime;
-	if (!bTrackingDegraded && SecondsPoorQuality >= PoorQualityHoldSeconds)
-	{
-		bTrackingDegraded = true;
-		const FString Reason = QualityReasonText(UARBlueprintLibrary::GetTrackingQualityReason());
-		UE_LOG(LogNav, Warning, TEXT("[Localizer] 추적 품질 저하 %.1f초 지속: %s"),
-			SecondsPoorQuality, *Reason);
-		OnTrackingDegraded.Broadcast(Reason);
 	}
 }
 
