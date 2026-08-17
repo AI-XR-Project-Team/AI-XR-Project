@@ -12,6 +12,9 @@ class UNavFullMapWidget;
 /** 전체 지도에서 노드를 골랐을 때. BP 가 NavClient.RequestRoute 로 잇는다. */
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnNavDestinationChosen, const FString&, NodeId);
 
+/** 매 틱 갱신되는 턴바이턴 안내(5-D). BP 가 WBP_NavStatus 배너로 잇는다. */
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnNavGuidanceUpdated, const FNavGuidance&, Guidance);
+
 /** 미니맵 표시 모드. */
 UENUM(BlueprintType)
 enum class ENavMinimapMode : uint8
@@ -132,6 +135,13 @@ public:
 	/** 전체 지도에서 목적지를 골랐을 때 재방송. BP 가 NavClient.RequestRoute 로 잇는다. */
 	UPROPERTY(BlueprintAssignable, Category = "Nav|Minimap")
 	FOnNavDestinationChosen OnDestinationChosen;
+
+	/**
+	 * 턴바이턴 안내가 갱신될 때(측위 중, Follow 모드만). BP 가 WBP_NavStatus 배너로 잇는다.
+	 * bArrived 로 도착 화면도 여기서 가른다(5-D).
+	 */
+	UPROPERTY(BlueprintAssignable, Category = "Nav|Minimap")
+	FOnNavGuidanceUpdated OnGuidanceUpdated;
 
 	/** 전체 지도 위젯 클래스(WBP_NavMinimapFull). Follow 인스턴스의 WBP 기본값으로 지정. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Nav|Minimap")
@@ -348,6 +358,20 @@ private:
 	/** 직전 프레임 이탈 상태(전환 시에만 로그). */
 	bool bWasOffRoute = false;
 
+	// --------------------------------------------------------------- 자동 reroute(5-B3, Follow 전용)
+	//
+	// 3중 게이트: ①이탈이 RerouteOffRouteHoldSeconds 이상 지속 ②직전 요청 후
+	// RerouteCooldownSeconds 지남 ③측위 품질이 저하 상태가 아님(가짜 이탈 방어).
+	// 임계값은 GetRouteProgress() 의 Config 에서 읽는다(spec §3.3).
+
+	/** 이탈이 시작된 월드 시각(초). 아직 이탈 아님이면 음수. */
+	float OffRouteSinceSeconds = -1.f;
+	/** 마지막으로 reroute 를 요청한 월드 시각(초). 아직 없으면 큰 음수. */
+	float LastRerouteSeconds = -1000.f;
+
+	/** 3중 게이트를 평가하고, 다 통과하면 NavClient.Reroute 를 부른다(Follow 모드만). */
+	void EvaluateAutoReroute(const FNavProgress& P);
+
 	// 마지막으로 그린 맵→로컬 변환(노드 터치 판정용). NativePaint(const)가 채운다.
 	//   Local.X = ScreenOrigin.X + (W.X - WorldOrigin.X) * Scale
 	//   Local.Y = ScreenOrigin.Y - (W.Y - WorldOrigin.Y) * Scale   (y 뒤집음)
@@ -355,6 +379,20 @@ private:
 	mutable FVector2D CachedScreenOrigin = FVector2D::ZeroVector;
 	mutable float CachedScale = 1.f;
 	mutable bool bHasCachedTransform = false;
+
+	/** 이번 프레임 위젯 로컬 크기(px). Follow 뷰 컬링·셰브론 창 판정에 쓴다. */
+	mutable FVector2D CachedLocalSize = FVector2D::ZeroVector;
+
+	/**
+	 * 로컬 점이 위젯 영역(여백 Margin 포함) 안에 있나. Follow 창 밖 요소를 솎아낸다.
+	 * Full 모드는 fit-to-bounds 라 전부 안에 들어오므로 사실상 통과한다.
+	 */
+	bool IsLocalInView(const FVector2D& P, float Margin) const;
+	/** 두 로컬 점을 잇는 선분이 위젯 영역과 겹치나(둘 중 하나라도 보이면 그린다). */
+	bool IsSegmentInView(const FVector2D& A, const FVector2D& B, float Margin) const;
+
+	/** 열려 있는 전체 지도의 MapView(Full). 없으면 nullptr. Follow 가 상태를 흘려보낼 대상. */
+	UNavMinimapWidget* GetOpenFullMapView() const;
 
 	/** 전체 지도가 목적지를 방송하면 받아 재방송(+목적지 노드 강조). 바인드 대상. */
 	UFUNCTION()

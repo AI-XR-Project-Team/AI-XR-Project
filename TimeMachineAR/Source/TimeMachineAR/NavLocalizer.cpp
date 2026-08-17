@@ -13,6 +13,29 @@
 // LogNav 는 NavClient.h 에서 선언하고 NavClient.cpp 에서 정의한다. 여기서 따로
 // DEFINE_LOG_CATEGORY_STATIC 을 두면 unity 빌드에서 중복 정의로 깨진다.
 
+namespace
+{
+	/** 추적 품질 저하 이유(AR enum) → 사람이 읽는 안내 문구(5-B2 경고 배너용). */
+	FString QualityReasonText(EARTrackingQualityReason Reason)
+	{
+		switch (Reason)
+		{
+		case EARTrackingQualityReason::ExcessiveMotion:
+			return TEXT("너무 빠르게 움직였습니다. QR 을 다시 찍어 주세요");
+		case EARTrackingQualityReason::InsufficientFeatures:
+			return TEXT("주변이 밋밋해 추적이 어렵습니다. QR 을 다시 찍어 주세요");
+		case EARTrackingQualityReason::InsufficientLight:
+			return TEXT("주변이 어둡습니다. 밝은 곳에서 QR 을 다시 찍어 주세요");
+		case EARTrackingQualityReason::Relocalizing:
+			return TEXT("위치를 다시 잡는 중입니다. QR 을 다시 찍어 주세요");
+		case EARTrackingQualityReason::Initializing:
+			return TEXT("추적을 준비 중입니다. 잠시 후 QR 을 다시 찍어 주세요");
+		default:
+			return TEXT("위치가 흔들렸습니다. QR 을 다시 찍어 주세요");
+		}
+	}
+}
+
 UNavLocalizer* UNavLocalizer::GetNavLocalizer(const UObject* WorldContextObject)
 {
 	if (const UWorld* World = GEngine
@@ -63,6 +86,7 @@ void UNavLocalizer::StartLocalizing(const FString& MapId)
 	}
 
 	PendingMapId = MapId;
+	LastMapId = MapId;   // RescanFromUser 가 같은 맵으로 다시 시작할 수 있게.
 	bScanning = true;
 
 	// 마커 목록이 이미 있으면 서버를 다시 부르지 않는다. 층을 옮기지 않는 한
@@ -99,6 +123,17 @@ void UNavLocalizer::ResetLocalization()
 	AnchorMarker = FNavMarker();
 	MapToWorldXf = FTransform::Identity;
 	CurrentPose = FNavMapPose();
+	// 품질 감지 상태도 함께 리셋한다. 재탐색 중에는 경고를 띄우지 않는다.
+	SecondsPoorQuality = 0.f;
+	bTrackingDegraded = false;
+}
+
+void UNavLocalizer::RescanFromUser()
+{
+	UE_LOG(LogNav, Log, TEXT("[Localizer] 사용자 재스캔 요청. 변환을 버리고 다시 탐색한다."));
+	// ResetLocalization 이 상태를 비우고, StartLocalizing 이 마지막 맵으로 다시 탐색한다
+	// (마커 목록이 이미 있으면 서버는 다시 부르지 않는다).
+	StartLocalizing(LastMapId);
 }
 
 // ---------------------------------------------------------------------- 서버 응답
@@ -187,6 +222,40 @@ void UNavLocalizer::Tick(float DeltaTime)
 	}
 
 	UpdateCurrentPose();
+
+	// 안내 중(측위 후)에만 추적 품질을 지켜본다. 흔들려서 센서가 틀어지면 경고를 띄운다.
+	MonitorTrackingQuality(DeltaTime);
+}
+
+void UNavLocalizer::MonitorTrackingQuality(float DeltaTime)
+{
+	// 좋은 품질 = 위치까지 잡히는 상태. 그 외(NotTracking / OrientationOnly)는 나쁨.
+	const EARTrackingQuality Quality = UARBlueprintLibrary::GetTrackingQuality();
+	const bool bGood = (Quality == EARTrackingQuality::OrientationAndPosition);
+
+	if (bGood)
+	{
+		SecondsPoorQuality = 0.f;
+		if (bTrackingDegraded)
+		{
+			bTrackingDegraded = false;
+			UE_LOG(LogNav, Log, TEXT("[Localizer] 추적 품질 회복."));
+			OnTrackingRecovered.Broadcast();
+		}
+		return;
+	}
+
+	// 나쁜 상태가 이어진 시간을 쌓는다. 지속 시간 게이트를 넘는 순간 한 번만 경고한다
+	// (한 프레임 튐으로 배너가 깜빡이지 않게).
+	SecondsPoorQuality += DeltaTime;
+	if (!bTrackingDegraded && SecondsPoorQuality >= PoorQualityHoldSeconds)
+	{
+		bTrackingDegraded = true;
+		const FString Reason = QualityReasonText(UARBlueprintLibrary::GetTrackingQualityReason());
+		UE_LOG(LogNav, Warning, TEXT("[Localizer] 추적 품질 저하 %.1f초 지속: %s"),
+			SecondsPoorQuality, *Reason);
+		OnTrackingDegraded.Broadcast(Reason);
+	}
 }
 
 // ---------------------------------------------------------------------- 측위

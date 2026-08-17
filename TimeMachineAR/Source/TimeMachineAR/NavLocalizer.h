@@ -17,6 +17,15 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnNavPoseUpdated, const FNavMapPose
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnNavLocalizationLost);
 
 /**
+ * AR 추적 품질이 한동안 나빴을 때(주로 폰을 심하게 흔들어서). Reason 은 사람이 읽는
+ * 이유 문구다. BP 가 WBP_NavStatus 경고("QR 다시 찍으세요")로 잇는다(5-B2).
+ */
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnNavTrackingDegraded, const FString&, Reason);
+
+/** 추적 품질이 다시 정상으로 돌아왔을 때. 경고 배너를 내린다. */
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnNavTrackingRecovered);
+
+/**
  * 실내 측위. "지금 내가 맵의 어디에 서 있는가"를 매 틱 알려준다.
  *
  * nav-test-app 의 CoordTransform.kt 를 UE 로 옮긴 것이다. 다만 **훨씬 짧다.**
@@ -62,7 +71,7 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnNavLocalizationLost);
  * 레벨에 액터를 놓을 필요가 없다. `.umap` 은 바이너리라 팀원끼리 병합이
  * 불가능하므로(CLAUDE.md), 레벨을 건드리지 않고 사는 편이 안전하다.
  */
-UCLASS()
+UCLASS(Config = Game)
 class TIMEMACHINEAR_API UNavLocalizer : public UTickableWorldSubsystem
 {
 	GENERATED_BODY()
@@ -96,6 +105,14 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Nav|Localizer")
 	void ResetLocalization();
 
+	/**
+	 * 사용자가 경고를 보고 "QR 다시 찍기" 를 눌렀을 때(5-B2). 변환을 버리고 마지막에 쓰던
+	 * 맵으로 다시 탐색을 시작한다 = ResetLocalization + StartLocalizing 한 방. 마커 목록은
+	 * 이미 받아 뒀으면 서버를 다시 부르지 않는다.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Nav|Localizer")
+	void RescanFromUser();
+
 	// ------------------------------------------------------------------ 상태
 
 	UFUNCTION(BlueprintPure, Category = "Nav|Localizer")
@@ -111,6 +128,13 @@ public:
 	/** 현재 위치(맵 좌표). 측위 전이면 bHasHeading=false 인 0 pose. */
 	UFUNCTION(BlueprintPure, Category = "Nav|Localizer")
 	FNavMapPose GetCurrentMapPose() const { return CurrentPose; }
+
+	/**
+	 * AR 추적 품질이 PoorQualityHoldSeconds 이상 나쁜 상태로 지속되고 있으면 true(5-B1).
+	 * 자동 reroute 게이트가 "가짜 이탈" 을 거르는 데 쓴다(NavMinimapWidget).
+	 */
+	UFUNCTION(BlueprintPure, Category = "Nav|Localizer")
+	bool IsTrackingDegraded() const { return bTrackingDegraded; }
 
 	// ------------------------------------------------------------------ 좌표 변환
 	//
@@ -135,6 +159,14 @@ public:
 
 	UPROPERTY(BlueprintAssignable, Category = "Nav|Localizer")
 	FOnNavLocalizationLost OnLocalizationLost;
+
+	/** 추적 품질이 한동안 나빠졌을 때(5-B2). 경고 배너를 띄운다. */
+	UPROPERTY(BlueprintAssignable, Category = "Nav|Localizer")
+	FOnNavTrackingDegraded OnTrackingDegraded;
+
+	/** 추적 품질이 회복됐을 때. 경고 배너를 내린다. */
+	UPROPERTY(BlueprintAssignable, Category = "Nav|Localizer")
+	FOnNavTrackingRecovered OnTrackingRecovered;
 
 	// ------------------------------------------------------------------ 설정
 
@@ -200,6 +232,17 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Nav|Localizer|Calibration")
 	bool bSnapHeightToMarker = true;
 
+	/**
+	 * 추적 품질이 이 시간(초) 넘게 나쁘게 지속돼야 경고를 띄운다(5-B1). 한 프레임 튐으로
+	 * 배너가 깜빡이면 신뢰를 잃으므로 지속 시간 게이트가 핵심이다.
+	 *
+	 * A(마커 개선)가 6단계로 빠져 드리프트 실측값이 없어 잠정값이다. 오탐(정상 보행 중
+	 * 경고)이 뜨면 이 값을 올린다(spec §2·§5). ini 로 노출해 리빌드 없이 튜닝한다.
+	 */
+	UPROPERTY(Config, EditAnywhere, BlueprintReadWrite, Category = "Nav|Localizer|Calibration",
+		meta = (ClampMin = "0.1"))
+	float PoorQualityHoldSeconds = 1.5f;
+
 	// ------------------------------------------------------------------ Subsystem
 
 	virtual void Initialize(FSubsystemCollectionBase& Collection) override;
@@ -250,6 +293,18 @@ private:
 
 	/** StartLocalizing 이 마커 목록을 기다리는 동안 들고 있는 맵 id. */
 	FString PendingMapId;
+
+	/** 마지막으로 StartLocalizing 에 넘어온 맵 id. RescanFromUser 가 같은 맵으로 다시 시작한다. */
+	FString LastMapId;
+
+	// --- 추적 품질 감지(5-B1) ---
+	/** 품질이 나쁜 상태로 이어진 누적 시간(초). 정상으로 돌아오면 0 으로 리셋. */
+	float SecondsPoorQuality = 0.f;
+	/** 현재 "저하" 로 보고 경고를 띄운 상태인가(래치 — 상승/하강 에지에만 방송). */
+	bool bTrackingDegraded = false;
+
+	/** 매 틱 추적 품질을 보고, 지속 저하/회복 시 델리게이트를 방송한다(측위 후에만). */
+	void MonitorTrackingQuality(float DeltaTime);
 
 	UFUNCTION()
 	void HandleMarkersReceived(const TArray<FNavMarker>& Markers);

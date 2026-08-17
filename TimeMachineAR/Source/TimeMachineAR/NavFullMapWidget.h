@@ -59,6 +59,13 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Nav|FullMap")
 	void Close();
 
+	/**
+	 * 품은 미니맵(Full 모드) 본체. Follow 미니맵이 열린 전체 지도에 pose·경로·목적지를
+	 * 실시간으로 흘려보낼 때 쓴다(5-C1). ApplyState 로 전체를 다시 채우지 않고 바뀐 것만
+	 * 그쪽 setter 로 밀어 매 프레임 그래프 복사를 피한다.
+	 */
+	UNavMinimapWidget* GetMapView() const { return MapView; }
+
 protected:
 	virtual FReply NativeOnMouseButtonDown(const FGeometry& InGeometry,
 		const FPointerEvent& InMouseEvent) override;

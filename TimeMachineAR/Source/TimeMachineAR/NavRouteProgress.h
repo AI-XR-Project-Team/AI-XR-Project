@@ -41,8 +41,16 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Nav|Progress")
 	void SetRoute(const FNavRoute& InRoute);
 
-	/** 폴리라인을 직접 넣는다(테스트·비-서버 입력용). */
+	/** 폴리라인을 직접 넣는다(테스트·비-서버 입력용). steps 는 비운다. */
 	void SetRoutePoints(const TArray<FVector2D>& InPoints);
+
+	/**
+	 * 서버 steps 를 실어 준다(턴바이턴 안내용). SetRoutePoints/SetRoute 뒤에 부른다 —
+	 * 각 step 이 경로 위 어느 거리 구간을 차지하는지(누적표)를 여기서 한 번 만들어 둔다.
+	 * step 수 ≠ 웨이포인트 수다(서버가 30° 미만 꺾임을 직진으로 합침, routing.py:32).
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Nav|Progress")
+	void SetSteps(const TArray<FNavStep>& InSteps);
 
 	/** 경로·상태를 비운다. */
 	UFUNCTION(BlueprintCallable, Category = "Nav|Progress")
@@ -62,6 +70,13 @@ public:
 	/** 마지막 UpdatePose 결과. */
 	UFUNCTION(BlueprintPure, Category = "Nav|Progress")
 	FNavProgress GetProgress() const { return LastProgress; }
+
+	/**
+	 * 마지막 진행 상태 + 서버 steps 로 "지금 띄울 안내 한 줄"을 만든다(5-D).
+	 * steps 가 없거나 진행이 무효면 bValid=false. UpdatePose 뒤에 부른다.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Nav|Progress")
+	FNavGuidance GetGuidance() const;
 
 	// ------------------------------------------------------------------ 출력(그리기)
 
@@ -99,11 +114,33 @@ public:
 		meta = (ClampMin = "1.0"))
 	float ArriveThresholdCm = 80.f;
 
+	// --------------------------------------------------------------- 자동 reroute 게이트(5-B3)
+	//
+	// 실제 판단·호출은 미니맵 위젯이 하지만(NavMinimapWidget), 임계값은 진행률 튜닝과
+	// 한 ini 블록에 모아 둔다. A(마커 개선)가 6단계로 빠져 드리프트 실측값이 없으므로
+	// 잠정값이다 — 6단계 캘리브 후 조정한다(spec §2).
+
+	/** 이탈이 이 시간(초) 넘게 지속돼야 reroute 를 건다. 한 프레임 튐 방어. */
+	UPROPERTY(Config, EditAnywhere, BlueprintReadWrite, Category = "Nav|Progress|Reroute",
+		meta = (ClampMin = "0.0"))
+	float RerouteOffRouteHoldSeconds = 3.0f;
+
+	/** reroute 재요청 최소 간격(초). 이탈이 계속돼도 서버를 무한히 때리지 않는다. */
+	UPROPERTY(Config, EditAnywhere, BlueprintReadWrite, Category = "Nav|Progress|Reroute",
+		meta = (ClampMin = "0.0"))
+	float RerouteCooldownSeconds = 10.0f;
+
 private:
 	/** 경로 폴리라인(맵 cm). */
 	TArray<FVector2D> RoutePts;
 	/** 시작점부터 정점 i 까지의 누적 거리(cm). CumCm[0]=0, CumCm.Last()=총거리. */
 	TArray<float> CumCm;
+
+	/** 서버 turn-by-turn steps(안내 문구 원본). */
+	TArray<FNavStep> Steps;
+	/** 각 step 이 경로 위에서 차지하는 누적거리 구간 [Start,End](cm). 회전·도착은 길이 0. */
+	TArray<float> StepStartCm;
+	TArray<float> StepEndCm;
 
 	/** 직전 프레임 세그먼트(탐색 윈도우·히스테리시스 기준). */
 	int32 LastSegment = INDEX_NONE;
