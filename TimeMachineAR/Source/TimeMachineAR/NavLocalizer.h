@@ -254,6 +254,42 @@ public:
 		meta = (ClampMin = "0.05"))
 	float QualityRecoverSeconds = 0.5f;
 
+	// ------------------------------------------------------------------ 6-1a 임시 프로브
+	//
+	// A-1 마커가 인식되는지, 어느 거리·각도에서 잡히고 놓치는지를 계측해 CSV 로 남긴다.
+	// 측위(6-1b)·서버 마커 목록과 무관하다 — GetAllGeometriesByClass 로 추적 이미지를
+	// 직접 훑으므로 KnownMarkers 필터 "앞에서" 찍는다. 6단계 종료 시 이 블록과 관련
+	// 함수(ProbeScan/ProbeRegisterImages/ProbeFlush/ProbePush)를 통째로 제거한다.
+
+	UPROPERTY(Config, EditAnywhere, Category = "Nav|Probe")
+	bool bProbeEnabled = false;                    // 꺼져 있으면 Tick 자체가 안 온다
+
+	UPROPERTY(Config, EditAnywhere, Category = "Nav|Probe")
+	float ProbeIntervalSeconds = 0.2f;             // 5Hz
+
+	UPROPERTY(Config, EditAnywhere, Category = "Nav|Probe")
+	bool bProbeDrawDebugBox = true;                // 마커 위 와이어프레임
+
+	UPROPERTY(Config, EditAnywhere, Category = "Nav|Probe")
+	float ProbeMarkerWidthCm = 42.0f;              // §A 실측값 (A2 긴변 조립 = 42.0)
+	UPROPERTY(Config, EditAnywhere, Category = "Nav|Probe")
+	float ProbeMarkerHeightCm = 59.4f;
+
+	UPROPERTY(Config, EditAnywhere, Category = "Nav|Probe")
+	FString ProbeSessionPrefix = TEXT("a1");       // 접두어만. 뒤는 실행 시각이 자동으로 붙는다
+	UPROPERTY(Config, EditAnywhere, Category = "Nav|Probe")
+	int32 ProbeUploadEveryLines = 300;             // 이만큼 쌓이면 업로드
+
+	// 런타임 후보 등록 — DA_ARSession 을 디스크상 수정하지 않는다(공지 0건).
+	UPROPERTY(Config, EditAnywhere, Category = "Nav|Probe")
+	bool bProbeRegisterRuntimeImages = true;
+	UPROPERTY(Config, EditAnywhere, Category = "Nav|Probe")
+	TArray<FString> ProbeImageEntries;             // "A-1|/Game/UI/Nav/Markers/T_Marker_A1.T_Marker_A1"
+	UPROPERTY(Config, EditAnywhere, Category = "Nav|Probe")
+	float ProbeRegisterDelaySeconds = 2.5f;        // 세션 기동과 겹치지 않게
+	UPROPERTY(Config, EditAnywhere, Category = "Nav|Probe")
+	FString ProbeSessionConfigPath = TEXT("/Game/Stuff/DA_ARSession.DA_ARSession");
+
 	// ------------------------------------------------------------------ Subsystem
 
 	virtual void Initialize(FSubsystemCollectionBase& Collection) override;
@@ -271,7 +307,8 @@ public:
 	 */
 	virtual bool IsTickable() const override
 	{
-		return Super::IsTickable() && (bScanning || bLocalized);
+		// 프로브는 측위 전에도 돌아야 한다(6-1a). 6단계 종료 시 `|| bProbeEnabled` 를 뗀다.
+		return Super::IsTickable() && (bScanning || bLocalized || bProbeEnabled);
 	}
 
 	virtual TStatId GetStatId() const override;
@@ -333,4 +370,29 @@ private:
 
 	/** 카메라의 월드 위치를 맵 좌표로 옮겨 CurrentPose 를 갱신하고 알린다. */
 	void UpdateCurrentPose();
+
+	// --- 6-1a 임시 프로브 상태 (6단계 종료 시 이 블록과 아래 함수들을 제거한다) ---
+	struct FProbeSeen
+	{
+		bool  bVisible   = false;
+		int32 Acquires   = 0;
+		float MinDistCm  = TNumericLimits<float>::Max();
+		float MaxDistCm  = 0.f;
+		float LastDistCm = 0.f;
+	};
+	TMap<FString, FProbeSeen> ProbeSeen;
+	TArray<FString> ProbeEvents;      // 화면용 최근 이벤트
+	TArray<FString> ProbeCsv;         // 업로드 버퍼
+	float ProbeElapsed = 0.f;
+	float ProbeSinceScan = 0.f;
+	int32 ProbeSimultaneous = 0;
+	int32 ProbeUploadOk = 0;
+	int32 ProbeUploadFail = 0;
+	bool  bProbeRegistered = false;
+
+	FString ProbeSessionTag;          // Initialize 에서 1회 생성. 사람이 손대지 않는다
+	void ProbeScan();
+	void ProbeRegisterImages();
+	void ProbeFlush(bool bFinal);
+	void ProbePush(const FString& CsvLine, const FString& HumanLine);
 };
