@@ -82,4 +82,121 @@ bool FNavRouteProgressTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// ---------------------------------------------------------------------- 턴바이턴 안내(5-D)
+//
+// GetGuidance 가 서버 steps 를 "지금 어느 step 인가" 로 매핑하는지 검증한다.
+// 핵심: step 수 ≠ 웨이포인트 수(서버가 30° 미만 꺾임을 직진으로 합침) → 세그먼트 s 를
+// 곧바로 steps[s] 로 쓰면 어긋난다(spec §3.5).
+
+namespace
+{
+	FNavStep MakeStraight(float DistCm)
+	{
+		FNavStep S;
+		S.Instruction = FString::Printf(TEXT("%dm 직진"), FMath::RoundToInt(DistCm / 100.f));
+		S.DistanceCm = DistCm;
+		S.bHasDistance = true;
+		S.Turn = TEXT("straight");
+		S.bArrive = false;
+		return S;
+	}
+	FNavStep MakeTurn(const FString& Dir)
+	{
+		FNavStep S;
+		S.Instruction = (Dir == TEXT("right")) ? TEXT("우회전") : TEXT("좌회전");
+		S.bHasDistance = false;
+		S.Turn = Dir;
+		S.bArrive = false;
+		return S;
+	}
+	FNavStep MakeArrive()
+	{
+		FNavStep S;
+		S.Instruction = TEXT("도착");
+		S.bHasDistance = false;
+		S.Turn = TEXT("");
+		S.bArrive = true;
+		return S;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FNavGuidanceTest,
+	"TimeMachineAR.Nav.Guidance",
+	EAutomationTestFlags::ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FNavGuidanceTest::RunTest(const FString& Parameters)
+{
+	// --- (A) 회전이 있는 ㄱ자 경로: (0,0)→(0,1000)→(500,1000). 총 1500cm ---
+	// 서버 steps = [직진1000, 우회전, 직진500, 도착]. StepSpan = [0,1000][1000,1000][1000,1500][1500,1500].
+	{
+		UNavRouteProgress* P = NewObject<UNavRouteProgress>();
+		P->DrawSmoothingAlpha = 1.f;
+		TArray<FVector2D> Pts = { FVector2D(0, 0), FVector2D(0, 1000), FVector2D(500, 1000) };
+		P->SetRoutePoints(Pts);
+		P->SetSteps({ MakeStraight(1000.f), MakeTurn(TEXT("right")), MakeStraight(500.f), MakeArrive() });
+
+		// 첫 직진 구간(seg 0) → step 0. 다음 안내는 우회전.
+		P->UpdatePose(FVector2D(0, 600));
+		{
+			const FNavGuidance G = P->GetGuidance();
+			TestTrue(TEXT("A: 안내 유효"), G.bValid);
+			TestEqual(TEXT("A: seg0 → step 0"), G.StepIndex, 0);
+			TestTrue(TEXT("A: step 남은거리≈400"), FMath::IsNearlyEqual(G.StepRemainingCm, 400.f, 1.f));
+			TestEqual(TEXT("A: 다음 회전=우회전"), G.NextTurn, FString(TEXT("right")));
+		}
+
+		// 회전 뒤 두번째 직진(seg 1) → step 2(회전 step 은 현재로 잡히지 않는다).
+		P->UpdatePose(FVector2D(300, 1000));
+		{
+			const FNavGuidance G = P->GetGuidance();
+			TestEqual(TEXT("A: seg1 → step 2"), G.StepIndex, 2);
+			TestTrue(TEXT("A: step 남은거리≈200"), FMath::IsNearlyEqual(G.StepRemainingCm, 200.f, 1.f));
+			TestTrue(TEXT("A: step 남은거리 음수 아님"), G.StepRemainingCm >= 0.f);
+		}
+
+		// 도착 지점/직후 — 마지막(도착) step, 남은거리 0, bArrived 유지.
+		P->UpdatePose(FVector2D(500, 1000));
+		{
+			const FNavGuidance G = P->GetGuidance();
+			TestEqual(TEXT("A: 도착 → 마지막 step 3"), G.StepIndex, 3);
+			TestTrue(TEXT("A: 도착 step 남은거리 음수 아님"), G.StepRemainingCm >= 0.f);
+			TestTrue(TEXT("A: bArrived 유지"), G.bArrived);
+		}
+		// 도착점을 살짝 지나쳐도 bArrived 가 떨지 않는다.
+		P->UpdatePose(FVector2D(505, 1000));
+		{
+			const FNavGuidance G = P->GetGuidance();
+			TestTrue(TEXT("A: 도착 직후에도 bArrived"), G.bArrived);
+		}
+	}
+
+	// --- (B) 30° 미만 꺾임이 직진으로 합쳐진 경로 ---
+	// 웨이포인트 3개(세그먼트 2개)지만 서버 steps 는 [직진2000, 도착] 하나로 합침.
+	// 두 세그먼트 모두 같은 step 0 으로 매핑돼야 한다("s 를 그대로 쓰면 어긋난다"의 검증).
+	{
+		UNavRouteProgress* P = NewObject<UNavRouteProgress>();
+		P->DrawSmoothingAlpha = 1.f;
+		TArray<FVector2D> Pts = { FVector2D(0, 0), FVector2D(0, 1000), FVector2D(0, 2000) };
+		P->SetRoutePoints(Pts);
+		P->SetSteps({ MakeStraight(2000.f), MakeArrive() });
+
+		P->UpdatePose(FVector2D(0, 600));    // seg 0
+		TestEqual(TEXT("B: seg0 → step 0"), P->GetGuidance().StepIndex, 0);
+
+		P->UpdatePose(FVector2D(0, 1500));   // seg 1 — 여전히 같은 직진 step
+		TestEqual(TEXT("B: seg1 → 여전히 step 0"), P->GetGuidance().StepIndex, 0);
+	}
+
+	// --- (C) steps 가 없으면 안내는 무효(경로만 있고 배너 없음) ---
+	{
+		UNavRouteProgress* P = NewObject<UNavRouteProgress>();
+		TArray<FVector2D> Pts = { FVector2D(0, 0), FVector2D(0, 1000) };
+		P->SetRoutePoints(Pts);
+		P->UpdatePose(FVector2D(0, 300));
+		TestFalse(TEXT("C: steps 없으면 안내 무효"), P->GetGuidance().bValid);
+	}
+
+	return true;
+}
+
 #endif // WITH_DEV_AUTOMATION_TESTS

@@ -303,3 +303,53 @@ struct FNavProgress
 	UPROPERTY(BlueprintReadOnly, Category = "Nav")
 	bool bValid = false;
 };
+
+// ==================================================================== 턴바이턴 안내(5-D)
+//
+// UNavRouteProgress 가 진행 상태(FNavProgress)와 서버 steps 를 합쳐 매 틱 만드는 값.
+// 배너 위젯(WBP_NavStatus)이 이걸 그대로 읽어 "직진 中 · 5m 앞 우회전" 을 그린다.
+// 클라이언트는 각도를 다시 재거나 문구를 새로 만들지 않는다 — 서버 steps 를 쓰고
+// "지금 어느 step 인가"만 얹는다(spec §3.5).
+
+/** 지금 이 순간 배너에 띄울 한 줄 + 다음에 올 안내. */
+USTRUCT(BlueprintType)
+struct FNavGuidance
+{
+	GENERATED_BODY()
+
+	/** 진행 상태·steps 가 유효해 값이 채워졌으면 true. */
+	UPROPERTY(BlueprintReadOnly, Category = "Nav")
+	bool bValid = false;
+
+	/** 현재 step 의 인덱스(FNavRoute.Steps 기준). 없으면 INDEX_NONE. */
+	UPROPERTY(BlueprintReadOnly, Category = "Nav")
+	int32 StepIndex = INDEX_NONE;
+
+	/** 현재 step 의 안내 문구(서버 원문). 예: "앞으로 6m 직진하세요". */
+	UPROPERTY(BlueprintReadOnly, Category = "Nav")
+	FString Instruction;
+
+	/** 현재 step 의 회전 방향. "straight" | "left" | "right" | "". */
+	UPROPERTY(BlueprintReadOnly, Category = "Nav")
+	FString Turn;
+
+	/** 현재 step 이 끝날 때(=다음 회전/도착 지점)까지 남은 거리(cm). 경계에서도 음수가 안 된다. */
+	UPROPERTY(BlueprintReadOnly, Category = "Nav")
+	float StepRemainingCm = 0.f;
+
+	/** 다음에 올 회전/도착의 방향. 곧 있을 안내를 미리 띄우는 데 쓴다. 없으면 빈 문자열. */
+	UPROPERTY(BlueprintReadOnly, Category = "Nav")
+	FString NextTurn;
+
+	/** 다음에 올 회전/도착의 안내 문구. 없으면 빈 문자열. */
+	UPROPERTY(BlueprintReadOnly, Category = "Nav")
+	FString NextInstruction;
+
+	/** 목적지까지 남은 총 거리(cm). */
+	UPROPERTY(BlueprintReadOnly, Category = "Nav")
+	float RemainingCm = 0.f;
+
+	/** 목적지 도착이면 true(도착 화면 트리거). */
+	UPROPERTY(BlueprintReadOnly, Category = "Nav")
+	bool bArrived = false;
+};
