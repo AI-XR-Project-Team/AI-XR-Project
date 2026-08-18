@@ -14,6 +14,7 @@
 좌표 규약: UE5 Z-up, 단위 cm.
 """
 import csv
+import json
 import math
 import os
 import sys
@@ -63,6 +64,32 @@ def _bool(value, default=True):
     return s in ("true", "1", "yes", "y", "t")
 
 
+def _load_outlines():
+    """seeds/nav/map_outline.json → {map_key: outline_json 문자열}.
+
+    파일 하나에 단일 맵(객체) 또는 여러 맵(리스트)을 담을 수 있다. 각 항목에서
+    `outline`·`obstacles` 만 추출해 map_spaces.outline_json 에 저장할 JSON 문자열로
+    직렬화한다. 파일이 없으면 빈 dict(구버전/외곽선 없는 맵 호환)."""
+    path = os.path.join(SEED_DIR, "map_outline.json")
+    if not os.path.exists(path):
+        return {}
+    with open(path, encoding="utf-8") as f:
+        data = json.load(f)
+    items = data if isinstance(data, list) else [data]
+    outlines = {}
+    for item in items:
+        map_key = (item.get("map_key") or "").strip()
+        if not map_key:
+            continue
+        payload = {
+            "outline": item.get("outline", []),
+            "obstacles": item.get("obstacles", []),
+        }
+        # ensure_ascii=False 로 사람이 읽는 값 유지, 키 순서 고정으로 재시드 시 동일 문자열.
+        outlines[map_key] = json.dumps(payload, ensure_ascii=False, sort_keys=True)
+    return outlines
+
+
 # --- 시드 로직 (멱등) -------------------------------------------------
 
 def seed() -> None:
@@ -81,23 +108,35 @@ def seed() -> None:
 
 
 def _seed_map_spaces(db):
-    """map_spaces 적재. name 을 자연키로 멱등. 반환: map_key → id."""
+    """map_spaces 적재. name 을 자연키로 멱등. 반환: map_key → id.
+
+    outline_json 은 seeds/nav/map_outline.json 에서 map_key 로 찾아 채운다. 이미
+    존재하는 맵이라도 outline 이 비었거나 달라졌으면 갱신한다(외곽선만 추가하는
+    재시드 지원)."""
+    outlines = _load_outlines()
     map_ids = {}
     for row in _read_csv("map_spaces.csv"):
         key = row["map_key"].strip()
         name = row["name"].strip()
+        outline_json = outlines.get(key)
         space = db.query(MapSpace).filter_by(name=name).first()
         if space is None:
             space = MapSpace(
                 name=name,
                 origin_note=(row.get("origin_note") or "").strip() or None,
                 coord_system=(row.get("coord_system") or "").strip() or "ue5_zup_cm",
+                outline_json=outline_json,
             )
             db.add(space)
             db.flush()  # space.id 확보
-            print(f"[+] map_space 삽입: {name}")
+            print(f"[+] map_space 삽입: {name}"
+                  f"{' (+outline)' if outline_json else ''}")
         else:
-            print(f"[=] map_space 이미 존재: {name} (건너뜀)")
+            if outline_json and space.outline_json != outline_json:
+                space.outline_json = outline_json
+                print(f"[~] map_space outline 갱신: {name}")
+            else:
+                print(f"[=] map_space 이미 존재: {name} (건너뜀)")
         map_ids[key] = space.id
     return map_ids
 

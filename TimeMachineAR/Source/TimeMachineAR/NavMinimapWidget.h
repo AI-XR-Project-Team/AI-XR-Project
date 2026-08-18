@@ -6,6 +6,24 @@
 #include "NavMinimapWidget.generated.h"
 
 class UWidget;
+class UNavRouteProgress;
+class UNavFullMapWidget;
+
+/** 전체 지도에서 노드를 골랐을 때. BP 가 NavClient.RequestRoute 로 잇는다. */
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnNavDestinationChosen, const FString&, NodeId);
+
+/** 매 틱 갱신되는 턴바이턴 안내(5-D). BP 가 WBP_NavStatus 배너로 잇는다. */
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnNavGuidanceUpdated, const FNavGuidance&, Guidance);
+
+/** 미니맵 표시 모드. */
+UENUM(BlueprintType)
+enum class ENavMinimapMode : uint8
+{
+	/** 작은 미니맵. 고정 배율·내 위치 화면 중앙 고정·맵이 움직인다(north-up). */
+	Follow,
+	/** 전체 지도. 벽·구조물·전체 노드·전체 엣지를 맞춰 그린다(현재까지의 기본 동작). */
+	Full,
+};
 
 /**
  * 우측 상단 2D 미니맵. 경로를 위에서 내려다본 그림으로 그린다.
@@ -59,9 +77,75 @@ class TIMEMACHINEAR_API UNavMinimapWidget : public UUserWidget
 public:
 	// ------------------------------------------------------------------ 데이터
 
+	/**
+	 * 표시 모드. Follow(작은 미니맵, 고정 배율·내 위치 중앙) / Full(전체 지도, 맞춤).
+	 * WBP 에서 WBP_NavMinimap 은 Follow, WBP_NavMinimapFull 의 MapView 는 Full 로 둔다.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Nav|Minimap")
+	ENavMinimapMode Mode = ENavMinimapMode::Full;
+
+	/**
+	 * Follow 모드에서 위젯 폭에 들어오는 실제 거리(cm). 기본 800=8m.
+	 * 4m 면 긴 구간에 직선 하나만 남아, 대부분의 순간 다음 노드가 하나는 들어오도록 8m.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Nav|Minimap",
+		meta = (ClampMin = "100.0"))
+	float FollowWindowCm = 800.f;
+
 	/** 경로 응답 전체를 넣는다. waypoints 만 쓰고 steps 는 무시한다. */
 	UFUNCTION(BlueprintCallable, Category = "Nav|Minimap")
 	void SetRoute(const FNavRoute& InRoute);
+
+	/** 전체 지도 데이터(노드·엣지·벽·구조물). Full 모드가 그리고, 노드 터치 판정에도 쓴다. */
+	UFUNCTION(BlueprintCallable, Category = "Nav|Minimap")
+	void SetGraph(const FNavGraph& InGraph);
+
+	UFUNCTION(BlueprintPure, Category = "Nav|Minimap")
+	bool HasGraph() const { return Graph.Nodes.Num() > 0; }
+
+	/** 이 노드를 목적지로 강조(전체 지도에서 채운 링으로 구분). 빈 문자열이면 해제. */
+	UFUNCTION(BlueprintCallable, Category = "Nav|Minimap")
+	void SetDestinationNode(const FString& NodeId);
+
+	/**
+	 * 화면 로컬 좌표(px)에서 반경 안의 가장 가까운 그래프 노드를 찾는다(Full 모드).
+	 * 마지막으로 그린 변환을 그대로 되짚어 판정한다 — 그리기 전이면 실패한다.
+	 * @return 찾으면 true 와 OutNodeId.
+	 */
+	bool FindNodeAtLocal(const FVector2D& LocalPos, float RadiusPx, FString& OutNodeId) const;
+
+	/** 폴리라인(맵 cm)을 직접 넣는다(전체 지도로 상태를 넘길 때 등). */
+	UFUNCTION(BlueprintCallable, Category = "Nav|Minimap")
+	void SetRouteXY(const TArray<FVector2D>& InRouteXY);
+
+	/** 진행률 계산기(측위 계층/배너가 공유). 없으면 만들어 반환한다. */
+	UFUNCTION(BlueprintCallable, Category = "Nav|Minimap")
+	UNavRouteProgress* GetRouteProgress();
+
+	// ------------------------------------------------------------------ 전체 지도 열기(Follow)
+
+	/**
+	 * 전체 지도(WBP_NavMinimapFull)를 띄운다. 작은 미니맵(Follow)의 클릭 이벤트가 부른다.
+	 * C++ 가 CreateWidget + AddToViewport 로 직접 다뤄 .uasset 수정을 피한다(spec §2.1).
+	 * 지금 들고 있는 그래프·경로·현재 pose 를 그대로 넘긴다.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Nav|Minimap")
+	void OpenFullMap();
+
+	/** 전체 지도에서 목적지를 골랐을 때 재방송. BP 가 NavClient.RequestRoute 로 잇는다. */
+	UPROPERTY(BlueprintAssignable, Category = "Nav|Minimap")
+	FOnNavDestinationChosen OnDestinationChosen;
+
+	/**
+	 * 턴바이턴 안내가 갱신될 때(측위 중, Follow 모드만). BP 가 WBP_NavStatus 배너로 잇는다.
+	 * bArrived 로 도착 화면도 여기서 가른다(5-D).
+	 */
+	UPROPERTY(BlueprintAssignable, Category = "Nav|Minimap")
+	FOnNavGuidanceUpdated OnGuidanceUpdated;
+
+	/** 전체 지도 위젯 클래스(WBP_NavMinimapFull). Follow 인스턴스의 WBP 기본값으로 지정. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Nav|Minimap")
+	TSubclassOf<UNavFullMapWidget> FullMapWidgetClass;
 
 	/** 웨이포인트만 따로 넣고 싶을 때. SetRoute 가 내부적으로 이걸 부른다. */
 	UFUNCTION(BlueprintCallable, Category = "Nav|Minimap")
@@ -174,6 +258,47 @@ public:
 		meta = (ClampMin = "2.0"))
 	float CurrentPoseRadiusPx = 7.f;
 
+	// ------------------------------------------------------------------ 전체 지도(Full) 스타일
+	//
+	// Full 모드에서만 쓰인다. 벽·구조물·전체 노드·전체 엣지의 색/굵기.
+
+	/** 벽(외곽선) 색. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Nav|Minimap|Full")
+	FLinearColor WallColor = FLinearColor(0.20f, 0.20f, 0.22f, 1.f);
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Nav|Minimap|Full",
+		meta = (ClampMin = "0.5"))
+	float WallThicknessPx = 2.5f;
+
+	/** 내부 구조물(채운 사각형) 색. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Nav|Minimap|Full")
+	FLinearColor ObstacleColor = FLinearColor(0.20f, 0.20f, 0.22f, 0.35f);
+
+	/** 전체 엣지(옅은 회색) 색. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Nav|Minimap|Full")
+	FLinearColor GraphEdgeColor = FLinearColor(0.62f, 0.62f, 0.66f, 1.f);
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Nav|Minimap|Full",
+		meta = (ClampMin = "0.5"))
+	float GraphEdgeThicknessPx = 1.5f;
+
+	/** 전체 노드(작은 링) 색. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Nav|Minimap|Full")
+	FLinearColor GraphNodeColor = FLinearColor(0.45f, 0.45f, 0.5f, 1.f);
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Nav|Minimap|Full",
+		meta = (ClampMin = "2.0"))
+	float GraphNodeRadiusPx = 6.f;
+
+	/** 목적지로 지정된 노드를 채워 구분하는 색. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Nav|Minimap|Full")
+	FLinearColor DestinationNodeColor = FLinearColor(0.96f, 0.26f, 0.21f, 1.f);
+
+	/** Full 모드에서 노드 터치 판정 반경(px). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Nav|Minimap|Full",
+		meta = (ClampMin = "6.0"))
+	float NodeHitRadiusPx = 28.f;
+
 	// ------------------------------------------------------------------ 여백
 
 	/** 미니맵 테두리 안쪽 여백(px). 노드 링이 잘리지 않을 만큼은 줘야 한다. */
@@ -212,19 +337,92 @@ protected:
 	TObjectPtr<UWidget> EmptyHint;
 
 private:
-	/** 경로(맵 cm). Z 는 버린다. */
+	/** 서버가 준 정적 경로(맵 cm). Z 는 버린다. */
 	TArray<FVector2D> RouteXY;
+
+	/** 전체 지도 데이터(Full 모드 그리기 + 노드 터치 판정). */
+	FNavGraph Graph;
+
+	/** 목적지로 강조할 노드 id(빈 문자열이면 없음). */
+	FString DestinationNodeId;
+
+	/** 동적 경로선·진행률 계산기. NativeConstruct 에서 생성. */
+	UPROPERTY(Transient)
+	TObjectPtr<UNavRouteProgress> RouteProgress;
 
 	FVector2D CurrentXY = FVector2D::ZeroVector;
 	float CurrentHeadingDeg = 0.f;
 	bool bHasCurrent = false;
 	bool bCurrentHasHeading = false;
 
+	/** 직전 프레임 이탈 상태(전환 시에만 로그). */
+	bool bWasOffRoute = false;
+
+	// --------------------------------------------------------------- 자동 reroute(5-B3, Follow 전용)
+	//
+	// 3중 게이트: ①이탈이 RerouteOffRouteHoldSeconds 이상 지속 ②직전 요청 후
+	// RerouteCooldownSeconds 지남 ③측위 품질이 저하 상태가 아님(가짜 이탈 방어).
+	// 임계값은 GetRouteProgress() 의 Config 에서 읽는다(spec §3.3).
+
+	/** 이탈이 시작된 월드 시각(초). 아직 이탈 아님이면 음수. */
+	float OffRouteSinceSeconds = -1.f;
+	/** 마지막으로 reroute 를 요청한 월드 시각(초). 아직 없으면 큰 음수. */
+	float LastRerouteSeconds = -1000.f;
+
+	/** 3중 게이트를 평가하고, 다 통과하면 NavClient.Reroute 를 부른다(Follow 모드만). */
+	void EvaluateAutoReroute(const FNavProgress& P);
+
+	// 마지막으로 그린 맵→로컬 변환(노드 터치 판정용). NativePaint(const)가 채운다.
+	//   Local.X = ScreenOrigin.X + (W.X - WorldOrigin.X) * Scale
+	//   Local.Y = ScreenOrigin.Y - (W.Y - WorldOrigin.Y) * Scale   (y 뒤집음)
+	mutable FVector2D CachedWorldOrigin = FVector2D::ZeroVector;
+	mutable FVector2D CachedScreenOrigin = FVector2D::ZeroVector;
+	mutable float CachedScale = 1.f;
+	mutable bool bHasCachedTransform = false;
+
+	/** 이번 프레임 위젯 로컬 크기(px). Follow 뷰 컬링·셰브론 창 판정에 쓴다. */
+	mutable FVector2D CachedLocalSize = FVector2D::ZeroVector;
+
+	/**
+	 * 로컬 점이 위젯 영역(여백 Margin 포함) 안에 있나. Follow 창 밖 요소를 솎아낸다.
+	 * Full 모드는 fit-to-bounds 라 전부 안에 들어오므로 사실상 통과한다.
+	 */
+	bool IsLocalInView(const FVector2D& P, float Margin) const;
+	/** 두 로컬 점을 잇는 선분이 위젯 영역과 겹치나(둘 중 하나라도 보이면 그린다). */
+	bool IsSegmentInView(const FVector2D& A, const FVector2D& B, float Margin) const;
+
+	/** 열려 있는 전체 지도의 MapView(Full). 없으면 nullptr. Follow 가 상태를 흘려보낼 대상. */
+	UNavMinimapWidget* GetOpenFullMapView() const;
+
+	/** 전체 지도가 목적지를 방송하면 받아 재방송(+목적지 노드 강조). 바인드 대상. */
+	UFUNCTION()
+	void HandleDestinationChosen(const FString& NodeId);
+
+	/** 현재 떠 있는 전체 지도(중복 오픈 방지). */
+	UPROPERTY(Transient)
+	TWeakObjectPtr<UNavFullMapWidget> FullMapInstance;
+
 	/** EmptyHint 를 경로 유무에 맞춘다. */
 	void RefreshEmptyHint();
 
 	/** 디자이너 미리보기용 ㄱ자 경로(맵 cm). */
 	static void BuildPreviewRoute(TArray<FVector2D>& Out);
+
+	/** 그릴 경로 폴리라인(맵 cm)을 고른다: 측위 중이면 동적 선, 아니면 정적/미리보기. */
+	const TArray<FVector2D>& ResolveRoutePts(TArray<FVector2D>& DynamicScratch,
+		TArray<FVector2D>& PreviewScratch) const;
+
+	/** 캐시된 변환으로 맵 cm → 로컬 px. */
+	FVector2D WorldToLocal(const FVector2D& W) const;
+
+	/** 전체 지도(벽·구조물·전체 엣지·전체 노드)를 그린다. Full 모드에서만. */
+	void PaintFullMapBase(FSlateWindowElementList& Out, int32& Layer,
+		const FPaintGeometry& Geom) const;
+
+	/** 채운 사각형(구조물)을 수평선 채움으로 그린다. */
+	void PaintFilledRect(FSlateWindowElementList& Out, int32 Layer,
+		const FPaintGeometry& Geom, const FVector2D& LocalA, const FVector2D& LocalB,
+		const FLinearColor& Color) const;
 
 	// --------------------------------------------------------------- 그리기 조각
 	//

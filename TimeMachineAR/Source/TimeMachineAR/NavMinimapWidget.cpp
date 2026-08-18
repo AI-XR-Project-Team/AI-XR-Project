@@ -2,6 +2,12 @@
 
 #include "Components/Widget.h"
 #include "Rendering/DrawElements.h"
+#include "Engine/GameInstance.h"
+#include "Engine/World.h"
+#include "NavRouteProgress.h"
+#include "NavFullMapWidget.h"
+#include "NavLocalizer.h"   // 측위 품질(reroute 게이트)·현재 pose
+#include "NavClient.h"      // LogNav, Reroute
 
 namespace
 {
@@ -17,6 +23,9 @@ namespace
 void UNavMinimapWidget::SetRoute(const FNavRoute& InRoute)
 {
 	SetWaypoints(InRoute.Waypoints);
+	// 턴바이턴 안내(5-D)를 위해 서버 steps 도 진행률 계산기에 실어 준다.
+	// SetWaypoints 가 이미 SetRoutePoints 로 누적표를 세운 뒤라 구간표가 바르게 잡힌다.
+	GetRouteProgress()->SetSteps(InRoute.Steps);
 }
 
 void UNavMinimapWidget::SetWaypoints(const TArray<FNavWaypoint>& InWaypoints)
@@ -26,15 +35,95 @@ void UNavMinimapWidget::SetWaypoints(const TArray<FNavWaypoint>& InWaypoints)
 	{
 		RouteXY.Emplace(Wp.PosXCm, Wp.PosYCm);
 	}
+	// 동적 경로선·진행률 계산기에도 같은 폴리라인을 실어 준다.
+	GetRouteProgress()->SetRoutePoints(RouteXY);
+	bWasOffRoute = false;
+	OffRouteSinceSeconds = -1.f;   // 새 경로 → 이탈 타이머 리셋.
 	RefreshEmptyHint();
+	if (UNavMinimapWidget* Full = GetOpenFullMapView()) { Full->SetWaypoints(InWaypoints); }
+	Invalidate(EInvalidateWidgetReason::Paint);
+}
+
+void UNavMinimapWidget::SetGraph(const FNavGraph& InGraph)
+{
+	Graph = InGraph;
+	if (UNavMinimapWidget* Full = GetOpenFullMapView()) { Full->SetGraph(InGraph); }
+	Invalidate(EInvalidateWidgetReason::Paint);
+}
+
+void UNavMinimapWidget::SetDestinationNode(const FString& NodeId)
+{
+	DestinationNodeId = NodeId;
+	if (UNavMinimapWidget* Full = GetOpenFullMapView()) { Full->SetDestinationNode(NodeId); }
 	Invalidate(EInvalidateWidgetReason::Paint);
 }
 
 void UNavMinimapWidget::ClearRoute()
 {
 	RouteXY.Reset();
+	GetRouteProgress()->Reset();
+	bWasOffRoute = false;
+	OffRouteSinceSeconds = -1.f;
 	RefreshEmptyHint();
+	if (UNavMinimapWidget* Full = GetOpenFullMapView()) { Full->ClearRoute(); }
 	Invalidate(EInvalidateWidgetReason::Paint);
+}
+
+void UNavMinimapWidget::SetRouteXY(const TArray<FVector2D>& InRouteXY)
+{
+	RouteXY = InRouteXY;
+	GetRouteProgress()->SetRoutePoints(RouteXY);
+	bWasOffRoute = false;
+	OffRouteSinceSeconds = -1.f;
+	RefreshEmptyHint();
+	if (UNavMinimapWidget* Full = GetOpenFullMapView()) { Full->SetRouteXY(InRouteXY); }
+	Invalidate(EInvalidateWidgetReason::Paint);
+}
+
+UNavRouteProgress* UNavMinimapWidget::GetRouteProgress()
+{
+	if (RouteProgress == nullptr)
+	{
+		RouteProgress = NewObject<UNavRouteProgress>(this);
+	}
+	return RouteProgress;
+}
+
+void UNavMinimapWidget::OpenFullMap()
+{
+	if (FullMapWidgetClass == nullptr)
+	{
+		UE_LOG(LogNav, Warning,
+			TEXT("[minimap] OpenFullMap: FullMapWidgetClass 가 비어 있습니다. WBP_NavMinimap 의 ")
+			TEXT("FullMapWidgetClass 를 WBP_NavMinimapFull 로 지정하세요."));
+		return;
+	}
+	// 이미 화면에 떠 있으면 중복 오픈 방지. 단 RemoveFromParent 로 닫힌 위젯은
+	// UObject 가 바로 파괴되지 않아 IsValid 만으론 "닫힘"을 구분 못 한다(닫아도 계속
+	// valid → 재오픈이 막힘). 그래서 IsInViewport 로 실제 표시 여부를 본다.
+	if (FullMapInstance.IsValid() && FullMapInstance->IsInViewport())
+	{
+		return;   // 이미 떠 있다.
+	}
+
+	UNavFullMapWidget* W = CreateWidget<UNavFullMapWidget>(GetWorld(), FullMapWidgetClass);
+	if (W == nullptr)
+	{
+		return;
+	}
+
+	W->ApplyState(Graph, RouteXY, bHasCurrent && !IsDesignTime(),
+		CurrentXY, CurrentHeadingDeg, bCurrentHasHeading, DestinationNodeId);
+	W->OnDestinationChosen.AddDynamic(this, &UNavMinimapWidget::HandleDestinationChosen);
+	W->AddToViewport(100);
+	FullMapInstance = W;
+}
+
+void UNavMinimapWidget::HandleDestinationChosen(const FString& NodeId)
+{
+	DestinationNodeId = NodeId;
+	Invalidate(EInvalidateWidgetReason::Paint);
+	OnDestinationChosen.Broadcast(NodeId);   // BP → NavClient.RequestRoute
 }
 
 void UNavMinimapWidget::SetCurrentPose(float PosXCm, float PosYCm, float HeadingDeg, bool bHasHeading)
@@ -43,19 +132,211 @@ void UNavMinimapWidget::SetCurrentPose(float PosXCm, float PosYCm, float Heading
 	CurrentHeadingDeg = HeadingDeg;
 	bCurrentHasHeading = bHasHeading;
 	bHasCurrent = true;
+
+	// 동적 경로선·이탈 판정·자동 reroute·안내 배너.
+	UNavRouteProgress* Progress = GetRouteProgress();
+	if (Progress->HasRoute())
+	{
+		const FNavProgress P = Progress->UpdatePose(CurrentXY);
+
+		// 판정 로직은 작은 미니맵(Follow)만 돌린다. 아래에서 열린 전체 지도(Full)로
+		// 같은 pose 를 흘려보내므로, Full 인스턴스가 이탈/reroute/배너를 두 번 돌리면
+		// 안 된다 — 모드로 가른다.
+		if (Mode == ENavMinimapMode::Follow)
+		{
+			if (P.bOffRoute && !bWasOffRoute)
+			{
+				UE_LOG(LogNav, Warning,
+					TEXT("[minimap] 경로 이탈 감지 (lateral=%.0fcm > %.0fcm)."),
+					P.LateralOffsetCm, Progress->OffRouteThresholdCm);
+			}
+			bWasOffRoute = P.bOffRoute;
+
+			EvaluateAutoReroute(P);                            // 5-B3
+			OnGuidanceUpdated.Broadcast(Progress->GetGuidance());  // 5-D
+		}
+	}
+
+	// 열린 전체 지도에도 같은 pose 를 흘려보낸다 — 여는 순간의 스냅샷이 아니라
+	// 실시간으로 파란 점이 따라 움직인다(5-C1).
+	if (UNavMinimapWidget* Full = GetOpenFullMapView())
+	{
+		Full->SetCurrentPose(PosXCm, PosYCm, HeadingDeg, bHasHeading);
+	}
+
 	Invalidate(EInvalidateWidgetReason::Paint);
 }
 
 void UNavMinimapWidget::ClearCurrentPose()
 {
 	bHasCurrent = false;
+	OffRouteSinceSeconds = -1.f;
+	if (UNavMinimapWidget* Full = GetOpenFullMapView()) { Full->ClearCurrentPose(); }
 	Invalidate(EInvalidateWidgetReason::Paint);
+}
+
+UNavMinimapWidget* UNavMinimapWidget::GetOpenFullMapView() const
+{
+	if (FullMapInstance.IsValid() && FullMapInstance->IsInViewport())
+	{
+		return FullMapInstance->GetMapView();
+	}
+	return nullptr;
+}
+
+void UNavMinimapWidget::EvaluateAutoReroute(const FNavProgress& P)
+{
+	// 3중 게이트(spec §3.3). 하나라도 막히면 요청하지 않는다.
+	UWorld* World = GetWorld();
+	if (World == nullptr || DestinationNodeId.IsEmpty())
+	{
+		return;
+	}
+
+	// ① 이탈이 아니면 타이머를 접고 끝. 이탈이면 시작 시각을 기록.
+	if (!P.bOffRoute)
+	{
+		OffRouteSinceSeconds = -1.f;
+		return;
+	}
+	const float Now = World->GetTimeSeconds();
+	if (OffRouteSinceSeconds < 0.f)
+	{
+		OffRouteSinceSeconds = Now;
+	}
+
+	UNavRouteProgress* Progress = GetRouteProgress();
+
+	// ① 지속 시간: 한 프레임 튐으로 서버를 때리지 않는다.
+	if (Now - OffRouteSinceSeconds < Progress->RerouteOffRouteHoldSeconds)
+	{
+		return;
+	}
+	// ② 쿨다운: 이탈이 계속돼도 무한 재요청이 되지 않게.
+	if (Now - LastRerouteSeconds < Progress->RerouteCooldownSeconds)
+	{
+		return;
+	}
+
+	// ③ 측위 품질: 흔들려서 생긴 가짜 이탈에 경로를 갈아엎으면 더 나빠진다.
+	UNavLocalizer* Localizer = UNavLocalizer::GetNavLocalizer(this);
+	if (Localizer != nullptr && Localizer->IsTrackingDegraded())
+	{
+		return;   // 품질이 회복될 때까지 미룬다.
+	}
+
+	// 게이트 통과 — 현재 위치에서 목적지로 다시 길을 찾는다. 새 경로는 OnRouteReceived
+	// → (BP) → SetRoute 로 돌아와 폴리라인을 교체한다.
+	UNavClient* Client = nullptr;
+	if (UGameInstance* GI = World->GetGameInstance())
+	{
+		Client = GI->GetSubsystem<UNavClient>();
+	}
+	if (Client == nullptr)
+	{
+		return;
+	}
+
+	// from 은 노드가 아니라 임의 맵 좌표를 그대로 보낸다(navigation.py 가 엣지 투영으로 스냅).
+	FNavMapPose From = (Localizer != nullptr) ? Localizer->GetCurrentMapPose() : FNavMapPose();
+	if (Localizer == nullptr)
+	{
+		From.PosXCm = CurrentXY.X;
+		From.PosYCm = CurrentXY.Y;
+		From.HeadingDeg = CurrentHeadingDeg;
+		From.bHasHeading = bCurrentHasHeading;
+	}
+
+	LastRerouteSeconds = Now;
+	UE_LOG(LogNav, Log,
+		TEXT("[minimap] 자동 reroute (이탈 %.1f초 지속, lateral=%.0fcm). to=%s"),
+		Now - OffRouteSinceSeconds, P.LateralOffsetCm, *DestinationNodeId);
+	Client->Reroute(FString(), From, DestinationNodeId);
 }
 
 void UNavMinimapWidget::NativeConstruct()
 {
 	Super::NativeConstruct();
+	GetRouteProgress();   // 미리 만들어 둔다.
+	// 경로 띠·셰브론이 위젯 밖으로 삐져나가지 않게 클립한다(5-C3). Follow 8m 창에서
+	// 특히 필요하고, Full 은 fit-to-bounds 라 사실상 영향이 없다.
+	SetClipping(EWidgetClipping::ClipToBounds);
 	RefreshEmptyHint();
+}
+
+// ---------------------------------------------------------------------- 좌표/조회
+
+FVector2D UNavMinimapWidget::WorldToLocal(const FVector2D& W) const
+{
+	return FVector2D(
+		CachedScreenOrigin.X + (W.X - CachedWorldOrigin.X) * CachedScale,
+		CachedScreenOrigin.Y - (W.Y - CachedWorldOrigin.Y) * CachedScale);
+}
+
+bool UNavMinimapWidget::IsLocalInView(const FVector2D& P, float Margin) const
+{
+	return P.X >= -Margin && P.X <= CachedLocalSize.X + Margin
+		&& P.Y >= -Margin && P.Y <= CachedLocalSize.Y + Margin;
+}
+
+bool UNavMinimapWidget::IsSegmentInView(const FVector2D& A, const FVector2D& B, float Margin) const
+{
+	// 값싼 보수적 판정: 선분의 로컬 AABB 가 위젯 사각형과 겹치나. 겹치면 그린다
+	// (일부 대각선 오검출이 있어도 클리핑이 최종적으로 잘라 준다).
+	const float MinX = FMath::Min(A.X, B.X) - Margin;
+	const float MaxX = FMath::Max(A.X, B.X) + Margin;
+	const float MinY = FMath::Min(A.Y, B.Y) - Margin;
+	const float MaxY = FMath::Max(A.Y, B.Y) + Margin;
+	return MaxX >= 0.f && MinX <= CachedLocalSize.X
+		&& MaxY >= 0.f && MinY <= CachedLocalSize.Y;
+}
+
+bool UNavMinimapWidget::FindNodeAtLocal(const FVector2D& LocalPos, float RadiusPx,
+	FString& OutNodeId) const
+{
+	if (!bHasCachedTransform || Graph.Nodes.Num() == 0)
+	{
+		return false;
+	}
+	const float R2 = RadiusPx * RadiusPx;
+	float BestD2 = R2;
+	bool bFound = false;
+	for (const FNavMapNode& Node : Graph.Nodes)
+	{
+		const FVector2D L = WorldToLocal(FVector2D(Node.PosXCm, Node.PosYCm));
+		const float D2 = static_cast<float>((L - LocalPos).SizeSquared());
+		if (D2 <= BestD2)
+		{
+			BestD2 = D2;
+			OutNodeId = Node.NodeId;
+			bFound = true;
+		}
+	}
+	return bFound;
+}
+
+const TArray<FVector2D>& UNavMinimapWidget::ResolveRoutePts(
+	TArray<FVector2D>& DynamicScratch, TArray<FVector2D>& PreviewScratch) const
+{
+	// 측위 중이면 동적 경로선([평활된 내 위치] + 남은 노드).
+	if (bHasCurrent && !IsDesignTime() && RouteProgress != nullptr && RouteProgress->HasRoute())
+	{
+		RouteProgress->GetDrawPolyline(DynamicScratch);
+		if (DynamicScratch.Num() > 0)
+		{
+			return DynamicScratch;
+		}
+	}
+	if (RouteXY.Num() > 0)
+	{
+		return RouteXY;
+	}
+	if (IsDesignTime() && bPreviewInDesigner)
+	{
+		BuildPreviewRoute(PreviewScratch);
+		return PreviewScratch;
+	}
+	return RouteXY;   // 비어 있음
 }
 
 void UNavMinimapWidget::RefreshEmptyHint()
@@ -85,21 +366,18 @@ int32 UNavMinimapWidget::NativePaint(const FPaintArgs& Args, const FGeometry& Al
 	int32 Layer = Super::NativePaint(Args, AllottedGeometry, MyCullingRect, OutDrawElements,
 		LayerId, InWidgetStyle, bParentEnabled);
 
-	// 그릴 경로를 고른다. 디자이너에서는 데이터가 없으므로 샘플을 쓴다.
-	TArray<FVector2D> PreviewPts;
-	const TArray<FVector2D>* WorldPtsPtr = &RouteXY;
-	if (RouteXY.Num() == 0)
-	{
-		if (!IsDesignTime() || !bPreviewInDesigner)
-		{
-			return Layer;   // 실행 중에 경로가 없으면 EmptyHint 가 대신 보인다.
-		}
-		BuildPreviewRoute(PreviewPts);
-		WorldPtsPtr = &PreviewPts;
-	}
-	const TArray<FVector2D>& WorldPts = *WorldPtsPtr;
+	bHasCachedTransform = false;   // 이번 프레임 변환을 새로 잡는다.
+
+	const bool bFull = (Mode == ENavMinimapMode::Full);
+	const bool bDrawCurrent = bHasCurrent && !IsDesignTime();
+
+	// 그릴 경로 폴리라인(맵 cm): 측위 중이면 동적 선, 아니면 정적/미리보기.
+	TArray<FVector2D> DynamicScratch, PreviewScratch;
+	const TArray<FVector2D>& WorldPts = ResolveRoutePts(DynamicScratch, PreviewScratch);
+	const bool bHaveRoute = WorldPts.Num() > 0;
 
 	const FVector2D Size = AllottedGeometry.GetLocalSize();
+	CachedLocalSize = Size;   // Follow 뷰 컬링·셰브론 창 판정에 쓴다.
 	const float DrawW = Size.X - 2.f * PaddingPx;
 	const float DrawH = Size.Y - 2.f * PaddingPx;
 	if (DrawW <= 0.f || DrawH <= 0.f)
@@ -107,46 +385,83 @@ int32 UNavMinimapWidget::NativePaint(const FPaintArgs& Args, const FGeometry& Al
 		return Layer;   // 위젯이 여백보다 작다. 그릴 자리가 없다.
 	}
 
-	// 경로(와 현재 위치)를 모두 담는 맵 경계.
-	FVector2D Min = WorldPts[0];
-	FVector2D Max = WorldPts[0];
-	for (const FVector2D& P : WorldPts)
+	// -------- 모드별 맵→로컬 변환 결정 --------
+	if (bFull)
 	{
-		Min.X = FMath::Min(Min.X, P.X); Max.X = FMath::Max(Max.X, P.X);
-		Min.Y = FMath::Min(Min.Y, P.Y); Max.Y = FMath::Max(Max.Y, P.Y);
+		// 전체 지도: 그래프(벽·구조물·노드)와 경로·현재위치를 모두 담아 맞춘다.
+		bool bAny = false;
+		FVector2D Min(0, 0), Max(0, 0);
+		auto Grow = [&](const FVector2D& P)
+		{
+			if (!bAny) { Min = Max = P; bAny = true; }
+			else { Min.X = FMath::Min(Min.X, P.X); Max.X = FMath::Max(Max.X, P.X);
+			       Min.Y = FMath::Min(Min.Y, P.Y); Max.Y = FMath::Max(Max.Y, P.Y); }
+		};
+		for (const FVector2D& V : Graph.Outline) { Grow(V); }
+		for (const FNavMapNode& N : Graph.Nodes) { Grow(FVector2D(N.PosXCm, N.PosYCm)); }
+		for (const FNavObstacle& O : Graph.Obstacles)
+		{
+			Grow(FVector2D(O.X0, O.Y0)); Grow(FVector2D(O.X1, O.Y1));
+		}
+		for (const FVector2D& P : WorldPts) { Grow(P); }
+		if (bDrawCurrent) { Grow(CurrentXY); }
+		if (!bAny)
+		{
+			return Layer;   // 그릴 것이 아무것도 없다.
+		}
+		Min -= FVector2D(WorldPaddingCm, WorldPaddingCm);
+		Max += FVector2D(WorldPaddingCm, WorldPaddingCm);
+
+		const float RangeX = FMath::Max(Max.X - Min.X, MinRangeCm);
+		const float RangeY = FMath::Max(Max.Y - Min.Y, MinRangeCm);
+		CachedScale = FMath::Min(DrawW / RangeX, DrawH / RangeY);
+		const float OffX = PaddingPx + (DrawW - RangeX * CachedScale) * 0.5f;
+		const float OffY = PaddingPx + (DrawH - RangeY * CachedScale) * 0.5f;
+		CachedWorldOrigin = Min;
+		CachedScreenOrigin = FVector2D(OffX, Size.Y - OffY);
 	}
-	const bool bDrawCurrent = bHasCurrent && !IsDesignTime();
-	if (bDrawCurrent)
+	else
 	{
-		Min.X = FMath::Min(Min.X, CurrentXY.X); Max.X = FMath::Max(Max.X, CurrentXY.X);
-		Min.Y = FMath::Min(Min.Y, CurrentXY.Y); Max.Y = FMath::Max(Max.Y, CurrentXY.Y);
+		// Follow: 고정 배율, 내 위치(없으면 경로 시작점)를 화면 중앙에 둔다. north-up.
+		CachedScale = DrawW / FMath::Max(FollowWindowCm, MinRangeCm);
+		FVector2D CenterW = FVector2D::ZeroVector;
+		if (bDrawCurrent)          { CenterW = CurrentXY; }
+		else if (bHaveRoute)       { CenterW = WorldPts[0]; }
+		else                       { return Layer; }   // 중심 잡을 근거가 없다.
+		CachedWorldOrigin = CenterW;
+		CachedScreenOrigin = FVector2D(Size.X * 0.5f, Size.Y * 0.5f);
 	}
-	Min -= FVector2D(WorldPaddingCm, WorldPaddingCm);
-	Max += FVector2D(WorldPaddingCm, WorldPaddingCm);
+	bHasCachedTransform = true;
 
-	const float RangeX = FMath::Max(Max.X - Min.X, MinRangeCm);
-	const float RangeY = FMath::Max(Max.Y - Min.Y, MinRangeCm);
-	const float Scale = FMath::Min(DrawW / RangeX, DrawH / RangeY);
+	const FPaintGeometry Geom = AllottedGeometry.ToPaintGeometry();
 
-	// 남는 쪽은 가운데로 민다. 세로로 긴 경로가 왼쪽에 붙어 버리는 것 방지.
-	const float OffX = PaddingPx + (DrawW - RangeX * Scale) * 0.5f;
-	const float OffY = PaddingPx + (DrawH - RangeY * Scale) * 0.5f;
-
-	// 맵(cm) → 위젯 로컬(px). y 를 뒤집어 맵 +Y 가 화면 위로 간다.
-	auto ToLocal = [&](const FVector2D& W)
+	// -------- 벽·구조물·전체 엣지·전체 노드를 먼저 깐다 --------
+	// 5-C2: Follow 에도 도면을 깐다("여기가 어디인지" 알 수 있게). 8m 창 밖 요소는
+	// PaintFullMapBase 안에서 뷰 컬링으로 솎아내고, 남은 것은 클리핑이 잘라 준다.
+	if (Graph.Nodes.Num() > 0)
 	{
-		return FVector2D(OffX + (W.X - Min.X) * Scale,
-		                 Size.Y - OffY - (W.Y - Min.Y) * Scale);
-	};
+		PaintFullMapBase(OutDrawElements, Layer, Geom);
+	}
+
+	if (!bHaveRoute)
+	{
+		// 경로가 없어도 Full 모드면 전체 지도는 이미 그렸다. 현재 위치만 마저 찍는다.
+		if (bDrawCurrent)
+		{
+			++Layer;
+			const FVector2D COnly = WorldToLocal(CurrentXY);
+			PaintRing(OutDrawElements, Layer, Geom, COnly,
+				CurrentPoseRadiusPx * 0.5f, CurrentPoseRadiusPx, CurrentPoseColor);
+		}
+		return Layer;
+	}
 
 	TArray<FVector2D> LocalPts;
 	LocalPts.Reserve(WorldPts.Num());
 	for (const FVector2D& W : WorldPts)
 	{
-		LocalPts.Add(ToLocal(W));
+		LocalPts.Add(WorldToLocal(W));
 	}
-
-	const FPaintGeometry Geom = AllottedGeometry.ToPaintGeometry();
 
 	// 띠 → 셰브론 → 노드 링 순서. 뒤에 그리는 것이 위에 얹힌다. 링을 마지막에
 	// 그려야 두 띠가 꺾이며 어긋난 이음매를 링이 덮어 준다.
@@ -157,7 +472,7 @@ int32 UNavMinimapWidget::NativePaint(const FPaintArgs& Args, const FGeometry& Al
 	}
 
 	++Layer;
-	PaintChevrons(OutDrawElements, Layer, Geom, LocalPts, WorldPts, Scale);
+	PaintChevrons(OutDrawElements, Layer, Geom, LocalPts, WorldPts, CachedScale);
 
 	++Layer;
 	const int32 Last = LocalPts.Num() - 1;
@@ -177,7 +492,7 @@ int32 UNavMinimapWidget::NativePaint(const FPaintArgs& Args, const FGeometry& Al
 	if (bDrawCurrent)
 	{
 		++Layer;
-		const FVector2D C = ToLocal(CurrentXY);
+		const FVector2D C = WorldToLocal(CurrentXY);
 
 		// 채운 원 대신 반지름만큼 두꺼운 링을 그린다. Slate 에는 채운 원
 		// 프리미티브가 없고, 삼각형 팬을 직접 만드는 것보다 이쪽이 짧다.
@@ -279,6 +594,14 @@ void UNavMinimapWidget::PaintChevrons(FSlateWindowElementList& Out, int32 Layer,
 			const float T = (NextAtCm - TravelledCm) / SegCm;
 			const FVector2D P = LA + LDelta * T;
 
+			// 5-C3: 클리핑만으론 경계에 반쯤 걸린 화살표가 잘려 보인다. 중심이 창 안에
+			// 완전히(길이 여유만큼) 들어오는 것만 그린다. Follow 8m 창에서만 의미가 있다.
+			if (Mode == ENavMinimapMode::Follow && !IsLocalInView(P, -ArrowLengthPx))
+			{
+				NextAtCm += SpacingCm;
+				continue;
+			}
+
 			TArray<FVector2D> Chevron;
 			Chevron.Add(P - Dir * (ArrowLengthPx * 0.5f) + Normal * HalfSpan);
 			Chevron.Add(P + Dir * (ArrowLengthPx * 0.5f));
@@ -307,4 +630,120 @@ void UNavMinimapWidget::PaintRing(FSlateWindowElementList& Out, int32 Layer,
 	}
 	FSlateDrawElement::MakeLines(Out, Layer, Geom, Poly,
 		ESlateDrawEffect::None, Color, true, Thickness);
+}
+
+void UNavMinimapWidget::PaintFilledRect(FSlateWindowElementList& Out, int32 Layer,
+	const FPaintGeometry& Geom, const FVector2D& LocalA, const FVector2D& LocalB,
+	const FLinearColor& Color) const
+{
+	const float MinX = FMath::Min(LocalA.X, LocalB.X);
+	const float MaxX = FMath::Max(LocalA.X, LocalB.X);
+	const float MinY = FMath::Min(LocalA.Y, LocalB.Y);
+	const float MaxY = FMath::Max(LocalA.Y, LocalB.Y);
+	if (MaxX - MinX < 1.f || MaxY - MinY < 1.f)
+	{
+		return;
+	}
+	// Slate 에 채움 프리미티브(브러시 없이)가 없어 수평선으로 메운다. 구조물은
+	// 작고 개수가 적어 비용은 무시할 수 있다.
+	for (float Y = MinY; Y <= MaxY; Y += 2.f)
+	{
+		TArray<FVector2D> Line;
+		Line.Add(FVector2D(MinX, Y));
+		Line.Add(FVector2D(MaxX, Y));
+		FSlateDrawElement::MakeLines(Out, Layer, Geom, Line,
+			ESlateDrawEffect::None, Color, false, 2.f);
+	}
+}
+
+void UNavMinimapWidget::PaintFullMapBase(FSlateWindowElementList& Out, int32& Layer,
+	const FPaintGeometry& Geom) const
+{
+	// Follow(8m 창)에서는 대부분이 화면 밖이다. 벽·엣지·노드를 좌표만 투영해 두고
+	// 위젯 사각형과 겹치는 것만 그린다(뷰 컬링). Full 은 fit-to-bounds 라 전부 겹치므로
+	// 컬링을 꺼도 결과가 같다 — 불필요한 판정을 아끼려 Follow 에서만 켠다.
+	const bool bCull = (Mode == ENavMinimapMode::Follow);
+	const float CullMargin = FMath::Max(WallThicknessPx, GraphNodeRadiusPx) + ArrowLengthPx;
+
+	// 1) 내부 구조물(채운 사각형) — 맨 아래.
+	++Layer;
+	for (const FNavObstacle& O : Graph.Obstacles)
+	{
+		const FVector2D A = WorldToLocal(FVector2D(O.X0, O.Y0));
+		const FVector2D B = WorldToLocal(FVector2D(O.X1, O.Y1));
+		if (bCull && !IsSegmentInView(A, B, CullMargin)) { continue; }
+		PaintFilledRect(Out, Layer, Geom, A, B, ObstacleColor);
+	}
+
+	// 2) 벽(외곽선). Full 은 폐곡선 한 번에 긋고, Follow 는 컬링을 위해 변마다 나눠 긋는다.
+	if (Graph.Outline.Num() >= 2)
+	{
+		++Layer;
+		if (bCull)
+		{
+			const int32 N = Graph.Outline.Num();
+			for (int32 i = 0; i < N; ++i)
+			{
+				const FVector2D A = WorldToLocal(Graph.Outline[i]);
+				const FVector2D B = WorldToLocal(Graph.Outline[(i + 1) % N]);   // 마지막→처음(닫음)
+				if (!IsSegmentInView(A, B, CullMargin)) { continue; }
+				TArray<FVector2D> Seg = { A, B };
+				FSlateDrawElement::MakeLines(Out, Layer, Geom, Seg,
+					ESlateDrawEffect::None, WallColor, true, WallThicknessPx);
+			}
+		}
+		else
+		{
+			TArray<FVector2D> Poly;
+			Poly.Reserve(Graph.Outline.Num() + 1);
+			for (const FVector2D& V : Graph.Outline)
+			{
+				Poly.Add(WorldToLocal(V));
+			}
+			Poly.Add(WorldToLocal(Graph.Outline[0]));   // 닫는다
+			FSlateDrawElement::MakeLines(Out, Layer, Geom, Poly,
+				ESlateDrawEffect::None, WallColor, true, WallThicknessPx);
+		}
+	}
+
+	// 3) 전체 엣지 — 옅은 회색. 노드 id → 좌표를 먼저 인덱싱.
+	TMap<FString, FVector2D> NodeXY;
+	NodeXY.Reserve(Graph.Nodes.Num());
+	for (const FNavMapNode& N : Graph.Nodes)
+	{
+		NodeXY.Add(N.NodeId, FVector2D(N.PosXCm, N.PosYCm));
+	}
+	++Layer;
+	for (const FNavMapEdge& E : Graph.Edges)
+	{
+		const FVector2D* A = NodeXY.Find(E.FromNodeId);
+		const FVector2D* B = NodeXY.Find(E.ToNodeId);
+		if (A != nullptr && B != nullptr)
+		{
+			const FVector2D LA = WorldToLocal(*A);
+			const FVector2D LB = WorldToLocal(*B);
+			if (bCull && !IsSegmentInView(LA, LB, CullMargin)) { continue; }
+			TArray<FVector2D> Seg = { LA, LB };
+			FSlateDrawElement::MakeLines(Out, Layer, Geom, Seg,
+				ESlateDrawEffect::None, GraphEdgeColor, true, GraphEdgeThicknessPx);
+		}
+	}
+
+	// 4) 전체 노드 — 링. 목적지로 지정된 노드는 채워서 구분.
+	++Layer;
+	for (const FNavMapNode& N : Graph.Nodes)
+	{
+		const FVector2D C = WorldToLocal(FVector2D(N.PosXCm, N.PosYCm));
+		if (bCull && !IsLocalInView(C, CullMargin)) { continue; }
+		if (!DestinationNodeId.IsEmpty() && N.NodeId == DestinationNodeId)
+		{
+			// 채운 링(반지름의 절반 위치에 반지름만 한 두께) = 꽉 찬 점.
+			PaintRing(Out, Layer, Geom, C,
+				GraphNodeRadiusPx * 0.5f, GraphNodeRadiusPx, DestinationNodeColor);
+		}
+		else
+		{
+			PaintRing(Out, Layer, Geom, C, GraphNodeRadiusPx, 2.f, GraphNodeColor);
+		}
+	}
 }

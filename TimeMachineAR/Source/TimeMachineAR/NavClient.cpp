@@ -265,6 +265,53 @@ void UNavClient::OnDestinationsComplete(FHttpRequestPtr Request, FHttpResponsePt
 	OnDestinationsReceived.Broadcast(Destinations);
 }
 
+void UNavClient::GetGraph(const FString& MapId)
+{
+	const FString Id = ResolveMapId(MapId);
+	if (Id.IsEmpty())
+	{
+		ReportFailure(-1, TEXT("MapId 가 비어 있습니다(DefaultMapId 도 미설정)."));
+		return;
+	}
+
+	const FString Url = BuildUrl(FString::Printf(TEXT("/maps/%s/graph"), *Id));
+	const TSharedRef<IHttpRequest, ESPMode::ThreadSafe> Request = MakeGet(Url);
+	Request->OnProcessRequestComplete().BindUObject(this, &UNavClient::OnGraphComplete);
+
+	UE_LOG(LogNav, Log, TEXT("[graph] GET %s"), *Url);
+	Request->ProcessRequest();
+}
+
+void UNavClient::OnGraphComplete(FHttpRequestPtr Request, FHttpResponsePtr Response, bool bConnectedSuccessfully)
+{
+	if (!bConnectedSuccessfully || !Response.IsValid())
+	{
+		ReportFailure(-1, FString::Printf(
+			TEXT("그래프 조회 실패 (URL: %s)."), *NavClientPrivate::SafeGetUrl(Request)));
+		return;
+	}
+
+	const int32 Code = Response->GetResponseCode();
+	if (Code != 200)
+	{
+		ReportFailure(Code, FString::Printf(TEXT("그래프 조회 — 서버가 %d 를 반환: %s"),
+			Code, *Response->GetContentAsString().Left(300)));
+		return;
+	}
+
+	FNavGraph Graph;
+	if (!ParseGraph(Response->GetContentAsString(), Graph))
+	{
+		ReportFailure(-2, FString::Printf(TEXT("그래프 응답 파싱 실패: %s"),
+			*Response->GetContentAsString().Left(300)));
+		return;
+	}
+
+	UE_LOG(LogNav, Log, TEXT("[graph] 200 (nodes=%d, edges=%d, outline=%d, obstacles=%d)"),
+		Graph.Nodes.Num(), Graph.Edges.Num(), Graph.Outline.Num(), Graph.Obstacles.Num());
+	OnGraphReceived.Broadcast(Graph);
+}
+
 // -------------------------------------------------------------------- 경로 API
 
 void UNavClient::RequestRoute(const FString& MapId, const FNavMapPose& From,
@@ -436,6 +483,92 @@ bool UNavClient::ParseDestinationsArray(const FString& Content, TArray<FNavDesti
 			}
 		}
 	}
+	return true;
+}
+
+bool UNavClient::ParseGraph(const FString& Content, FNavGraph& Out)
+{
+	TSharedPtr<FJsonObject> Json;
+	const TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(Content);
+	if (!FJsonSerializer::Deserialize(Reader, Json) || !Json.IsValid())
+	{
+		return false;
+	}
+
+	Json->TryGetStringField(TEXT("map_id"), Out.MapId);
+	Json->TryGetStringField(TEXT("coord_system"), Out.CoordSystem);
+
+	const TArray<TSharedPtr<FJsonValue>>* Nodes = nullptr;
+	if (Json->TryGetArrayField(TEXT("nodes"), Nodes))
+	{
+		for (const TSharedPtr<FJsonValue>& Value : *Nodes)
+		{
+			const TSharedPtr<FJsonObject>* Obj = nullptr;
+			if (Value.IsValid() && Value->TryGetObject(Obj))
+			{
+				FNavMapNode Node;
+				(*Obj)->TryGetStringField(TEXT("node_id"), Node.NodeId);
+				Node.PosXCm = NavJsonFloat(*Obj, TEXT("pos_x_cm"));
+				Node.PosYCm = NavJsonFloat(*Obj, TEXT("pos_y_cm"));
+				Node.PosZCm = NavJsonFloat(*Obj, TEXT("pos_z_cm"));
+				(*Obj)->TryGetStringField(TEXT("node_type"), Node.NodeType);
+				(*Obj)->TryGetStringField(TEXT("label"), Node.Label);
+				Out.Nodes.Add(Node);
+			}
+		}
+	}
+
+	const TArray<TSharedPtr<FJsonValue>>* Edges = nullptr;
+	if (Json->TryGetArrayField(TEXT("edges"), Edges))
+	{
+		for (const TSharedPtr<FJsonValue>& Value : *Edges)
+		{
+			const TSharedPtr<FJsonObject>* Obj = nullptr;
+			if (Value.IsValid() && Value->TryGetObject(Obj))
+			{
+				FNavMapEdge Edge;
+				(*Obj)->TryGetStringField(TEXT("from_node_id"), Edge.FromNodeId);
+				(*Obj)->TryGetStringField(TEXT("to_node_id"), Edge.ToNodeId);
+				Edge.DistanceCm = NavJsonFloat(*Obj, TEXT("distance_cm"));
+				(*Obj)->TryGetBoolField(TEXT("bidirectional"), Edge.bBidirectional);
+				(*Obj)->TryGetBoolField(TEXT("accessible"), Edge.bAccessible);
+				Out.Edges.Add(Edge);
+			}
+		}
+	}
+
+	// outline: [[x, y], ...] — 각 원소가 숫자 2개 배열.
+	const TArray<TSharedPtr<FJsonValue>>* Outline = nullptr;
+	if (Json->TryGetArrayField(TEXT("outline"), Outline))
+	{
+		for (const TSharedPtr<FJsonValue>& Value : *Outline)
+		{
+			const TArray<TSharedPtr<FJsonValue>>* Pair = nullptr;
+			if (Value.IsValid() && Value->TryGetArray(Pair) && Pair->Num() >= 2)
+			{
+				Out.Outline.Emplace((*Pair)[0]->AsNumber(), (*Pair)[1]->AsNumber());
+			}
+		}
+	}
+
+	const TArray<TSharedPtr<FJsonValue>>* Obstacles = nullptr;
+	if (Json->TryGetArrayField(TEXT("obstacles"), Obstacles))
+	{
+		for (const TSharedPtr<FJsonValue>& Value : *Obstacles)
+		{
+			const TSharedPtr<FJsonObject>* Obj = nullptr;
+			if (Value.IsValid() && Value->TryGetObject(Obj))
+			{
+				FNavObstacle Ob;
+				Ob.X0 = NavJsonFloat(*Obj, TEXT("x0"));
+				Ob.Y0 = NavJsonFloat(*Obj, TEXT("y0"));
+				Ob.X1 = NavJsonFloat(*Obj, TEXT("x1"));
+				Ob.Y1 = NavJsonFloat(*Obj, TEXT("y1"));
+				Out.Obstacles.Add(Ob);
+			}
+		}
+	}
+
 	return true;
 }
 

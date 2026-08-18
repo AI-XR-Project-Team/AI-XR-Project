@@ -13,6 +13,29 @@
 // LogNav 는 NavClient.h 에서 선언하고 NavClient.cpp 에서 정의한다. 여기서 따로
 // DEFINE_LOG_CATEGORY_STATIC 을 두면 unity 빌드에서 중복 정의로 깨진다.
 
+namespace
+{
+	/** 추적 품질 저하 이유(AR enum) → 사람이 읽는 안내 문구(5-B2 경고 배너용). */
+	FString QualityReasonText(EARTrackingQualityReason Reason)
+	{
+		switch (Reason)
+		{
+		case EARTrackingQualityReason::ExcessiveMotion:
+			return TEXT("너무 빠르게 움직였습니다. QR 을 다시 찍어 주세요");
+		case EARTrackingQualityReason::InsufficientFeatures:
+			return TEXT("주변이 밋밋해 추적이 어렵습니다. QR 을 다시 찍어 주세요");
+		case EARTrackingQualityReason::InsufficientLight:
+			return TEXT("주변이 어둡습니다. 밝은 곳에서 QR 을 다시 찍어 주세요");
+		case EARTrackingQualityReason::Relocalizing:
+			return TEXT("위치를 다시 잡는 중입니다. QR 을 다시 찍어 주세요");
+		case EARTrackingQualityReason::Initializing:
+			return TEXT("추적을 준비 중입니다. 잠시 후 QR 을 다시 찍어 주세요");
+		default:
+			return TEXT("위치가 흔들렸습니다. QR 을 다시 찍어 주세요");
+		}
+	}
+}
+
 UNavLocalizer* UNavLocalizer::GetNavLocalizer(const UObject* WorldContextObject)
 {
 	if (const UWorld* World = GEngine
@@ -63,6 +86,7 @@ void UNavLocalizer::StartLocalizing(const FString& MapId)
 	}
 
 	PendingMapId = MapId;
+	LastMapId = MapId;   // RescanFromUser 가 같은 맵으로 다시 시작할 수 있게.
 	bScanning = true;
 
 	// 마커 목록이 이미 있으면 서버를 다시 부르지 않는다. 층을 옮기지 않는 한
@@ -99,6 +123,18 @@ void UNavLocalizer::ResetLocalization()
 	AnchorMarker = FNavMarker();
 	MapToWorldXf = FTransform::Identity;
 	CurrentPose = FNavMapPose();
+	// 품질 감지 상태도 함께 리셋한다. 재탐색 중에는 경고를 띄우지 않는다.
+	SecondsPoorQuality = 0.f;
+	SecondsGoodQuality = 0.f;
+	bTrackingDegraded = false;
+}
+
+void UNavLocalizer::RescanFromUser()
+{
+	UE_LOG(LogNav, Log, TEXT("[Localizer] 사용자 재스캔 요청. 변환을 버리고 다시 탐색한다."));
+	// ResetLocalization 이 상태를 비우고, StartLocalizing 이 마지막 맵으로 다시 탐색한다
+	// (마커 목록이 이미 있으면 서버는 다시 부르지 않는다).
+	StartLocalizing(LastMapId);
 }
 
 // ---------------------------------------------------------------------- 서버 응답
@@ -187,6 +223,52 @@ void UNavLocalizer::Tick(float DeltaTime)
 	}
 
 	UpdateCurrentPose();
+
+	// 안내 중(측위 후)에만 추적 품질을 지켜본다. 흔들려서 센서가 틀어지면 경고를 띄운다.
+	MonitorTrackingQuality(DeltaTime);
+}
+
+void UNavLocalizer::MonitorTrackingQuality(float DeltaTime)
+{
+	// ⚠️ ARCore 함정: GetTrackingQuality() 는 이분법이다 — pose 가 있으면 무조건
+	// OrientationAndPosition, 완전히 잃으면 NotTracking(OrientationOnly 는 안 나옴,
+	// GoogleARCoreXRTrackingSystem.cpp). 흔들림은 Quality 가 아니라
+	// GetTrackingQualityReason()(ExcessiveMotion 등)에 담긴다. 그래서 Quality 저하
+	// "또는" Reason≠None 을 저하로 본다 — Quality 만 보면 흔들림을 절대 못 잡는다.
+	const EARTrackingQuality Quality = UARBlueprintLibrary::GetTrackingQuality();
+	const EARTrackingQualityReason Reason = UARBlueprintLibrary::GetTrackingQualityReason();
+	const bool bBad = (Quality != EARTrackingQuality::OrientationAndPosition)
+		|| (Reason != EARTrackingQualityReason::None);
+
+	if (bBad)
+	{
+		// 나쁜 상태가 이어진 시간을 쌓는다. 임계를 넘는 순간 한 번만 경고.
+		SecondsPoorQuality += DeltaTime;
+		SecondsGoodQuality = 0.f;
+		if (!bTrackingDegraded && SecondsPoorQuality >= PoorQualityHoldSeconds)
+		{
+			bTrackingDegraded = true;
+			const FString Msg = QualityReasonText(Reason);
+			UE_LOG(LogNav, Warning, TEXT("[Localizer] 추적 품질 저하 %.1f초 지속(Q=%d,R=%d): %s"),
+				SecondsPoorQuality, static_cast<int32>(Quality), static_cast<int32>(Reason), *Msg);
+			OnTrackingDegraded.Broadcast(Msg);
+		}
+		return;
+	}
+
+	// 좋은 상태. 단 좋은 프레임 하나로 곧바로 지우지 않는다 — 흔들 때 품질이 좋음↔나쁨을
+	// 깜빡이므로, QualityRecoverSeconds 만큼 "연속으로" 좋아야 누적 저하를 지우고 회복 처리.
+	SecondsGoodQuality += DeltaTime;
+	if (SecondsGoodQuality >= QualityRecoverSeconds)
+	{
+		SecondsPoorQuality = 0.f;
+		if (bTrackingDegraded)
+		{
+			bTrackingDegraded = false;
+			UE_LOG(LogNav, Log, TEXT("[Localizer] 추적 품질 회복(%.1f초 연속 양호)."), SecondsGoodQuality);
+			OnTrackingRecovered.Broadcast();
+		}
+	}
 }
 
 // ---------------------------------------------------------------------- 측위
@@ -231,16 +313,15 @@ bool UNavLocalizer::TryLocalizeFromTrackedImages()
 
 void UNavLocalizer::SolveTransform(const FTransform& MarkerWorld)
 {
-	// 두 방위의 차이가 곧 맵→월드 회전이다.
-	//   서버 heading : 맵 +X 축 기준 CCW(도)
-	//   UE yaw       : 월드 +X 축 기준 CCW(도)  ← 규약이 같아서 그냥 뺀다
-	// 축 규약이 같은 것은 우연이 아니라, 서버 좌표계를 처음부터 UE 기준으로
-	// 정해 두었기 때문이다(docs/nav-server-integration-guide.md).
-	const float MapHeadingDeg = AnchorMarker.HeadingDeg + MarkerHeadingOffsetDeg;
+	// 서버 맵은 오른손 좌표계(+X=오른쪽, +Y=앞), UE 월드는 왼손 좌표계다.
+	// 둘은 거울상이라 순수 회전만으로는 못 맞춘다 — 좌우(측면)가 뒤집힌다.
+	// 그래서 맵 Y 축을 반전해 왼손 프레임(맵')으로 바꾼 뒤 회전+평행이동한다.
+	// Y 를 뒤집으면 회전 방향도 반대가 되므로 heading 부호도 반전한다.
+	const float MapHeadingDeg = -(AnchorMarker.HeadingDeg + MarkerHeadingOffsetDeg);
 	const float YawOffsetDeg = FRotator::NormalizeAxis(MarkerWorld.Rotator().Yaw - MapHeadingDeg);
 
 	const FRotator Rot(0.f, YawOffsetDeg, 0.f);
-	const FVector MarkerMap(AnchorMarker.PosXCm, AnchorMarker.PosYCm, AnchorMarker.PosZCm);
+	const FVector MarkerMap(AnchorMarker.PosXCm, -AnchorMarker.PosYCm, AnchorMarker.PosZCm);
 
 	// 회전만 걸면 마커가 원점 근처에 놓인다. 실제 마커 자리로 밀어 준다.
 	const FVector Translation = MarkerWorld.GetLocation() - Rot.RotateVector(MarkerMap);
@@ -262,8 +343,9 @@ void UNavLocalizer::UpdateCurrentPose()
 	CurrentPose.PosYCm = MapPoint.Y;
 	// 카메라는 눈높이에 있다. 바닥 렌더가 공중에 뜨지 않도록 마커 높이로 눌러 준다.
 	CurrentPose.PosZCm = bSnapHeightToMarker ? AnchorMarker.PosZCm : MapPoint.Z;
+	// 맵' 는 Y 를 뒤집은 왼손 프레임이라, 서버 맵 heading 은 부호가 반대다.
 	CurrentPose.HeadingDeg = FRotator::NormalizeAxis(
-		Cam->GetCameraRotation().Yaw - MapToWorldXf.Rotator().Yaw);
+		MapToWorldXf.Rotator().Yaw - Cam->GetCameraRotation().Yaw);
 	CurrentPose.bHasHeading = true;
 
 	OnPoseUpdated.Broadcast(CurrentPose);
@@ -273,11 +355,18 @@ void UNavLocalizer::UpdateCurrentPose()
 
 FVector UNavLocalizer::MapToWorld(float PosXCm, float PosYCm, float PosZCm) const
 {
-	const FVector P(PosXCm, PosYCm, PosZCm);
-	return bLocalized ? MapToWorldXf.TransformPosition(P) : P;
+	// 맵(오른손) → 맵'(왼손): Y 반전 후 변환.
+	const FVector P(PosXCm, -PosYCm, PosZCm);
+	return bLocalized ? MapToWorldXf.TransformPosition(P) : FVector(PosXCm, PosYCm, PosZCm);
 }
 
 FVector UNavLocalizer::WorldToMap(const FVector& WorldLocation) const
 {
-	return bLocalized ? MapToWorldXf.InverseTransformPosition(WorldLocation) : WorldLocation;
+	if (!bLocalized)
+	{
+		return WorldLocation;
+	}
+	// 맵'(왼손) → 맵(오른손): 역변환 후 Y 를 되돌린다.
+	const FVector P = MapToWorldXf.InverseTransformPosition(WorldLocation);
+	return FVector(P.X, -P.Y, P.Z);
 }
