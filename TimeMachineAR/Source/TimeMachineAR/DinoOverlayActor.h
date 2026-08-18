@@ -57,6 +57,16 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Overlay|Info")
 	UDinoInfoData* DinoInfo;
 
+	/**
+	 * 보여 줄 공룡을 정한다. 메시까지 그 종의 것으로 갈아 끼운다.
+	 *
+	 * BeginPlay 가 살점 머티리얼을 동적 인스턴스로 바꾸므로, 이 함수는 반드시
+	 * 그 전에 불려야 한다. 그래서 AARTrackingManager 는 SpawnActorDeferred 로
+	 * 액터를 만들고 FinishSpawning 전에 이걸 호출한다.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Overlay|Info")
+	void SetDinoInfo(UDinoInfoData* InInfo);
+
 	UPROPERTY(BlueprintAssignable, Category = "Overlay|Info")
 	FOnDinoClicked OnDinoClicked;
 
@@ -79,6 +89,9 @@ public:
 	FName MaterialAlphaParamName = FName("Alpha");
 
 private:
+	/** DinoInfo 에 메시가 지정돼 있으면 컴포넌트에 반영한다. 비어 있으면 BP 값을 둔다. */
+	void ApplySpecies();
+
 	bool bIsRevealing = false;
 	bool bHasRevealed = false;
 	float CurrentRevealTime = 0.0f;

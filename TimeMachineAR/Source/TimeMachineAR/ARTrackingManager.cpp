@@ -4,6 +4,8 @@
 #include "ARTypes.h"
 #include "ARPin.h"
 #include "DinoOverlayActor.h"
+#include "DinoInfoData.h"
+#include "DinoRegistry.h"
 #include "Kismet/GameplayStatics.h"
 #include "AndroidPermissionFunctionLibrary.h"
 #include "AndroidPermissionCallbackProxy.h"
@@ -156,47 +158,90 @@ void AARTrackingManager::CheckForTrackedImages()
 	{
 		UARTrackedImage* TrackedImage = Cast<UARTrackedImage>(TrackedGeometry);
 
-		// 이미지가 정상적으로 추적 중인지 확인
-		if (TrackedImage && TrackedImage->GetTrackingState() == EARTrackingState::Tracking)
+		if (TrackedImage == nullptr || TrackedImage->GetTrackingState() != EARTrackingState::Tracking)
 		{
-			// 1. 이미지의 위치 정보를 추출
-			FTransform ImageTransform = TrackedImage->GetLocalToWorldTransform();
-
-			if (OverlayActorClass)
-			{
-				// 2. 해당 위치에 공룡 오버레이 액터 스폰
-				FActorSpawnParameters SpawnParams;
-				SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-				SpawnedOverlay = GetWorld()->SpawnActor<ADinoOverlayActor>(OverlayActorClass, ImageTransform, SpawnParams);
-
-				if (SpawnedOverlay)
-				{
-					// 3. 스폰 즉시 플래그를 true로 변경하여 중복 스폰 방지
-					bIsAnchored = true;
-
-					// 4. 스폰된 액터의 루트를 앵커(AR Pin)로 강제 고정 시도
-					//    다시 스캔할 때 걷어내야 하므로 핀을 들고 있는다.
-					OverlayPin = UARBlueprintLibrary::PinComponent(SpawnedOverlay->GetRootComponent(), ImageTransform, TrackedImage, FName("DinoHybridAnchor"));
-
-					if (GEngine)
-					{
-						GEngine->AddOnScreenDebugMessage(2, 5.0f, FColor::Cyan, TEXT("[AR] Dino Overlay Successfully Spawned & Anchored!"));
-					}
-
-					// 5. 어느 마커인지 알아낸다. 네비게이션이 이 code 로 서버에서
-					//    마커의 지도 좌표를 조회한다.
-					FString MarkerCode;
-					if (const UARCandidateImage* Candidate = TrackedImage->GetDetectedImage())
-					{
-						MarkerCode = Candidate->GetFriendlyName();
-					}
-
-					// 6. 찾았으니 스캔을 끝낸다. UI 가 "스캔 중" 표시를 지울 수 있게 알린다.
-					StopScan();
-					OnMarkerFound.Broadcast(OverlayPin, ImageTransform, MarkerCode);
-					break;
-				}
-			}
+			continue;
 		}
+
+		if (OverlayActorClass == nullptr)
+		{
+			continue;
+		}
+
+		// 1. 어느 마커인지 먼저 확인한다. 예전에는 스폰한 뒤에 봤지만, 이제 이
+		//    이름으로 어떤 공룡을 띄울지 고르므로 스폰보다 앞서야 한다.
+		FString MarkerCode;
+		if (const UARCandidateImage* Candidate = TrackedImage->GetDetectedImage())
+		{
+			MarkerCode = Candidate->GetFriendlyName();
+		}
+
+		UDinoInfoData* Species = ResolveSpecies(MarkerCode);
+
+		// 2. 대응표를 쓰는 중인데 모르는 마커라면 건너뛴다. 네비게이션용 마커에
+		//    공룡이 튀어나오지 않게 하려는 것이고, 다른 마커가 시야에 같이
+		//    들어와 있으면 그쪽을 계속 본다.
+		const bool bUsingMarkerMap = (DinoRegistry != nullptr && DinoRegistry->HasAnyMarker());
+		if (bUsingMarkerMap && bIgnoreUnknownMarkers && Species == nullptr)
+		{
+			continue;
+		}
+
+		// 3. 마커 위치에 오버레이를 스폰한다. 종을 BeginPlay 보다 먼저 넣어야
+		//    살점 머티리얼이 그 종의 메시 기준으로 만들어지므로 지연 스폰을 쓴다.
+		const FTransform ImageTransform = TrackedImage->GetLocalToWorldTransform();
+
+		FActorSpawnParameters SpawnParams;
+		SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+
+		SpawnedOverlay = GetWorld()->SpawnActorDeferred<ADinoOverlayActor>(
+			OverlayActorClass, ImageTransform, nullptr, nullptr,
+			ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
+
+		if (SpawnedOverlay == nullptr)
+		{
+			continue;
+		}
+
+		if (Species != nullptr)
+		{
+			SpawnedOverlay->SetDinoInfo(Species);
+		}
+
+		SpawnedOverlay->FinishSpawning(ImageTransform);
+
+		// 4. 중복 스폰 방지
+		bIsAnchored = true;
+
+		// 5. 루트를 AR 앵커에 고정. 다시 스캔할 때 걷어내야 하므로 핀을 들고 있는다.
+		OverlayPin = UARBlueprintLibrary::PinComponent(
+			SpawnedOverlay->GetRootComponent(), ImageTransform, TrackedImage, FName("DinoHybridAnchor"));
+
+		UE_LOG(LogTemp, Log, TEXT("[AR] 마커 '%s' -> 공룡 '%s'"),
+			MarkerCode.IsEmpty() ? TEXT("(이름없음)") : *MarkerCode,
+			Species != nullptr ? *Species->NameKo.ToString() : TEXT("(BP 기본값)"));
+
+		// 6. 찾았으니 스캔을 끝낸다. UI 가 "스캔 중" 표시를 지울 수 있게 알린다.
+		//    MarkerCode 는 네비게이션이 서버에서 마커 좌표를 조회하는 데도 쓴다.
+		StopScan();
+		OnMarkerFound.Broadcast(OverlayPin, ImageTransform, MarkerCode);
+		break;
 	}
+}
+
+UDinoInfoData* AARTrackingManager::ResolveSpecies(const FString& MarkerCode) const
+{
+	if (DinoRegistry == nullptr)
+	{
+		return nullptr;
+	}
+
+	if (UDinoInfoData* Found = DinoRegistry->FindByMarker(MarkerCode))
+	{
+		return Found;
+	}
+
+	// 마커가 아직 안 정해졌거나 새 마커가 대응표에 없는 동안에도 빈 화면이
+	// 나오지 않게 한다. 폴백도 비어 있으면 BP_DinoOverlay 의 기본값이 쓰인다.
+	return DinoRegistry->FallbackSpecies;
 }
