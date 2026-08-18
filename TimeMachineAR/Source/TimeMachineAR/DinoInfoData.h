@@ -4,6 +4,8 @@
 #include "Engine/DataAsset.h"
 #include "DinoInfoData.generated.h"
 
+class UTexture2D;
+
 /**
  * 카드 아래쪽 요약 타일 한 칸.
  *
@@ -27,6 +29,10 @@ struct FDinoStat
 	/** 값 아래 작은 글씨. 예: 길이 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Dino")
 	FText Sub;
+
+	/** 제목 위 아이콘. 비우면 그 칸이 접힌다. 예: straighten(자) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Dino")
+	TObjectPtr<UTexture2D> Icon;
 };
 
 /**
@@ -44,6 +50,15 @@ struct FDinoTab
 	/** 탭 버튼에 찍히는 글자. 예: 특징 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Dino")
 	FText Label;
+
+	/**
+	 * 탭 글자 앞 아이콘. 예: menu_book(소개)
+	 *
+	 * 레퍼런스는 선택된 탭에만 아이콘을 보여 준다. 그래서 이 값이 있어도
+	 * 탭이 꺼져 있으면 접힌다(UDinoTabButton::Apply).
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Dino")
+	TObjectPtr<UTexture2D> Icon;
 
 	/** 본문 위 굵은 제목. 비우면 줄이 접힌다. 예: 강력한 턱과 이빨 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Dino")
@@ -89,6 +104,10 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Dino|태그")
 	FText DietTag;
 
+	/** 식성 태그 앞 아이콘. 예: eco(잎) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Dino|태그")
+	TObjectPtr<UTexture2D> DietIcon;
+
 	/** 시대 태그의 윗줄. 예: 백악기 후기 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Dino|태그")
 	FText PeriodTag;
@@ -96,6 +115,20 @@ public:
 	/** 시대 태그의 아랫줄. 예: 약 6,800만 년 전 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Dino|태그")
 	FText PeriodSub;
+
+	/** 시대 태그 앞 아이콘. 예: history */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Dino|태그")
+	TObjectPtr<UTexture2D> PeriodIcon;
+
+	/**
+	 * 카드 위쪽 대표 사진. 비우면 그 칸이 통째로 접힌다.
+	 *
+	 * 시안에서 카드 면적을 가장 많이 차지하는 자리다. 나중에 손으로 돌릴 수 있는
+	 * 3D 뷰로 바꾸더라도 레이아웃은 그대로 두고 브러시만 렌더 타깃으로 갈아 끼우면
+	 * 되도록, 먼저 정적 사진으로 자리를 잡아 둔다.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Dino|본문")
+	TObjectPtr<UTexture2D> HeroImage;
 
 	/**
 	 * 소개 탭 본문.

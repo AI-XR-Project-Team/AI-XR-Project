@@ -1,5 +1,6 @@
 #include "DinoStatTile.h"
 
+#include "Components/Image.h"
 #include "Components/TextBlock.h"
 
 void UDinoStatTile::SetStat(const FDinoStat& InStat)
@@ -17,6 +18,20 @@ void UDinoStatTile::NativeConstruct()
 
 void UDinoStatTile::Apply()
 {
+	if (StatIcon != nullptr)
+	{
+		if (Stat.Icon != nullptr)
+		{
+			StatIcon->SetBrushFromTexture(Stat.Icon);
+			StatIcon->SetVisibility(ESlateVisibility::HitTestInvisible);
+		}
+		else
+		{
+			// 아이콘 없는 타일에서 칸을 남기면 그 타일만 글자가 아래로 내려앉는다.
+			StatIcon->SetVisibility(ESlateVisibility::Collapsed);
+		}
+	}
+
 	if (StatLabel != nullptr)
 	{
 		StatLabel->SetText(Stat.Label);
