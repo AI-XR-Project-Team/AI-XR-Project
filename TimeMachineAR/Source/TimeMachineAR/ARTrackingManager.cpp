@@ -30,6 +30,19 @@ void AARTrackingManager::BeginPlay()
 		OverlayActorClass = StaticLoadClass(ADinoOverlayActor::StaticClass(), nullptr, TEXT("/Game/Stuff/BP_DinoOverlay.BP_DinoOverlay_C"));
 	}
 
+	// 레벨에서 지정하지 않아도 마커 대응이 살아 있도록. SessionConfig 와 같은 방식이다.
+	// 이걸 안 두면 레벨을 다시 저장하지 않은 사람에게는 조용히 기본 공룡만 나온다.
+	if (!DinoRegistry)
+	{
+		DinoRegistry = Cast<UDinoRegistry>(StaticLoadObject(
+			UDinoRegistry::StaticClass(), nullptr, TEXT("/Game/UI/DinoCard/DA_DinoRegistry.DA_DinoRegistry")));
+	}
+
+	UE_LOG(LogTemp, Log, TEXT("[AR] 공룡 대응표 %s (등록 %d종, 마커 지정 %s)"),
+		DinoRegistry ? TEXT("로드됨") : TEXT("없음"),
+		DinoRegistry ? DinoRegistry->Species.Num() : 0,
+		(DinoRegistry && DinoRegistry->HasAnyMarker()) ? TEXT("있음") : TEXT("없음"));
+
 	RequestCameraPermissionAndStart();
 
 	// 세션은 바로 켜되(카메라 프리뷰가 나와야 하므로), 마커 탐색은 버튼이 시작한다.

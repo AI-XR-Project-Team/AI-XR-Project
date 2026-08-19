@@ -188,6 +188,15 @@ protected:
 	TObjectPtr<UButton> AskDocentButton;
 
 	/**
+	 * 도슨트 CTA 묶음(마스코트 + 문구 + 버튼).
+	 *
+	 * 전시물 UUID 가 없을 때 버튼만 숨기면 "물어보세요" 문구와 마스코트만 남아
+	 * 더 어색하다. 물어볼 수 없는 공룡은 이 줄을 통째로 접는다.
+	 */
+	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "Dino|Card")
+	TObjectPtr<UWidget> DocentCta;
+
+	/**
 	 * 열고 닫을 대상. 보통 카드 전체를 감싼 패널이다.
 	 *
 	 * 이 위젯 자체를 숨기지 않는 이유는 도슨트 챗과 같다 — 루트를 숨기면

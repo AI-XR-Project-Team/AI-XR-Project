@@ -150,14 +150,21 @@ void UDinoInfoCardWidget::ApplyInfo()
 
 	RebuildStats();
 
-	if (AskDocentButton != nullptr)
+	// 전시물 UUID 가 없으면 도슨트에 물어볼 수가 없다. 버튼만 숨기면 마스코트와
+	// "물어보세요" 문구만 남아 더 어색하므로, DocentCta 가 지정돼 있으면 그 줄을
+	// 통째로 접는다. 지정 안 된 예전 구성에서는 버튼만 접는다.
+	const bool bCanAsk = !CurrentInfo->ExhibitId.IsEmpty();
+	const ESlateVisibility CtaVisibility = bCanAsk
+		? ESlateVisibility::Visible
+		: ESlateVisibility::Collapsed;
+
+	if (DocentCta != nullptr)
 	{
-		// 전시물 UUID 가 없으면 눌러도 대화를 열 수 없다. 버튼을 남겨 두면
-		// 눌리기만 하고 아무 일도 안 일어나 고장으로 보인다.
-		const bool bCanAsk = !CurrentInfo->ExhibitId.IsEmpty();
-		AskDocentButton->SetVisibility(bCanAsk
-			? ESlateVisibility::Visible
-			: ESlateVisibility::Collapsed);
+		DocentCta->SetVisibility(CtaVisibility);
+	}
+	else if (AskDocentButton != nullptr)
+	{
+		AskDocentButton->SetVisibility(CtaVisibility);
 	}
 }
 
