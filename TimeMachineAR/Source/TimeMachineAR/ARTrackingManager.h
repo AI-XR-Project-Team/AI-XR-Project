@@ -8,6 +8,8 @@
 
 class ADinoOverlayActor;
 class UARPin;
+class UDinoInfoData;
+class UDinoRegistry;
 
 /** 스캔이 켜지거나 꺼졌을 때. 하단 바가 버튼 모양을 바꾸는 데 쓴다. */
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnScanStateChanged, bool, bIsScanning);
@@ -49,6 +51,25 @@ public:
 	// 스폰할 오버레이 액터 클래스 (BP_DinoOverlay 할당)
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AR Tracking")
 	TSubclassOf<ADinoOverlayActor> OverlayActorClass;
+
+	/**
+	 * 마커 이름 → 공룡 종 대응표. 비워 두면 BP_DinoOverlay 의 기본 공룡만 나온다.
+	 *
+	 * 비워 두는 것을 오류로 보지 않는 이유는, 마커가 정해지기 전에도 앱이
+	 * 지금처럼 티라노 하나로 돌아가야 하기 때문이다.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AR Tracking")
+	TObjectPtr<UDinoRegistry> DinoRegistry;
+
+	/**
+	 * 대응표에 없는 마커는 무시할지.
+	 *
+	 * 켜면 등록된 마커만 공룡을 띄운다. 전시장에 네비게이션용 마커가 섞여 있을 때
+	 * 엉뚱한 마커에 공룡이 튀어나오는 것을 막는다. 단 대응표에 마커가 하나도
+	 * 없으면 이 설정과 무관하게 예전처럼 아무 마커에나 반응한다.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AR Tracking")
+	bool bIgnoreUnknownMarkers = true;
 
 	// 레벨에 들어오자마자 마커를 찾을지. 끄면 StartScan 을 부를 때까지 가만히 있는다.
 	// 하단 바의 "AR 스캔" 버튼을 쓰기로 했으므로 기본은 끔.
@@ -105,6 +126,9 @@ private:
 	UARPin* OverlayPin;
 
 	void CheckForTrackedImages();
+
+	/** 마커 이름으로 띄울 공룡을 고른다. 못 찾으면 폴백, 그것도 없으면 nullptr. */
+	UDinoInfoData* ResolveSpecies(const FString& MarkerCode) const;
 
 	void RequestCameraPermissionAndStart();
 	void StartARSessionInternal();

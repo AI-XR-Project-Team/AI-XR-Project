@@ -30,9 +30,41 @@ ADinoOverlayActor::ADinoOverlayActor()
 	}
 }
 
+void ADinoOverlayActor::SetDinoInfo(UDinoInfoData* InInfo)
+{
+	DinoInfo = InInfo;
+	ApplySpecies();
+}
+
+void ADinoOverlayActor::ApplySpecies()
+{
+	if (DinoInfo == nullptr)
+	{
+		return;
+	}
+
+	// 메시가 비어 있으면 건드리지 않는다. 티라노는 BP_DinoOverlay 컴포넌트에
+	// 메시와 배치가 이미 맞춰져 있어서, 여기서 덮으면 오히려 망가진다.
+	if (DinoInfo->BoneMesh != nullptr && BoneMesh != nullptr)
+	{
+		BoneMesh->SetStaticMesh(DinoInfo->BoneMesh);
+		BoneMesh->SetRelativeTransform(DinoInfo->MeshTransform);
+	}
+
+	if (DinoInfo->FleshMesh != nullptr && FleshMesh != nullptr)
+	{
+		FleshMesh->SetStaticMesh(DinoInfo->FleshMesh);
+		FleshMesh->SetRelativeTransform(DinoInfo->MeshTransform);
+	}
+}
+
 void ADinoOverlayActor::BeginPlay()
 {
 	Super::BeginPlay();
+
+	// 레벨에 직접 놓거나 BP 에서 DinoInfo 만 지정해 스폰한 경우를 위해 한 번 더.
+	// SetDinoInfo 로 이미 반영됐다면 같은 값을 다시 쓰는 것뿐이라 무해하다.
+	ApplySpecies();
 
 	// 게임 시작 시, 살점 메시에 적용된 첫 번째 머티리얼을 동적(Dynamic)으로 만듦
 	if (FleshMesh && FleshMesh->GetMaterial(0))

@@ -5,7 +5,9 @@
 #include "DinoTabButton.generated.h"
 
 class UButton;
+class UImage;
 class UTextBlock;
+class UTexture2D;
 
 /** 탭이 눌렸을 때 몇 번째인지 넘긴다. 카드 내부 연결용이라 다이나믹이 아니다. */
 DECLARE_DELEGATE_OneParam(FOnDinoTabClicked, int32 /*TabIndex*/);
@@ -17,6 +19,7 @@ DECLARE_DELEGATE_OneParam(FOnDinoTabClicked, int32 /*TabIndex*/);
  *   - TabButton    (Button)     : 필수
  *   - TabLabel     (Text Block) : 필수
  *   - SelectedMark (아무 위젯)   : 선택. 선택됐을 때만 보이는 밑줄
+ *   - TabIcon      (Image)      : 선택. 글자 앞 아이콘
  *
  * 선택/비선택 색은 WBP 에서 바꾼다. C++ 은 SelectedMark 를 켜고 끄는 것과
  * OnSelectionChanged 를 부르는 것까지만 한다. 색까지 코드로 정하면 디자인을
@@ -29,7 +32,7 @@ class TIMEMACHINEAR_API UDinoTabButton : public UUserWidget
 
 public:
 	/** 카드가 탭을 만든 직후 부른다. */
-	void Setup(int32 InIndex, const FText& InLabel);
+	void Setup(int32 InIndex, const FText& InLabel, UTexture2D* InIcon);
 
 	/** 선택 상태를 바꾼다. 카드가 탭을 갈아 끼울 때 이전 탭을 꺼 준다. */
 	void SetSelected(bool bInSelected);
@@ -57,6 +60,10 @@ protected:
 	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "Dino|Card")
 	TObjectPtr<UWidget> SelectedMark;
 
+	/** 글자 앞 아이콘. 선택되지 않았거나 탭에 아이콘이 없으면 접힌다. */
+	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "Dino|Card")
+	TObjectPtr<UImage> TabIcon;
+
 	/** 선택 상태가 바뀐 직후. 글자 색을 바꾸는 자리다. */
 	UFUNCTION(BlueprintImplementableEvent, Category = "Dino|Card")
 	void OnSelectionChanged(bool bIsSelected);
@@ -70,6 +77,10 @@ private:
 	void Apply();
 
 	FText Label;
+
+	UPROPERTY()
+	TObjectPtr<UTexture2D> Icon;
+
 	int32 TabIndex = 0;
 	bool bSelected = false;
 };

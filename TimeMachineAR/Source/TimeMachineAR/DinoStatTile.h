@@ -5,6 +5,7 @@
 #include "DinoInfoData.h"
 #include "DinoStatTile.generated.h"
 
+class UImage;
 class UTextBlock;
 
 /**
@@ -14,6 +15,7 @@ class UTextBlock;
  *   - StatLabel (Text Block) : 제목
  *   - StatValue (Text Block) : 값
  *   - StatSub   (Text Block) : 값 아래 작은 글씨
+ *   - StatIcon  (Image)      : 제목 위 아이콘 (선택)
  */
 UCLASS(Abstract)
 class TIMEMACHINEAR_API UDinoStatTile : public UUserWidget
@@ -35,6 +37,9 @@ protected:
 
 	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "Dino|Card")
 	TObjectPtr<UTextBlock> StatSub;
+
+	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "Dino|Card")
+	TObjectPtr<UImage> StatIcon;
 
 private:
 	/** SetStat 이 NativeConstruct 보다 먼저 올 수 있어 값을 들고 있다가 다시 칠한다. */
