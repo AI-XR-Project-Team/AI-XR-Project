@@ -135,6 +135,14 @@ void UDocentChatWidget::NativeConstruct()
 	}
 	ApplyOpenState(bStartOpen || !bCanReopen);
 
+	// 마커로 공룡을 고르기 전에는 특정 전시물을 상정하지 않는다. 클래스
+	// 기본값의 ExhibitId 는 마커가 없던 시절의 시험용이라 여기서 버린다.
+	// OpenChat 이 먼저 불려 전시물이 정해진 경우에만 그대로 둔다.
+	if (!bExhibitContextSet)
+	{
+		ExhibitId.Reset();
+	}
+
 	BuildQuickQuestions();
 
 	// 인사말은 서버를 거치지 않는다. 창을 열자마자 보여야 하는데 LLM 왕복을
@@ -229,6 +237,15 @@ void UDocentChatWidget::NativeDestruct()
 void UDocentChatWidget::OpenChat(const FString& InExhibitId)
 {
 	ExhibitId = InExhibitId;
+	bExhibitContextSet = !InExhibitId.IsEmpty();
+
+	// 공룡이 새로 정해졌으면 그 공룡용 칩을 다시 띄운다. 앞선 대화에서 이미
+	// 질문을 했더라도, 방금 고른 공룡의 선택지는 보여 줘야 한다.
+	if (bExhibitContextSet)
+	{
+		bHasAskedOnce = false;
+	}
+	BuildQuickQuestions();
 
 	if (Client == nullptr)
 	{
@@ -276,10 +293,7 @@ void UDocentChatWidget::SendQuestion(const FString& Question)
 		{
 			EmptyStateBox->SetVisibility(ESlateVisibility::Collapsed);
 		}
-		if (bHideChipsAfterFirstQuestion && QuickQuestionBox != nullptr)
-		{
-			QuickQuestionBox->SetVisibility(ESlateVisibility::Collapsed);
-		}
+		ApplyQuickQuestionVisibility();
 	}
 
 	SetInputEnabled(false);
@@ -560,6 +574,14 @@ void UDocentChatWidget::BuildQuickQuestions()
 
 	QuickQuestionBox->ClearChildren();
 
+	// 공룡을 고르지 않은 일반 챗에서는 칩을 만들지 않는다. "이 공룡에 대해
+	// 설명해줘" 같은 문구가 가리킬 대상이 없어서, 눌러도 맥락 없는 질문이 된다.
+	if (!HasExhibitContext())
+	{
+		ApplyQuickQuestionVisibility();
+		return;
+	}
+
 	if (ChipClass == nullptr)
 	{
 		if (QuickQuestions.Num() > 0)
@@ -567,6 +589,7 @@ void UDocentChatWidget::BuildQuickQuestions()
 			UE_LOG(LogDocentChat, Warning,
 				TEXT("ChipClass 가 없어 빠른 질문을 만들지 못했습니다."));
 		}
+		ApplyQuickQuestionVisibility();
 		return;
 	}
 
@@ -582,6 +605,23 @@ void UDocentChatWidget::BuildQuickQuestions()
 		Chip->OnClicked.BindUObject(this, &UDocentChatWidget::HandleQuickChipClicked);
 		QuickQuestionBox->AddChild(Chip);
 	}
+
+	ApplyQuickQuestionVisibility();
+}
+
+void UDocentChatWidget::ApplyQuickQuestionVisibility()
+{
+	if (QuickQuestionBox == nullptr)
+	{
+		return;
+	}
+
+	const bool bShow = HasExhibitContext()
+		&& QuickQuestionBox->GetChildrenCount() > 0
+		&& !(bHideChipsAfterFirstQuestion && bHasAskedOnce);
+
+	QuickQuestionBox->SetVisibility(
+		bShow ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
 }
 
 void UDocentChatWidget::SetInputEnabled(bool bEnabled)
