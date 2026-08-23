@@ -8,16 +8,16 @@ wc-1,floor1,300,600,120,facility,화장실
 s-start,neuti4,130,145,120,entrance,시작점(거실/다용도실 앞)
 j-bend,neuti4,170,310,120,junction,경유(경로 꺾임)
 d-kitchen,neuti4,210,485,120,facility,도착점(주방)
-n-a,neuti4f,2280,60,120,entrance,A지점
+n-a,neuti4f,2280,60,120,entrance,입구·출구
 n-b,neuti4f,2280,540,120,waypoint,B지점
 n-c,neuti4f,1740,540,120,waypoint,C지점
 n-d,neuti4f,1740,1260,120,junction,D지점
-n-e,neuti4f,1740,1740,120,junction,E지점
-n-f,neuti4f,1740,2100,120,waypoint,F지점
-n-g,neuti4f,1140,2100,120,waypoint,G지점
+n-e,neuti4f,1740,1740,120,facility,화장실
+n-f,neuti4f,1740,2100,120,exhibit,트리케라톱스
+n-g,neuti4f,1140,2100,120,exhibit,브라키오사우르스
 n-h,neuti4f,1140,1740,120,junction,H지점
-n-i,neuti4f,960,1740,120,junction,I지점
+n-i,neuti4f,960,1740,120,exhibit,티라노사우루스 렉스
 n-j,neuti4f,960,1260,120,junction,J지점
 n-k,neuti4f,960,1020,120,waypoint,K지점
-n-l,neuti4f,60,1020,120,waypoint,L지점
+n-l,neuti4f,60,1020,120,exhibit,안킬로사우르스
 n-m,neuti4f,60,1740,120,waypoint,M지점

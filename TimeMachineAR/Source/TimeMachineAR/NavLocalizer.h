@@ -287,8 +287,11 @@ public:
 	TArray<FString> ProbeImageEntries;             // "A-1|/Game/UI/Nav/Markers/T_Marker_A1.T_Marker_A1"
 	UPROPERTY(Config, EditAnywhere, Category = "Nav|Probe")
 	float ProbeRegisterDelaySeconds = 2.5f;        // 세션 기동과 겹치지 않게
+	// 실제 에셋은 Content/Stuff/Asset/DA_ARSession(=/Game/Stuff/Asset/…). ARTrackingManager 는
+	// 이 설정을 에디터 프로퍼티(SessionConfig, BP 할당)로 받아 line 23 의 폴백 경로를 안 타지만,
+	// 프로브는 이 경로로만 로드하므로 정확해야 한다(틀리면 후보 등록 실패 → 동시추적 0).
 	UPROPERTY(Config, EditAnywhere, Category = "Nav|Probe")
-	FString ProbeSessionConfigPath = TEXT("/Game/Stuff/DA_ARSession.DA_ARSession");
+	FString ProbeSessionConfigPath = TEXT("/Game/Stuff/Asset/DA_ARSession.DA_ARSession");
 
 	// ------------------------------------------------------------------ Subsystem
 

@@ -3,4 +3,8 @@ MARK-ENTRANCE-01,floor1,qr,0,-10,150,90,정문 안쪽 벽 눈높이 150cm
 MARK-LOBBY-01,floor1,qr,10,600,150,180,로비 분기 기둥
 MARK-TYRANNO-01,floor1,qr,-410,1400,150,0,티라노 전시 안내판 옆
 MARK-NEUTI4-OLD,neuti4,qr,280,150,150,180,"[폐기] 구 테스트맵 마커. 물리 QR 을 neuti4f A지점으로 옮기며 code 를 MARK-NEUTI4-OLD 로 개명(UE FriendlyName=MARK-NEUTI4-START 를 neuti4f 가 쓰도록 자리 양보)"
-MARK-NEUTI4-START,neuti4f,qr,2280,60,0,90,"A지점 발밑 바닥 부착(4단계는 바닥 유지). code=MARK-NEUTI4-START 는 UE DA_Marker FriendlyName 과 일치(측위 매칭용). heading 은 실측·캘리브레이션 후 확정"
+MARK-NEUTI4-START,neuti4f,qr,2280,60,0,90,"A지점 = 시작·입구/출구. 6-1a 로 인식 검증 완료(획득 1.44m / 상실 2.36m). 타일 중심을 노드 A 에 맞춤. 설치방향 +Y(위쪽) = heading 90"
+EX1-TRICERATOPS,neuti4f,qr,1740,2100,0,0,"전시물1 트리케라톱스 앞 바닥. 노드 n-f. 설치방향 +X(오른쪽)"
+EX2-BRACHIO,neuti4f,qr,1140,2100,0,90,"전시물2 브라키오사우르스 앞 바닥. 노드 n-g. 설치방향 +Y(위쪽)"
+EX3-TREX,neuti4f,qr,960,1740,0,90,"전시물3 티라노사우루스 렉스 앞 바닥. 노드 n-i. 설치방향 +Y(위쪽)"
+EX4-ANKYLO,neuti4f,qr,60,1020,0,270,"전시물4 안킬로사우르스 앞 바닥. 노드 n-l. 설치방향 -Y(아래쪽)"

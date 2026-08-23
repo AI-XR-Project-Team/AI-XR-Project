@@ -491,8 +491,18 @@ void UNavLocalizer::ProbeRegisterImages()
 		}
 
 		// PhysicalWidth 단위(cm/m)가 UE 버전마다 불확실하다 → M-1 에서 와이어프레임 크기로 검증한다.
-		UARBlueprintLibrary::AddRuntimeCandidateImage(
+		// ⚠️ ARCore 는 무압축 PF_B8G8R8A8 / PF_G8 만 받는다. 텍스처가 DXT/ASTC 압축이면
+		// 여기서 nullptr 를 돌려주고 조용히 실패한다(등록 안 됨 → 동시추적 0). 텍스처 에셋의
+		// Compression Settings 를 "VectorDisplacementmap (RGBA8)" 로 무압축화해야 한다.
+		UARCandidateImage* Cand = UARBlueprintLibrary::AddRuntimeCandidateImage(
 			Cfg, Tex, FriendlyName, ProbeMarkerWidthCm);
+		if (Cand == nullptr)
+		{
+			UE_LOG(LogNav, Error, TEXT("[Probe] 후보 등록 거부(ARCore): %s ← %s. 텍스처 포맷이 "
+				"압축(PF_Unknown)이면 실패한다 — Compression=VectorDisplacementmap(RGBA8) 로 바꿔라."),
+				*FriendlyName, *TexPath);
+			continue;
+		}
 		++Added;
 		UE_LOG(LogNav, Log, TEXT("[Probe] 후보 등록: %s ← %s (폭 %.1f)"),
 			*FriendlyName, *TexPath, ProbeMarkerWidthCm);
