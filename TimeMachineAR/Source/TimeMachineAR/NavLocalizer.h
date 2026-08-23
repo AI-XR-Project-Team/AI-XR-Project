@@ -26,6 +26,13 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnNavTrackingDegraded, const FStrin
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnNavTrackingRecovered);
 
 /**
+ * 측위 후 **다른 마커로 앵커가 바뀌었을 때**(7단계 앵커 전환). 새 마커 code 를 넘긴다.
+ * 걸어가다 다음 전시물 마커를 잡으면 드리프트가 씻기고 이 이벤트가 뜬다.
+ * 최초 측위(OnLocalized)와 구분한다 — 기존 UI 를 건드리지 않고 8·9단계가 여기에 붙는다.
+ */
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnNavAnchorChanged, const FString&, MarkerCode);
+
+/**
  * 실내 측위. "지금 내가 맵의 어디에 서 있는가"를 매 틱 알려준다.
  *
  * nav-test-app 의 CoordTransform.kt 를 UE 로 옮긴 것이다. 다만 **훨씬 짧다.**
@@ -168,6 +175,10 @@ public:
 	UPROPERTY(BlueprintAssignable, Category = "Nav|Localizer")
 	FOnNavTrackingRecovered OnTrackingRecovered;
 
+	/** 측위 후 앵커 마커가 다른 마커로 바뀌었을 때(7단계 앵커 전환). */
+	UPROPERTY(BlueprintAssignable, Category = "Nav|Localizer")
+	FOnNavAnchorChanged OnAnchorChanged;
+
 	// ------------------------------------------------------------------ 설정
 
 	/**
@@ -254,6 +265,70 @@ public:
 		meta = (ClampMin = "0.05"))
 	float QualityRecoverSeconds = 0.5f;
 
+	// ------------------------------------------------------------------ 마커 이미지 등록 (7단계 §A)
+	//
+	// 정식 경로 = **DA_ARSession 에 baked candidate 로 쿡**(6-1a 해결책과 동일). 마커 텍스처를
+	// candidate 이미지로 넣고 저장하면 쿡 때 ARCore 이미지 DB 로 직렬화된다. .uasset 은 규칙상
+	// 커밋하지 않으므로(로컬, 실기기 빌드용) 팀원1과 git 충돌은 없고, 통합 시 팀원1이 합쳐 재bake 한다.
+	//
+	// ⚠️ **런타임 등록(AddRuntimeCandidateImage)은 기본 끈다.** ARCore 에선 (1) 살아있는 세션이
+	// 있어야 하고(GoogleARCoreDevice: "No valid session") (2) 세션 재시작 때 baked DB 로 되돌아가며
+	// 버려진다 — 6-1a 에서 실기기로 확인했고 엔진 코드(GoogleARCoreAPI ConfigSession)와도 일치한다.
+	// 그래서 아래 런타임 경로는 baked 를 못 쓰는 상황용 실험적 폴백일 뿐이다.
+
+	/** 런타임 후보 등록(실험적 폴백). 기본 꺼짐 — 정식 경로는 baked candidate(DA_ARSession)다. */
+	UPROPERTY(Config, EditAnywhere, Category = "Nav|Markers")
+	bool bRegisterMarkerImages = false;
+
+	/**
+	 * 등록할 마커 이미지 목록. 한 줄에 `FriendlyName|텍스처경로`.
+	 * FriendlyName 이 곧 서버 마커 code 이자 KnownMarkers 키다(ARTrackingManager 와 동일 규약).
+	 * 비우면 아래 기본 7장(과도기: 구 2 + A2 신 5, spec §A 표)을 등록한다. ini 로 덮어쓸 수 있다.
+	 * 같은 code 를 두 줄에 두면(구·신) 어느 인쇄물이 잡혀도 같은 지점으로 측위된다.
+	 */
+	UPROPERTY(Config, EditAnywhere, Category = "Nav|Markers")
+	TArray<FString> MarkerImageEntries;
+
+	/** 등록 시 넘길 물리 폭(cm). A2 단면 긴변 = 42.0(spec §A). 100% 인쇄면 실측 불필요. */
+	UPROPERTY(Config, EditAnywhere, Category = "Nav|Markers")
+	float MarkerPhysicalWidthCm = 42.0f;
+
+	/**
+	 * 동시에 추적할 최대 이미지 수. UE 기본값 1 이면 마커 A 를 무는 동안 B 가 보고되지
+	 * 않아 **앵커 전환이 안 된다**(spec §F-1). 시작 전에 세션 설정에 리플렉션으로 올린다.
+	 * ⚠️ 문서상 ARKit 기준값이라 ARCore 가 무시할 수 있다 — 현장 1회로 판정(spec §F-1).
+	 */
+	UPROPERTY(Config, EditAnywhere, Category = "Nav|Markers", meta = (ClampMin = "1"))
+	int32 MaxMarkerImagesTracked = 5;
+
+	// 실제 에셋은 Content/Stuff/Asset/DA_ARSession. ARTrackingManager 가 BP 프로퍼티로 쥔 것과
+	// 같은 인스턴스라 여기에 얹으면 그쪽 세션에도 반영된다(같은 경로 = 같은 로드 인스턴스).
+	UPROPERTY(Config, EditAnywhere, Category = "Nav|Markers")
+	FString MarkerSessionConfigPath = TEXT("/Game/Stuff/Asset/DA_ARSession.DA_ARSession");
+
+	/**
+	 * 측위 후 앵커 전환용 추적 이미지 재스캔 주기(초). 매 프레임 훑으면 비싸다 → 5Hz.
+	 * (6-1a 프로브의 GetAllGeometriesByClass 순회를 여기로 승격했다, spec §0.)
+	 */
+	UPROPERTY(EditAnywhere, Category = "Nav|Markers", meta = (ClampMin = "0.05"))
+	float AnchorScanIntervalSeconds = 0.2f;
+
+	// ------------------------------------------------------------------ 현장 로그 (7단계 검증)
+	//
+	// 20m+ 를 테더링 없이 걸으며 A→F 앵커 전환·드리프트를 검증하려면 로그를 서버로 보낸다
+	// (6-1a 프로브와 같은 방식). 이벤트(측위/전환/상실)와 주기적 위치를 CSV 로 모아
+	// /debug/probe-log 에 POST 하고, 서버가 없으면 폰 Saved/NavLog 에 남긴다. 기본 꺼짐.
+	// 검증이 끝나면 이 블록과 FieldLog* 함수를 제거한다.
+
+	UPROPERTY(Config, EditAnywhere, Category = "Nav|FieldLog")
+	bool bFieldLogEnabled = false;
+	UPROPERTY(Config, EditAnywhere, Category = "Nav|FieldLog")
+	FString FieldLogSessionPrefix = TEXT("nav");
+	UPROPERTY(Config, EditAnywhere, Category = "Nav|FieldLog", meta = (ClampMin = "0.2"))
+	float FieldLogPoseIntervalSeconds = 1.0f;   // 주기적 위치 샘플(경로·드리프트 추적용)
+	UPROPERTY(Config, EditAnywhere, Category = "Nav|FieldLog", meta = (ClampMin = "1"))
+	int32 FieldLogUploadEveryLines = 40;        // 이만큼 쌓이면 업로드
+
 	// ------------------------------------------------------------------ Subsystem
 
 	virtual void Initialize(FSubsystemCollectionBase& Collection) override;
@@ -271,6 +346,7 @@ public:
 	 */
 	virtual bool IsTickable() const override
 	{
+		// 탐색 중이거나 측위된 뒤에만 돈다. 도슨트만 쓰는 관람객에겐 매 프레임 부담을 안 준다.
 		return Super::IsTickable() && (bScanning || bLocalized);
 	}
 
@@ -333,4 +409,44 @@ private:
 
 	/** 카메라의 월드 위치를 맵 좌표로 옮겨 CurrentPose 를 갱신하고 알린다. */
 	void UpdateCurrentPose();
+
+	// --- 마커 이미지 등록 (7단계 §A) ---
+	/** 아직 안 됐으면 마커 후보 이미지를 세션 설정에 등록한다(+MaxNum 상향). */
+	void RegisterMarkerImages(bool bAllowSessionRestart);
+	bool bMarkerImagesRegistered = false;
+
+	// --- 앵커 전환 (7단계 §A) ---
+	/** 측위 후 다른 known 마커가 잡히면 앵커를 그쪽으로 옮긴다. 옮겼으면 true. */
+	bool TryTransitionAnchor();
+	float SecondsSinceAnchorScan = 0.f;
+	/** 지난 스캔에서 추적 중이던 known 마커 code 들. ACQUIRE 에지 판정용. */
+	TSet<FString> TrackedMarkerCodesLastScan;
+
+	// --- 현장 로그 (7단계 검증, bFieldLogEnabled) ---
+	/** 한 줄을 CSV 버퍼에 쌓는다. 임계 넘으면 서버로 flush. 꺼져 있으면 즉시 반환. */
+	void FieldLogEvent(const FString& Event, const FString& FromCode, const FString& ToCode,
+		float MapXCm, float MapYCm, float HeadingDeg, const FString& Extra);
+	void FieldLogFlush(bool bFinal);
+	TArray<FString> FieldLogBuf;
+	FString FieldLogSessionTag;      // Initialize 에서 1회 생성
+	float FieldLogSincePose = 0.f;
+	int32 FieldLogUploadOk = 0;
+	int32 FieldLogUploadFail = 0;
+
+public:
+	// --- 순수 헬퍼 (헤드리스 자동화 테스트 대상, spec §A) ---
+
+	/** `FriendlyName|경로` 한 줄을 가른다. 형식이 맞으면 true(양끝 공백 제거). */
+	static bool ParseMarkerEntry(const FString& Entry, FString& OutName, FString& OutPath);
+
+	/**
+	 * 앵커 전환 결정(순수 로직). 지금 추적 중인 known 마커 code 들과 지난 스캔 집합을 보고
+	 * 어느 code 로 앵커를 옮길지 정한다. 옮기지 않으면 빈 문자열.
+	 *  - 현재 앵커가 추적 불가면(멀어져 놓침) 추적 중인 아무 마커로 재측위한다.
+	 *  - 앵커가 살아 있으면 **이번에 새로 잡힌**(지난 스캔엔 없던) 다른 마커에만 옮긴다
+	 *    (전시물 도착 = 드리프트 보정 순간). 이미 계속 보이던 마커로는 안 옮겨 요동을 막는다.
+	 */
+	static FString DecideAnchorTransition(
+		const FString& CurrentAnchorCode, bool bAnchorTracking,
+		const TArray<FString>& TrackedKnownNow, const TSet<FString>& TrackedKnownLast);
 };

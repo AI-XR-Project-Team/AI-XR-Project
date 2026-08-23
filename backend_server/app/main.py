@@ -5,7 +5,7 @@
 """
 from fastapi import FastAPI
 
-from app.routers import chat, dinosaurs, docent, exhibits, health, maps, navigation
+from app.routers import chat, debug, dinosaurs, docent, exhibits, health, maps, navigation
 
 app = FastAPI(
     title="공룡 박물관 AR API",
@@ -21,3 +21,5 @@ app.include_router(maps.router, tags=["maps"])
 app.include_router(navigation.router, tags=["navigation"])
 # chat 라우터는 엔드포인트별로 tags 를 직접 지정한다.
 app.include_router(chat.router)
+app.include_router(debug.router)          # 6단계 임시 — 마커 프로브 로그 수신
+
