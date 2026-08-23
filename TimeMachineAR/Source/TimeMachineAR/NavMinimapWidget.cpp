@@ -11,6 +11,8 @@
 #include "NavDestinations.h"     // 목적지 색·아이콘 규칙(§B)
 #include "NavLocalizer.h"   // 측위 품질(reroute 게이트)·현재 pose
 #include "NavClient.h"      // LogNav, Reroute
+#include "NavFloorGuideActor.h"    // §C-1 바닥 발자국
+#include "NavDestMarkerWidget.h"   // §C-2 목적지 마름모 HUD
 
 namespace
 {
@@ -57,6 +59,7 @@ void UNavMinimapWidget::SetGraph(const FNavGraph& InGraph)
 void UNavMinimapWidget::SetDestinationNode(const FString& NodeId)
 {
 	DestinationNodeId = NodeId;
+	PushDestinationToMarker();   // §C-2 목적지 마름모 갱신.
 	if (UNavMinimapWidget* Full = GetOpenFullMapView()) { Full->SetDestinationNode(NodeId); }
 	Invalidate(EInvalidateWidgetReason::Paint);
 }
@@ -67,6 +70,8 @@ void UNavMinimapWidget::ClearRoute()
 	GetRouteProgress()->Reset();
 	bWasOffRoute = false;
 	OffRouteSinceSeconds = -1.f;
+	if (FloorGuide != nullptr) { FloorGuide->HideGuide(); }   // §C-1 안내 종료 → 발자국 숨김.
+	if (DestMarker != nullptr) { DestMarker->ClearDestination(); }   // §C-2 마름모 내림.
 	RefreshEmptyHint();
 	if (UNavMinimapWidget* Full = GetOpenFullMapView()) { Full->ClearRoute(); }
 	Invalidate(EInvalidateWidgetReason::Paint);
@@ -128,6 +133,7 @@ void UNavMinimapWidget::OpenFullMap()
 void UNavMinimapWidget::HandleDestinationChosen(const FString& NodeId)
 {
 	DestinationNodeId = NodeId;
+	PushDestinationToMarker();   // §C-2 목적지 마름모 갱신.
 	Invalidate(EInvalidateWidgetReason::Paint);
 	OnDestinationChosen.Broadcast(NodeId);   // BP → NavClient.RequestRoute
 }
@@ -153,6 +159,96 @@ void UNavMinimapWidget::EnsureGuideLog()
 	{
 		GuideLog->BindToMinimap(this);
 		GuideLog->AddToViewport(50);   // 전체 지도(100)보다 아래, 일반 HUD 위.
+	}
+}
+
+// ---------------------------------------------------------------------- AR 화면(§C, 9단계)
+
+void UNavMinimapWidget::EnsureFloorGuide()
+{
+	if (Mode != ENavMinimapMode::Follow || IsDesignTime() || FloorGuide != nullptr)
+	{
+		return;
+	}
+	UWorld* World = GetWorld();
+	if (World == nullptr)
+	{
+		return;
+	}
+	const TSubclassOf<ANavFloorGuideActor> Cls =
+		(FloorGuideActorClass != nullptr) ? FloorGuideActorClass
+		                                  : TSubclassOf<ANavFloorGuideActor>(ANavFloorGuideActor::StaticClass());
+	FActorSpawnParameters Params;
+	Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+	FloorGuide = World->SpawnActor<ANavFloorGuideActor>(Cls, FTransform::Identity, Params);
+}
+
+void UNavMinimapWidget::EnsureDestMarker()
+{
+	if (Mode != ENavMinimapMode::Follow || IsDesignTime() || DestMarker != nullptr)
+	{
+		return;
+	}
+	const TSubclassOf<UNavDestMarkerWidget> Cls =
+		(DestMarkerWidgetClass != nullptr) ? DestMarkerWidgetClass
+		                                   : TSubclassOf<UNavDestMarkerWidget>(UNavDestMarkerWidget::StaticClass());
+	DestMarker = CreateWidget<UNavDestMarkerWidget>(GetWorld(), Cls);
+	if (DestMarker != nullptr)
+	{
+		DestMarker->AddToViewport(40);   // AR 위, 안내 로그(50)·전체 지도(100) 아래.
+	}
+}
+
+bool UNavMinimapWidget::GetNodePos(const FString& NodeId, FVector2D& OutXY) const
+{
+	if (NodeId.IsEmpty()) { return false; }
+	for (const FNavMapNode& N : Graph.Nodes)
+	{
+		if (N.NodeId == NodeId)
+		{
+			OutXY = FVector2D(N.PosXCm, N.PosYCm);
+			return true;
+		}
+	}
+	return false;
+}
+
+void UNavMinimapWidget::PushDestinationToMarker()
+{
+	if (DestMarker == nullptr)
+	{
+		return;
+	}
+	FVector2D XY;
+	if (!DestinationNodeId.IsEmpty() && GetNodePos(DestinationNodeId, XY))
+	{
+		DestMarker->SetDestination(XY, GetNodeType(DestinationNodeId), GetNodeLabel(DestinationNodeId));
+	}
+	else
+	{
+		DestMarker->ClearDestination();
+	}
+}
+
+void UNavMinimapWidget::RefreshArGuides(const FNavProgress& P)
+{
+	// 바닥 발자국: 정적 경로 위, 사용자 앞 구간에 목적지 종류별 발자국/화살표.
+	if (FloorGuide != nullptr)
+	{
+		if (RouteXY.Num() >= 2 && bHasCurrent)
+		{
+			FloorGuide->UpdateGuide(RouteXY, CurrentXY,
+				GetNodeType(DestinationNodeId), GetNodeLabel(DestinationNodeId));
+		}
+		else
+		{
+			FloorGuide->HideGuide();
+		}
+	}
+	// 목적지 마름모: 남은 거리(경로거리)를 매 프레임 갱신(월드 투영은 위젯이 스스로).
+	if (DestMarker != nullptr && P.bValid)
+	{
+		DestMarker->SetRemaining(P.RemainingCm);
 	}
 }
 
@@ -184,6 +280,7 @@ void UNavMinimapWidget::SetCurrentPose(float PosXCm, float PosYCm, float Heading
 
 			EvaluateAutoReroute(P);                            // 5-B3
 			OnGuidanceUpdated.Broadcast(Progress->GetGuidance());  // 5-D
+			RefreshArGuides(P);                               // 9단계 §C — 바닥 발자국·목적지 마름모
 		}
 	}
 
@@ -201,6 +298,7 @@ void UNavMinimapWidget::ClearCurrentPose()
 {
 	bHasCurrent = false;
 	OffRouteSinceSeconds = -1.f;
+	if (FloorGuide != nullptr) { FloorGuide->HideGuide(); }   // 측위 상실 → 바닥 발자국 숨김(안전장치 ②).
 	if (UNavMinimapWidget* Full = GetOpenFullMapView()) { Full->ClearCurrentPose(); }
 	Invalidate(EInvalidateWidgetReason::Paint);
 }
@@ -294,6 +392,8 @@ void UNavMinimapWidget::NativeConstruct()
 	RefreshEmptyHint();
 
 	EnsureGuideLog();   // §D 안내 로그를 화면 상단에 띄운다(Follow HUD 만).
+	EnsureFloorGuide(); // §C-1 바닥 발자국 액터(Follow 만).
+	EnsureDestMarker(); // §C-2 목적지 마름모 HUD(Follow 만).
 }
 
 void UNavMinimapWidget::NativeDestruct()
@@ -303,6 +403,18 @@ void UNavMinimapWidget::NativeDestruct()
 	{
 		GuideLog->RemoveFromParent();
 		GuideLog = nullptr;
+	}
+	// §C-2 목적지 마름모 HUD 도 내린다.
+	if (DestMarker != nullptr)
+	{
+		DestMarker->RemoveFromParent();
+		DestMarker = nullptr;
+	}
+	// §C-1 바닥 발자국 액터를 파괴한다.
+	if (FloorGuide != nullptr)
+	{
+		FloorGuide->Destroy();
+		FloorGuide = nullptr;
 	}
 	Super::NativeDestruct();
 }

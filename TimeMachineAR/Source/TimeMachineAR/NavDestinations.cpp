@@ -5,6 +5,9 @@ namespace
 	/** 아이콘 폴더(final §2 H-2). Content/UI/Nav/Icons → /Game/UI/Nav/Icons. */
 	const TCHAR* IconDir = TEXT("/Game/UI/Nav/Icons/");
 
+	/** 바닥 발자국·화살표 폴더(final §2 H-3). Content/UI/Nav/Floor → /Game/UI/Nav/Floor. */
+	const TCHAR* FloorDir = TEXT("/Game/UI/Nav/Floor/");
+
 	/** `/Game/.../T_Name` → `/Game/.../T_Name.T_Name` (텍스처 오브젝트 경로). */
 	FString AssetObjectPath(const FString& Dir, const FString& Name)
 	{
@@ -57,6 +60,29 @@ FString FNavDestinations::IconObjectPath(const FString& NodeType, const FString&
 		case 3: return AssetObjectPath(IconDir, TEXT("T_Icon_EX3_TRex"));
 		case 4: return AssetObjectPath(IconDir, TEXT("T_Icon_EX4_Ankylosaurus"));
 		default: return FString();   // exhibit 인데 공룡을 못 가림 → 아이콘 없음.
+		}
+	}
+	default: return FString();
+	}
+}
+
+FString FNavDestinations::FloorTextureObjectPath(const FString& NodeType, const FString& Label)
+{
+	switch (Classify(NodeType))
+	{
+	// 화장실·입구/출구는 공용 화살표 셰브론 하나로 안내한다(final §C-1 표).
+	case ENavDestKind::Facility:
+	case ENavDestKind::Entrance:
+		return AssetObjectPath(FloorDir, TEXT("T_Floor_Arrow_Facility"));
+	case ENavDestKind::Exhibit:
+	{
+		switch (DinoIndexFromLabel(Label))
+		{
+		case 1: return AssetObjectPath(FloorDir, TEXT("T_Floor_FP_EX1_Triceratops"));
+		case 2: return AssetObjectPath(FloorDir, TEXT("T_Floor_FP_EX2_Brachiosaurus"));
+		case 3: return AssetObjectPath(FloorDir, TEXT("T_Floor_FP_EX3_TRex"));
+		case 4: return AssetObjectPath(FloorDir, TEXT("T_Floor_FP_EX4_Ankylosaurus"));
+		default: return FString();   // exhibit 인데 공룡을 못 가림 → 발자국 없음.
 		}
 	}
 	default: return FString();

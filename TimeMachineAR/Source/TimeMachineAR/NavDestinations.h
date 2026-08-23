@@ -59,6 +59,14 @@ struct TIMEMACHINEAR_API FNavDestinations
 	 */
 	static FString IconObjectPath(const FString& NodeType, const FString& Label);
 
+	/**
+	 * 바닥 AR 발자국·화살표 텍스처 오브젝트 경로(`/Game/UI/Nav/Floor/...`, 9단계 §C-1).
+	 * 전시물(exhibit) → 그 공룡의 발자국 4종, 화장실·입구/출구 → 공용 화살표 셰브론.
+	 * 목적지가 아니거나 전시물인데 공룡을 못 가리면 빈 문자열. 액터가 이 경로로 LoadObject 한다
+	 * (에디터에서 손 할당 불필요, final §2 H-3). 아이콘(Icons)과 폴더·설정이 다른 별도 텍스처다.
+	 */
+	static FString FloorTextureObjectPath(const FString& NodeType, const FString& Label);
+
 	// ---- 안내 로그 문구(final §D 표). 안내 수단이 node_type 으로 갈린다 ----
 
 	/** 안내 중 문구. exhibit → 발자국, facility·entrance → 화살표. */
