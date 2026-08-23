@@ -84,11 +84,37 @@ python -m venv .venv
 ## 4. 시드 데이터 넣기
 
 ```bash
-.venv\Scripts\python.exe scripts\seed.py       # 공룡 1종 + 전시물 1개 + POI 3개
+.venv\Scripts\python.exe scripts\seed.py       # 공룡 1종(티라노) + 전시물 1개 + POI 3개
 .venv\Scripts\python.exe scripts\seed_nav.py   # 네비게이션 맵·노드·마커
 ```
 
-둘 다 멱등이라 여러 번 돌려도 중복되지 않는다.
+**여기서 끝내면 안 된다.** `seed.py` 는 티라노 1종만 넣는다. 나머지 3종
+(트리케라톱스·브라키오사우루스·안킬로사우루스)은 `seeds/04_dinos_extra.sql` 에
+따로 있고, 이 파일은 `db/init/` 이 아니라서 **자동 실행되지 않는다.**
+빠뜨리면 그 3종의 정보 카드와 도슨트가 404 로 조용히 실패한다.
+
+```bash
+docker cp seeds\04_dinos_extra.sql dino_ar_db:/tmp/04_dinos_extra.sql
+docker exec -e PGCLIENTENCODING=UTF8 dino_ar_db psql -U dino -d dino_ar -f /tmp/04_dinos_extra.sql
+```
+
+> 파이프(`psql < 파일`)로 넣으면 PowerShell 이 인코딩을 바꿔 한글이 깨진다.
+> 컨테이너에 복사해서 `-f` 로 읽히는 위 방식을 쓴다.
+
+그다음 `seed_nav.py` 를 **한 번 더** 돌린다. 전시물이 생긴 뒤에야 전시물↔노드
+연결이 붙기 때문이다(처음 실행 때는 '매칭되는 전시물 없음' 으로 스킵된다).
+
+```bash
+.venv\Scripts\python.exe scripts\seed_nav.py
+```
+
+전부 멱등이라 여러 번 돌려도 중복되지 않는다. 확인:
+
+```bash
+docker exec dino_ar_db psql -U dino -d dino_ar -c "SELECT name_ko FROM dinosaurs;"
+```
+
+4종이 나와야 한다.
 
 ---
 
