@@ -271,12 +271,18 @@ def test_chat_unknown_poi_404(client):
     assert res.status_code == 404
 
 
-def test_chat_without_any_exhibit_400(client):
-    """세션에도 요청에도 전시물이 없으면 대화 대상을 정할 수 없다."""
+def test_chat_without_any_exhibit_is_general_chat(client):
+    """세션에도 요청에도 전시물이 없으면 전시물 없는 일반 대화로 답한다.
+
+    마커를 인식하기 전에도 도슨트와 이야기할 수 있어야 한다. 예전에는 대화
+    대상을 정할 수 없다며 400 을 냈지만, 클라이언트가 전시물 없이 세션을 여는
+    경로(일반 AI 챗)가 생겨 이제는 정상 응답이어야 한다.
+    """
     res = client.post("/docent/sessions", json={"device_uuid": "android-2"})
     session_id = res.json()["session_id"]
     res = client.post("/docent/chat", json={"session_id": session_id, "message": "안녕"})
-    assert res.status_code == 400
+    assert res.status_code == 200
+    assert res.json()["answer"]
 
 
 def test_chat_falls_back_when_llm_fails(client):

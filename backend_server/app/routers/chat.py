@@ -36,7 +36,13 @@ from app.services.chat import (
     make_assistant_message,
     stream_chat,
 )
-from app.services.docent import build_chat_fallback, build_chat_prompt, load_exhibit_context
+from app.services.docent import (
+    build_chat_fallback,
+    build_chat_prompt,
+    build_general_chat_fallback,
+    build_general_chat_prompt,
+    load_exhibit_context,
+)
 from app.services.llm.base import ChatTurn, LlmClient
 from app.services.llm.factory import get_llm_client
 
@@ -120,18 +126,21 @@ def _prepare_turn(
         exhibit_id = poi.exhibit_id
 
     if exhibit_id is None:
-        raise HTTPException(
-            status_code=400,
-            detail="exhibit_id or poi_id required (session has no exhibit)",
-        )
+        # 마커로 전시물을 고르기 전에도 대화는 되어야 한다. 클라이언트가 전시물
+        # 없이 세션을 열고 묻는 경로(일반 AI 챗)를 여기서 받는다. 전시물 맥락
+        # 없이 도슨트 페르소나만으로 답하고, 세부 정보가 필요하면 마커 인식을
+        # 안내하게 한다.
+        system_prompt = build_general_chat_prompt()
+        fallback_text = build_general_chat_fallback()
+    else:
+        context = load_exhibit_context(db, exhibit_id)
+        if context is None:
+            raise HTTPException(status_code=404, detail="exhibit not found")
+        exhibit, dinosaur, pois = context
 
-    context = load_exhibit_context(db, exhibit_id)
-    if context is None:
-        raise HTTPException(status_code=404, detail="exhibit not found")
-    exhibit, dinosaur, pois = context
+        system_prompt = build_chat_prompt(exhibit, dinosaur, pois, poi)
+        fallback_text = build_chat_fallback(poi, exhibit)
 
-    system_prompt = build_chat_prompt(exhibit, dinosaur, pois, poi)
-    fallback_text = build_chat_fallback(poi, exhibit)
     history = build_history(session.messages, settings.CHAT_HISTORY_TURNS)
 
     db.add(
@@ -178,7 +187,6 @@ def _persist_assistant(session_id: uuid.UUID, poi_id, event) -> int:
     summary="챗봇 대화 (비스트리밍)",
     tags=["chat"],
     responses={
-        400: {"description": "대화 대상 전시물을 특정할 수 없음"},
         404: {"description": "세션 / POI / 전시물이 존재하지 않음"},
     },
 )
@@ -240,7 +248,6 @@ def chat(
                 "앞서 받은 `delta` 는 유효하다"
             ),
         },
-        400: {"description": "대화 대상 전시물을 특정할 수 없음"},
         404: {"description": "세션 / POI / 전시물이 존재하지 않음"},
     },
 )
