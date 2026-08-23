@@ -267,14 +267,18 @@ public:
 
 	// ------------------------------------------------------------------ 마커 이미지 등록 (7단계 §A)
 	//
-	// 6-1a 임시 프로브의 런타임 후보 등록을 정식 설정으로 승격했다(spec §A D-4).
-	// AR 세션이 켜지기 "전"(Initialize)에 후보 이미지를 DA_ARSession 설정 객체에 얹는다.
-	// 세션 재시작이 없으므로 통합 후 공룡 핀이 날아가지 않는다(spec §1 D-4'). DA_ARSession
-	// .uasset 은 디스크에 저장하지 않는다 → 공지 트리거 0건(spec §1 D-4).
+	// 정식 경로 = **DA_ARSession 에 baked candidate 로 쿡**(6-1a 해결책과 동일). 마커 텍스처를
+	// candidate 이미지로 넣고 저장하면 쿡 때 ARCore 이미지 DB 로 직렬화된다. .uasset 은 규칙상
+	// 커밋하지 않으므로(로컬, 실기기 빌드용) 팀원1과 git 충돌은 없고, 통합 시 팀원1이 합쳐 재bake 한다.
+	//
+	// ⚠️ **런타임 등록(AddRuntimeCandidateImage)은 기본 끈다.** ARCore 에선 (1) 살아있는 세션이
+	// 있어야 하고(GoogleARCoreDevice: "No valid session") (2) 세션 재시작 때 baked DB 로 되돌아가며
+	// 버려진다 — 6-1a 에서 실기기로 확인했고 엔진 코드(GoogleARCoreAPI ConfigSession)와도 일치한다.
+	// 그래서 아래 런타임 경로는 baked 를 못 쓰는 상황용 실험적 폴백일 뿐이다.
 
-	/** 시작 시 마커 후보 이미지를 등록할지. 끄면 baked candidate(DA_ARSession)만 쓴다. */
+	/** 런타임 후보 등록(실험적 폴백). 기본 꺼짐 — 정식 경로는 baked candidate(DA_ARSession)다. */
 	UPROPERTY(Config, EditAnywhere, Category = "Nav|Markers")
-	bool bRegisterMarkerImages = true;
+	bool bRegisterMarkerImages = false;
 
 	/**
 	 * 등록할 마커 이미지 목록. 한 줄에 `FriendlyName|텍스처경로`.
