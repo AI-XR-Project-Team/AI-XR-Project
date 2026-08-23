@@ -12,6 +12,12 @@
 #include "Engine/World.h"
 #include "Kismet/GameplayStatics.h"
 #include "UObject/UnrealType.h"   // FIntProperty — MaxNumSimultaneousImagesTracked 리플렉션 설정
+// 현장 로그(bFieldLogEnabled)용 — 서버 POST + 폰 폴백 저장
+#include "HttpModule.h"
+#include "Interfaces/IHttpRequest.h"
+#include "Interfaces/IHttpResponse.h"
+#include "Misc/FileHelper.h"
+#include "Misc/Paths.h"
 
 // LogNav 는 NavClient.h 에서 선언하고 NavClient.cpp 에서 정의한다. 여기서 따로
 // DEFINE_LOG_CATEGORY_STATIC 을 두면 unity 빌드에서 중복 정의로 깨진다.
@@ -62,10 +68,24 @@ void UNavLocalizer::Initialize(FSubsystemCollectionBase& Collection)
 	{
 		RegisterMarkerImages(/*bAllowSessionRestart=*/false);
 	}
+
+	// 현장 로그: 세션 태그를 실행 시각으로 한 번 만들고(예: "nav-20260823-153207") 헤더 줄을 쌓는다.
+	if (bFieldLogEnabled)
+	{
+		FieldLogSessionTag = FString::Printf(TEXT("%s-%s"),
+			*FieldLogSessionPrefix, *FDateTime::Now().ToString(TEXT("%Y%m%d-%H%M%S")));
+		FieldLogBuf.Add(TEXT("t_sec,event,from,to,map_x_cm,map_y_cm,heading_deg,extra"));
+	}
 }
 
 void UNavLocalizer::Deinitialize()
 {
+	// 앱 종료 시 버퍼에 남은 현장 로그를 마지막으로 업로드한다(베스트 에포트).
+	if (bFieldLogEnabled)
+	{
+		FieldLogFlush(true);
+	}
+
 	if (UGameInstance* GI = GetWorld() ? GetWorld()->GetGameInstance() : nullptr)
 	{
 		if (UNavClient* Client = GI->GetSubsystem<UNavClient>())
@@ -201,6 +221,8 @@ void UNavLocalizer::Tick(float DeltaTime)
 			bLostReported = false;
 			SecondsSinceMarkerSeen = 0.f;
 			UE_LOG(LogNav, Log, TEXT("[Localizer] 측위 성립. 기준 마커=%s"), *AnchorMarkerCode);
+			FieldLogEvent(TEXT("LOCALIZE"), FString(), AnchorMarkerCode,
+				CurrentPose.PosXCm, CurrentPose.PosYCm, CurrentPose.HeadingDeg, FString());
 			OnLocalized.Broadcast(AnchorMarkerCode);
 		}
 	}
@@ -246,11 +268,24 @@ void UNavLocalizer::Tick(float DeltaTime)
 			bLostReported = true;
 			UE_LOG(LogNav, Warning, TEXT("[Localizer] 마커를 %.1f 초째 못 봤다. 위치가 밀렸을 수 있다."),
 				SecondsSinceMarkerSeen);
+			FieldLogEvent(TEXT("LOST"), AnchorMarkerCode, FString(),
+				CurrentPose.PosXCm, CurrentPose.PosYCm, CurrentPose.HeadingDeg,
+				FString::Printf(TEXT("gap=%.1f"), SecondsSinceMarkerSeen));
 			OnLocalizationLost.Broadcast();
 		}
 	}
 
 	UpdateCurrentPose();
+
+	// 현장 로그: 주기적 위치 샘플(걸어간 경로·드리프트 추적). bFieldLogEnabled 일 때만.
+	FieldLogSincePose += DeltaTime;
+	if (bFieldLogEnabled && FieldLogSincePose >= FieldLogPoseIntervalSeconds)
+	{
+		FieldLogSincePose = 0.f;
+		FieldLogEvent(TEXT("POSE"), AnchorMarkerCode, FString(),
+			CurrentPose.PosXCm, CurrentPose.PosYCm, CurrentPose.HeadingDeg,
+			FString::Printf(TEXT("gap=%.1f"), SecondsSinceMarkerSeen));
+	}
 
 	// 안내 중(측위 후)에만 추적 품질을 지켜본다. 흔들려서 센서가 틀어지면 경고를 띄운다.
 	MonitorTrackingQuality(DeltaTime);
@@ -608,6 +643,11 @@ bool UNavLocalizer::TryTransitionAnchor()
 	}
 
 	const FString Prev = AnchorMarkerCode;
+	// 재보정 "전"의 드리프트된 추정 위치(직전 틱까지 데드레코닝된 값).
+	const FVector2D DriftedXY(CurrentPose.PosXCm, CurrentPose.PosYCm);
+	FieldLogEvent(TEXT("PRE_TRANSITION"), Prev, Switch,
+		DriftedXY.X, DriftedXY.Y, CurrentPose.HeadingDeg, FString());
+
 	AnchorImage = NewImage;
 	AnchorMarkerCode = Switch;
 	AnchorMarker = *Found;
@@ -615,9 +655,102 @@ bool UNavLocalizer::TryTransitionAnchor()
 	SecondsSinceMarkerSeen = 0.f;
 	bLostReported = false;
 
-	UE_LOG(LogNav, Log, TEXT("[Localizer] 앵커 전환: %s → %s. 드리프트 재보정."),
-		Prev.IsEmpty() ? TEXT("(없음)") : *Prev, *Switch);
+	// 재보정 "후"의 위치(새 마커 기준). 두 위치 차 = A→새마커 구간 누적 드리프트.
+	float DriftCm = 0.f;
+	if (APlayerCameraManager* Cam = UGameplayStatics::GetPlayerCameraManager(this, 0))
+	{
+		const FVector CorrectedMap = WorldToMap(Cam->GetCameraLocation());
+		DriftCm = FVector2D::Distance(DriftedXY, FVector2D(CorrectedMap.X, CorrectedMap.Y));
+		FieldLogEvent(TEXT("TRANSITION"), Prev, Switch,
+			CorrectedMap.X, CorrectedMap.Y, CurrentPose.HeadingDeg,
+			FString::Printf(TEXT("drift_cm=%.0f"), DriftCm));
+	}
+
+	UE_LOG(LogNav, Log, TEXT("[Localizer] 앵커 전환: %s → %s. 드리프트 재보정 %.0fcm."),
+		Prev.IsEmpty() ? TEXT("(없음)") : *Prev, *Switch, DriftCm);
 	OnAnchorChanged.Broadcast(Switch);
 	return true;
+}
+
+// ==================================================================== 현장 로그 (7단계 검증)
+//
+// A→F 앵커 전환·드리프트를 테더링 없이 검증하려고 이벤트를 CSV 로 모아 서버(/debug/probe-log)
+// 로 보낸다(6-1a 프로브와 같은 경로). 서버가 없으면 폰 Saved/NavLog 에 남긴다. 검증 종료 시 제거.
+
+void UNavLocalizer::FieldLogEvent(const FString& Event, const FString& FromCode, const FString& ToCode,
+	float MapXCm, float MapYCm, float HeadingDeg, const FString& Extra)
+{
+	if (!bFieldLogEnabled)
+	{
+		return;
+	}
+	const float T = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.f;
+	FieldLogBuf.Add(FString::Printf(TEXT("%.2f,%s,%s,%s,%.0f,%.0f,%.1f,%s"),
+		T, *Event, *FromCode, *ToCode, MapXCm, MapYCm, HeadingDeg, *Extra));
+	FieldLogFlush(false);
+}
+
+void UNavLocalizer::FieldLogFlush(bool bFinal)
+{
+	if (FieldLogBuf.Num() == 0)
+	{
+		return;
+	}
+	if (!bFinal && FieldLogBuf.Num() < FieldLogUploadEveryLines)
+	{
+		return;
+	}
+
+	// 스냅샷을 떠서 버퍼를 즉시 비운다(비동기 응답 대기 중 중복/무한증가 방지).
+	const FString Payload = FString::Join(FieldLogBuf, TEXT("\n")) + TEXT("\n");
+	FieldLogBuf.Reset();
+
+	UGameInstance* GI = GetWorld() ? GetWorld()->GetGameInstance() : nullptr;
+	UNavClient* Client = GI ? GI->GetSubsystem<UNavClient>() : nullptr;
+	const FString Base = Client ? Client->GetServerBaseUrl() : FString();
+
+	// 폴백: 서버 주소가 없거나 요청 실패 시 폰 Saved/NavLog 에 append. this 를 잡지 않는다.
+	const FString Tag = FieldLogSessionTag;
+	auto SaveFallback = [Payload, Tag]()
+	{
+		const FString Dir = FPaths::ProjectSavedDir() / TEXT("NavLog");
+		IFileManager::Get().MakeDirectory(*Dir, /*Tree=*/true);
+		const FString File = Dir / FString::Printf(TEXT("navlog_%s.csv"), *Tag);
+		FFileHelper::SaveStringToFile(Payload, *File,
+			FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM,
+			&IFileManager::Get(), FILEWRITE_Append);
+	};
+
+	if (Base.IsEmpty())
+	{
+		++FieldLogUploadFail;
+		SaveFallback();
+		return;
+	}
+
+	const FString Url = FString::Printf(TEXT("%s/debug/probe-log?session=%s"), *Base, *FieldLogSessionTag);
+	const TSharedRef<IHttpRequest, ESPMode::ThreadSafe> Request = FHttpModule::Get().CreateRequest();
+	Request->SetURL(Url);
+	Request->SetVerb(TEXT("POST"));
+	Request->SetHeader(TEXT("Content-Type"), TEXT("text/plain"));
+	Request->SetContentAsString(Payload);
+
+	TWeakObjectPtr<UNavLocalizer> WeakThis(this);
+	Request->OnProcessRequestComplete().BindLambda(
+		[WeakThis, SaveFallback](FHttpRequestPtr, FHttpResponsePtr Response, bool bOk)
+		{
+			const bool bSuccess = bOk && Response.IsValid()
+				&& Response->GetResponseCode() >= 200 && Response->GetResponseCode() < 300;
+			if (UNavLocalizer* Self = WeakThis.Get())
+			{
+				if (bSuccess) { ++Self->FieldLogUploadOk; }
+				else          { ++Self->FieldLogUploadFail; }
+			}
+			if (!bSuccess)
+			{
+				SaveFallback();
+			}
+		});
+	Request->ProcessRequest();
 }
 

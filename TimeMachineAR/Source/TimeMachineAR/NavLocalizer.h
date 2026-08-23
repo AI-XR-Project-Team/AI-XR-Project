@@ -313,6 +313,22 @@ public:
 	UPROPERTY(EditAnywhere, Category = "Nav|Markers", meta = (ClampMin = "0.05"))
 	float AnchorScanIntervalSeconds = 0.2f;
 
+	// ------------------------------------------------------------------ 현장 로그 (7단계 검증)
+	//
+	// 20m+ 를 테더링 없이 걸으며 A→F 앵커 전환·드리프트를 검증하려면 로그를 서버로 보낸다
+	// (6-1a 프로브와 같은 방식). 이벤트(측위/전환/상실)와 주기적 위치를 CSV 로 모아
+	// /debug/probe-log 에 POST 하고, 서버가 없으면 폰 Saved/NavLog 에 남긴다. 기본 꺼짐.
+	// 검증이 끝나면 이 블록과 FieldLog* 함수를 제거한다.
+
+	UPROPERTY(Config, EditAnywhere, Category = "Nav|FieldLog")
+	bool bFieldLogEnabled = false;
+	UPROPERTY(Config, EditAnywhere, Category = "Nav|FieldLog")
+	FString FieldLogSessionPrefix = TEXT("nav");
+	UPROPERTY(Config, EditAnywhere, Category = "Nav|FieldLog", meta = (ClampMin = "0.2"))
+	float FieldLogPoseIntervalSeconds = 1.0f;   // 주기적 위치 샘플(경로·드리프트 추적용)
+	UPROPERTY(Config, EditAnywhere, Category = "Nav|FieldLog", meta = (ClampMin = "1"))
+	int32 FieldLogUploadEveryLines = 40;        // 이만큼 쌓이면 업로드
+
 	// ------------------------------------------------------------------ Subsystem
 
 	virtual void Initialize(FSubsystemCollectionBase& Collection) override;
@@ -405,6 +421,17 @@ private:
 	float SecondsSinceAnchorScan = 0.f;
 	/** 지난 스캔에서 추적 중이던 known 마커 code 들. ACQUIRE 에지 판정용. */
 	TSet<FString> TrackedMarkerCodesLastScan;
+
+	// --- 현장 로그 (7단계 검증, bFieldLogEnabled) ---
+	/** 한 줄을 CSV 버퍼에 쌓는다. 임계 넘으면 서버로 flush. 꺼져 있으면 즉시 반환. */
+	void FieldLogEvent(const FString& Event, const FString& FromCode, const FString& ToCode,
+		float MapXCm, float MapYCm, float HeadingDeg, const FString& Extra);
+	void FieldLogFlush(bool bFinal);
+	TArray<FString> FieldLogBuf;
+	FString FieldLogSessionTag;      // Initialize 에서 1회 생성
+	float FieldLogSincePose = 0.f;
+	int32 FieldLogUploadOk = 0;
+	int32 FieldLogUploadFail = 0;
 
 public:
 	// --- 순수 헬퍼 (헤드리스 자동화 테스트 대상, spec §A) ---
