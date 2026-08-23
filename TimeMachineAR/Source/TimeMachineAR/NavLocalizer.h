@@ -26,6 +26,13 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnNavTrackingDegraded, const FStrin
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnNavTrackingRecovered);
 
 /**
+ * 측위 후 **다른 마커로 앵커가 바뀌었을 때**(7단계 앵커 전환). 새 마커 code 를 넘긴다.
+ * 걸어가다 다음 전시물 마커를 잡으면 드리프트가 씻기고 이 이벤트가 뜬다.
+ * 최초 측위(OnLocalized)와 구분한다 — 기존 UI 를 건드리지 않고 8·9단계가 여기에 붙는다.
+ */
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnNavAnchorChanged, const FString&, MarkerCode);
+
+/**
  * 실내 측위. "지금 내가 맵의 어디에 서 있는가"를 매 틱 알려준다.
  *
  * nav-test-app 의 CoordTransform.kt 를 UE 로 옮긴 것이다. 다만 **훨씬 짧다.**
@@ -168,6 +175,10 @@ public:
 	UPROPERTY(BlueprintAssignable, Category = "Nav|Localizer")
 	FOnNavTrackingRecovered OnTrackingRecovered;
 
+	/** 측위 후 앵커 마커가 다른 마커로 바뀌었을 때(7단계 앵커 전환). */
+	UPROPERTY(BlueprintAssignable, Category = "Nav|Localizer")
+	FOnNavAnchorChanged OnAnchorChanged;
+
 	// ------------------------------------------------------------------ 설정
 
 	/**
@@ -254,44 +265,49 @@ public:
 		meta = (ClampMin = "0.05"))
 	float QualityRecoverSeconds = 0.5f;
 
-	// ------------------------------------------------------------------ 6-1a 임시 프로브
+	// ------------------------------------------------------------------ 마커 이미지 등록 (7단계 §A)
 	//
-	// A-1 마커가 인식되는지, 어느 거리·각도에서 잡히고 놓치는지를 계측해 CSV 로 남긴다.
-	// 측위(6-1b)·서버 마커 목록과 무관하다 — GetAllGeometriesByClass 로 추적 이미지를
-	// 직접 훑으므로 KnownMarkers 필터 "앞에서" 찍는다. 6단계 종료 시 이 블록과 관련
-	// 함수(ProbeScan/ProbeRegisterImages/ProbeFlush/ProbePush)를 통째로 제거한다.
+	// 6-1a 임시 프로브의 런타임 후보 등록을 정식 설정으로 승격했다(spec §A D-4).
+	// AR 세션이 켜지기 "전"(Initialize)에 후보 이미지를 DA_ARSession 설정 객체에 얹는다.
+	// 세션 재시작이 없으므로 통합 후 공룡 핀이 날아가지 않는다(spec §1 D-4'). DA_ARSession
+	// .uasset 은 디스크에 저장하지 않는다 → 공지 트리거 0건(spec §1 D-4).
 
-	UPROPERTY(Config, EditAnywhere, Category = "Nav|Probe")
-	bool bProbeEnabled = false;                    // 꺼져 있으면 Tick 자체가 안 온다
+	/** 시작 시 마커 후보 이미지를 등록할지. 끄면 baked candidate(DA_ARSession)만 쓴다. */
+	UPROPERTY(Config, EditAnywhere, Category = "Nav|Markers")
+	bool bRegisterMarkerImages = true;
 
-	UPROPERTY(Config, EditAnywhere, Category = "Nav|Probe")
-	float ProbeIntervalSeconds = 0.2f;             // 5Hz
+	/**
+	 * 등록할 마커 이미지 목록. 한 줄에 `FriendlyName|텍스처경로`.
+	 * FriendlyName 이 곧 서버 마커 code 이자 KnownMarkers 키다(ARTrackingManager 와 동일 규약).
+	 * 비우면 아래 기본 7장(과도기: 구 2 + A2 신 5, spec §A 표)을 등록한다. ini 로 덮어쓸 수 있다.
+	 * 같은 code 를 두 줄에 두면(구·신) 어느 인쇄물이 잡혀도 같은 지점으로 측위된다.
+	 */
+	UPROPERTY(Config, EditAnywhere, Category = "Nav|Markers")
+	TArray<FString> MarkerImageEntries;
 
-	UPROPERTY(Config, EditAnywhere, Category = "Nav|Probe")
-	bool bProbeDrawDebugBox = true;                // 마커 위 와이어프레임
+	/** 등록 시 넘길 물리 폭(cm). A2 단면 긴변 = 42.0(spec §A). 100% 인쇄면 실측 불필요. */
+	UPROPERTY(Config, EditAnywhere, Category = "Nav|Markers")
+	float MarkerPhysicalWidthCm = 42.0f;
 
-	UPROPERTY(Config, EditAnywhere, Category = "Nav|Probe")
-	float ProbeMarkerWidthCm = 42.0f;              // §A 실측값 (A2 긴변 조립 = 42.0)
-	UPROPERTY(Config, EditAnywhere, Category = "Nav|Probe")
-	float ProbeMarkerHeightCm = 59.4f;
+	/**
+	 * 동시에 추적할 최대 이미지 수. UE 기본값 1 이면 마커 A 를 무는 동안 B 가 보고되지
+	 * 않아 **앵커 전환이 안 된다**(spec §F-1). 시작 전에 세션 설정에 리플렉션으로 올린다.
+	 * ⚠️ 문서상 ARKit 기준값이라 ARCore 가 무시할 수 있다 — 현장 1회로 판정(spec §F-1).
+	 */
+	UPROPERTY(Config, EditAnywhere, Category = "Nav|Markers", meta = (ClampMin = "1"))
+	int32 MaxMarkerImagesTracked = 5;
 
-	UPROPERTY(Config, EditAnywhere, Category = "Nav|Probe")
-	FString ProbeSessionPrefix = TEXT("a1");       // 접두어만. 뒤는 실행 시각이 자동으로 붙는다
-	UPROPERTY(Config, EditAnywhere, Category = "Nav|Probe")
-	int32 ProbeUploadEveryLines = 300;             // 이만큼 쌓이면 업로드
+	// 실제 에셋은 Content/Stuff/Asset/DA_ARSession. ARTrackingManager 가 BP 프로퍼티로 쥔 것과
+	// 같은 인스턴스라 여기에 얹으면 그쪽 세션에도 반영된다(같은 경로 = 같은 로드 인스턴스).
+	UPROPERTY(Config, EditAnywhere, Category = "Nav|Markers")
+	FString MarkerSessionConfigPath = TEXT("/Game/Stuff/Asset/DA_ARSession.DA_ARSession");
 
-	// 런타임 후보 등록 — DA_ARSession 을 디스크상 수정하지 않는다(공지 0건).
-	UPROPERTY(Config, EditAnywhere, Category = "Nav|Probe")
-	bool bProbeRegisterRuntimeImages = true;
-	UPROPERTY(Config, EditAnywhere, Category = "Nav|Probe")
-	TArray<FString> ProbeImageEntries;             // "A-1|/Game/UI/Nav/Markers/T_Marker_A1.T_Marker_A1"
-	UPROPERTY(Config, EditAnywhere, Category = "Nav|Probe")
-	float ProbeRegisterDelaySeconds = 2.5f;        // 세션 기동과 겹치지 않게
-	// 실제 에셋은 Content/Stuff/Asset/DA_ARSession(=/Game/Stuff/Asset/…). ARTrackingManager 는
-	// 이 설정을 에디터 프로퍼티(SessionConfig, BP 할당)로 받아 line 23 의 폴백 경로를 안 타지만,
-	// 프로브는 이 경로로만 로드하므로 정확해야 한다(틀리면 후보 등록 실패 → 동시추적 0).
-	UPROPERTY(Config, EditAnywhere, Category = "Nav|Probe")
-	FString ProbeSessionConfigPath = TEXT("/Game/Stuff/Asset/DA_ARSession.DA_ARSession");
+	/**
+	 * 측위 후 앵커 전환용 추적 이미지 재스캔 주기(초). 매 프레임 훑으면 비싸다 → 5Hz.
+	 * (6-1a 프로브의 GetAllGeometriesByClass 순회를 여기로 승격했다, spec §0.)
+	 */
+	UPROPERTY(EditAnywhere, Category = "Nav|Markers", meta = (ClampMin = "0.05"))
+	float AnchorScanIntervalSeconds = 0.2f;
 
 	// ------------------------------------------------------------------ Subsystem
 
@@ -310,8 +326,8 @@ public:
 	 */
 	virtual bool IsTickable() const override
 	{
-		// 프로브는 측위 전에도 돌아야 한다(6-1a). 6단계 종료 시 `|| bProbeEnabled` 를 뗀다.
-		return Super::IsTickable() && (bScanning || bLocalized || bProbeEnabled);
+		// 탐색 중이거나 측위된 뒤에만 돈다. 도슨트만 쓰는 관람객에겐 매 프레임 부담을 안 준다.
+		return Super::IsTickable() && (bScanning || bLocalized);
 	}
 
 	virtual TStatId GetStatId() const override;
@@ -374,28 +390,32 @@ private:
 	/** 카메라의 월드 위치를 맵 좌표로 옮겨 CurrentPose 를 갱신하고 알린다. */
 	void UpdateCurrentPose();
 
-	// --- 6-1a 임시 프로브 상태 (6단계 종료 시 이 블록과 아래 함수들을 제거한다) ---
-	struct FProbeSeen
-	{
-		bool  bVisible   = false;
-		int32 Acquires   = 0;
-		float MinDistCm  = TNumericLimits<float>::Max();
-		float MaxDistCm  = 0.f;
-		float LastDistCm = 0.f;
-	};
-	TMap<FString, FProbeSeen> ProbeSeen;
-	TArray<FString> ProbeEvents;      // 화면용 최근 이벤트
-	TArray<FString> ProbeCsv;         // 업로드 버퍼
-	float ProbeElapsed = 0.f;
-	float ProbeSinceScan = 0.f;
-	int32 ProbeSimultaneous = 0;
-	int32 ProbeUploadOk = 0;
-	int32 ProbeUploadFail = 0;
-	bool  bProbeRegistered = false;
+	// --- 마커 이미지 등록 (7단계 §A) ---
+	/** 아직 안 됐으면 마커 후보 이미지를 세션 설정에 등록한다(+MaxNum 상향). */
+	void RegisterMarkerImages(bool bAllowSessionRestart);
+	bool bMarkerImagesRegistered = false;
 
-	FString ProbeSessionTag;          // Initialize 에서 1회 생성. 사람이 손대지 않는다
-	void ProbeScan();
-	void ProbeRegisterImages();
-	void ProbeFlush(bool bFinal);
-	void ProbePush(const FString& CsvLine, const FString& HumanLine);
+	// --- 앵커 전환 (7단계 §A) ---
+	/** 측위 후 다른 known 마커가 잡히면 앵커를 그쪽으로 옮긴다. 옮겼으면 true. */
+	bool TryTransitionAnchor();
+	float SecondsSinceAnchorScan = 0.f;
+	/** 지난 스캔에서 추적 중이던 known 마커 code 들. ACQUIRE 에지 판정용. */
+	TSet<FString> TrackedMarkerCodesLastScan;
+
+public:
+	// --- 순수 헬퍼 (헤드리스 자동화 테스트 대상, spec §A) ---
+
+	/** `FriendlyName|경로` 한 줄을 가른다. 형식이 맞으면 true(양끝 공백 제거). */
+	static bool ParseMarkerEntry(const FString& Entry, FString& OutName, FString& OutPath);
+
+	/**
+	 * 앵커 전환 결정(순수 로직). 지금 추적 중인 known 마커 code 들과 지난 스캔 집합을 보고
+	 * 어느 code 로 앵커를 옮길지 정한다. 옮기지 않으면 빈 문자열.
+	 *  - 현재 앵커가 추적 불가면(멀어져 놓침) 추적 중인 아무 마커로 재측위한다.
+	 *  - 앵커가 살아 있으면 **이번에 새로 잡힌**(지난 스캔엔 없던) 다른 마커에만 옮긴다
+	 *    (전시물 도착 = 드리프트 보정 순간). 이미 계속 보이던 마커로는 안 옮겨 요동을 막는다.
+	 */
+	static FString DecideAnchorTransition(
+		const FString& CurrentAnchorCode, bool bAnchorTracking,
+		const TArray<FString>& TrackedKnownNow, const TSet<FString>& TrackedKnownLast);
 };
