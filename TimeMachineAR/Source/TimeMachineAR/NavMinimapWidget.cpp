@@ -4,8 +4,11 @@
 #include "Rendering/DrawElements.h"
 #include "Engine/GameInstance.h"
 #include "Engine/World.h"
+#include "Engine/Texture2D.h"
 #include "NavRouteProgress.h"
 #include "NavFullMapWidget.h"
+#include "NavGuideLogWidget.h"   // 안내 로그 오버레이(§D)
+#include "NavDestinations.h"     // 목적지 색·아이콘 규칙(§B)
 #include "NavLocalizer.h"   // 측위 품질(reroute 게이트)·현재 pose
 #include "NavClient.h"      // LogNav, Reroute
 
@@ -115,8 +118,11 @@ void UNavMinimapWidget::OpenFullMap()
 	W->ApplyState(Graph, RouteXY, bHasCurrent && !IsDesignTime(),
 		CurrentXY, CurrentHeadingDeg, bCurrentHasHeading, DestinationNodeId);
 	W->OnDestinationChosen.AddDynamic(this, &UNavMinimapWidget::HandleDestinationChosen);
+	W->OnClosed.AddDynamic(this, &UNavMinimapWidget::HandleFullMapClosed);
 	W->AddToViewport(100);
 	FullMapInstance = W;
+
+	OnFullMapOpenChanged.Broadcast(true);   // §D 안내 로그: "확대 지도" 상태.
 }
 
 void UNavMinimapWidget::HandleDestinationChosen(const FString& NodeId)
@@ -124,6 +130,30 @@ void UNavMinimapWidget::HandleDestinationChosen(const FString& NodeId)
 	DestinationNodeId = NodeId;
 	Invalidate(EInvalidateWidgetReason::Paint);
 	OnDestinationChosen.Broadcast(NodeId);   // BP → NavClient.RequestRoute
+}
+
+void UNavMinimapWidget::HandleFullMapClosed()
+{
+	OnFullMapOpenChanged.Broadcast(false);
+}
+
+void UNavMinimapWidget::EnsureGuideLog()
+{
+	// Follow(HUD) 인스턴스만, 디자이너가 아닐 때만 만든다. Full(MapView)·미리보기는 제외.
+	if (Mode != ENavMinimapMode::Follow || IsDesignTime() || GuideLog != nullptr)
+	{
+		return;
+	}
+	// 클래스가 지정돼 있으면 그 WBP 로, 없으면 순수 C++ 위젯을 그대로 만든다(에디터 작업 0).
+	const TSubclassOf<UNavGuideLogWidget> Cls =
+		(GuideLogWidgetClass != nullptr) ? GuideLogWidgetClass
+		                                 : TSubclassOf<UNavGuideLogWidget>(UNavGuideLogWidget::StaticClass());
+	GuideLog = CreateWidget<UNavGuideLogWidget>(GetWorld(), Cls);
+	if (GuideLog != nullptr)
+	{
+		GuideLog->BindToMinimap(this);
+		GuideLog->AddToViewport(50);   // 전체 지도(100)보다 아래, 일반 HUD 위.
+	}
 }
 
 void UNavMinimapWidget::SetCurrentPose(float PosXCm, float PosYCm, float HeadingDeg, bool bHasHeading)
@@ -262,9 +292,70 @@ void UNavMinimapWidget::NativeConstruct()
 	// 특히 필요하고, Full 은 fit-to-bounds 라 사실상 영향이 없다.
 	SetClipping(EWidgetClipping::ClipToBounds);
 	RefreshEmptyHint();
+
+	EnsureGuideLog();   // §D 안내 로그를 화면 상단에 띄운다(Follow HUD 만).
+}
+
+void UNavMinimapWidget::NativeDestruct()
+{
+	// 우리가 만든 안내 로그도 함께 화면에서 내린다.
+	if (GuideLog != nullptr)
+	{
+		GuideLog->RemoveFromParent();
+		GuideLog = nullptr;
+	}
+	Super::NativeDestruct();
 }
 
 // ---------------------------------------------------------------------- 좌표/조회
+
+FString UNavMinimapWidget::GetNodeType(const FString& NodeId) const
+{
+	if (NodeId.IsEmpty()) { return FString(); }
+	for (const FNavMapNode& N : Graph.Nodes)
+	{
+		if (N.NodeId == NodeId) { return N.NodeType; }
+	}
+	return FString();
+}
+
+FString UNavMinimapWidget::GetNodeLabel(const FString& NodeId) const
+{
+	if (NodeId.IsEmpty()) { return FString(); }
+	for (const FNavMapNode& N : Graph.Nodes)
+	{
+		if (N.NodeId == NodeId) { return N.Label; }
+	}
+	return FString();
+}
+
+bool UNavMinimapWidget::FindDestinationNodeAtLocal(const FVector2D& LocalPos, float RadiusPx,
+	FString& OutNodeId) const
+{
+	if (!bHasCachedTransform || Graph.Nodes.Num() == 0)
+	{
+		return false;
+	}
+	const float R2 = RadiusPx * RadiusPx;
+	float BestD2 = R2;
+	bool bFound = false;
+	for (const FNavMapNode& Node : Graph.Nodes)
+	{
+		if (!FNavDestinations::IsDestination(Node.NodeType))
+		{
+			continue;   // 아이콘이 없는 노드(junction·waypoint)는 목적지로 못 고른다(D-5).
+		}
+		const FVector2D L = WorldToLocal(FVector2D(Node.PosXCm, Node.PosYCm));
+		const float D2 = static_cast<float>((L - LocalPos).SizeSquared());
+		if (D2 <= BestD2)
+		{
+			BestD2 = D2;
+			OutNodeId = Node.NodeId;
+			bFound = true;
+		}
+	}
+	return bFound;
+}
 
 FVector2D UNavMinimapWidget::WorldToLocal(const FVector2D& W) const
 {
@@ -441,6 +532,8 @@ int32 UNavMinimapWidget::NativePaint(const FPaintArgs& Args, const FGeometry& Al
 	if (Graph.Nodes.Num() > 0)
 	{
 		PaintFullMapBase(OutDrawElements, Layer, Geom);
+		// 목적지 아이콘(마름모+그림)은 도면 위에 얹는다. Full·Follow 공통(§B-1·D-8).
+		PaintDestinationIcons(OutDrawElements, Layer, AllottedGeometry);
 	}
 
 	if (!bHaveRoute)
@@ -706,6 +799,13 @@ void UNavMinimapWidget::PaintFullMapBase(FSlateWindowElementList& Out, int32& La
 		}
 	}
 
+	// 3)·4) 엣지·노드는 **디버그일 때만** 그린다(final §D-7). 사용자 화면에는 도면·구조물·
+	// 목적지 아이콘·경로선만 남는다. 아이콘은 PaintDestinationIcons 가 따로 얹는다.
+	if (!bDrawGraphDebug)
+	{
+		return;
+	}
+
 	// 3) 전체 엣지 — 옅은 회색. 노드 id → 좌표를 먼저 인덱싱.
 	TMap<FString, FVector2D> NodeXY;
 	NodeXY.Reserve(Graph.Nodes.Num());
@@ -744,6 +844,88 @@ void UNavMinimapWidget::PaintFullMapBase(FSlateWindowElementList& Out, int32& La
 		else
 		{
 			PaintRing(Out, Layer, Geom, C, GraphNodeRadiusPx, 2.f, GraphNodeColor);
+		}
+	}
+}
+
+// ---------------------------------------------------------------------- 목적지 아이콘
+
+const FSlateBrush* UNavMinimapWidget::ResolveIconBrush(const FString& ObjectPath) const
+{
+	if (ObjectPath.IsEmpty())
+	{
+		return nullptr;
+	}
+	if (FSlateBrush* Cached = IconBrushCache.Find(ObjectPath))
+	{
+		// 이미 시도했다. 리소스가 비어 있으면(로드 실패) 다시 로드하지 않고 건너뛴다.
+		return (Cached->GetResourceObject() != nullptr) ? Cached : nullptr;
+	}
+	FSlateBrush Brush;
+	if (UTexture2D* Tex = LoadObject<UTexture2D>(nullptr, *ObjectPath))
+	{
+		Brush.SetResourceObject(Tex);
+		Brush.DrawAs = ESlateBrushDrawType::Image;
+		Brush.ImageSize = FVector2D(DestIconSizePx, DestIconSizePx);
+	}
+	else
+	{
+		UE_LOG(LogNav, Warning,
+			TEXT("[minimap] 목적지 아이콘 로드 실패: %s (텍스처 임포트 누락?)."), *ObjectPath);
+	}
+	FSlateBrush& Stored = IconBrushCache.Add(ObjectPath, Brush);
+	return (Stored.GetResourceObject() != nullptr) ? &Stored : nullptr;
+}
+
+void UNavMinimapWidget::PaintDestinationIcons(FSlateWindowElementList& Out, int32& Layer,
+	const FGeometry& AllottedGeometry) const
+{
+	if (!bHasCachedTransform || Graph.Nodes.Num() == 0)
+	{
+		return;
+	}
+	const bool bCull = (Mode == ENavMinimapMode::Follow);
+	const float CullMargin = DestDiamondHalfPx + DestIconSizePx;
+	const FPaintGeometry LineGeom = AllottedGeometry.ToPaintGeometry();
+
+	++Layer;
+	for (const FNavMapNode& N : Graph.Nodes)
+	{
+		if (!FNavDestinations::IsDestination(N.NodeType))
+		{
+			continue;
+		}
+		const FVector2D C = WorldToLocal(FVector2D(N.PosXCm, N.PosYCm));
+		if (bCull && !IsLocalInView(C, CullMargin))
+		{
+			continue;
+		}
+
+		const bool bActive = !DestinationNodeId.IsEmpty() && N.NodeId == DestinationNodeId;
+		const FLinearColor Accent = FNavDestinations::AccentColor(N.NodeType);
+
+		// 마름모(중심→꼭짓점 = Half). 화면 px 고정 크기라 Follow 배율에도 안 커진다.
+		const float Half = DestDiamondHalfPx;
+		TArray<FVector2D> Diamond;
+		Diamond.Add(C + FVector2D(0.f, -Half));
+		Diamond.Add(C + FVector2D(Half, 0.f));
+		Diamond.Add(C + FVector2D(0.f, Half));
+		Diamond.Add(C + FVector2D(-Half, 0.f));
+		Diamond.Add(Diamond[0]);   // 닫는다.
+		FSlateDrawElement::MakeLines(Out, Layer, LineGeom, Diamond,
+			ESlateDrawEffect::None, Accent, true,
+			bActive ? DestActiveDiamondThicknessPx : DestDiamondThicknessPx);
+
+		// 아이콘 그림. 없으면(임포트 누락) 마름모만 남는다 — 자리 표시는 유지된다.
+		const FString IconPath = FNavDestinations::IconObjectPath(N.NodeType, N.Label);
+		if (const FSlateBrush* Brush = ResolveIconBrush(IconPath))
+		{
+			const FVector2D IconSz(DestIconSizePx, DestIconSizePx);
+			const FPaintGeometry IconGeom = AllottedGeometry.ToPaintGeometry(
+				IconSz, FSlateLayoutTransform(C - IconSz * 0.5f));
+			// 비활성 목적지는 살짝 흐리게, 현재 목적지는 또렷하게.
+			const FLinearColor Tint = bActive ? FLinearColor::White : FLinearColor(1.f, 1.f, 1.f, 0.85f);
+			FSlateDrawElement::MakeBox(Out, Layer, IconGeom, Brush, ESlateDrawEffect::None, Tint);
 		}
 	}
 }

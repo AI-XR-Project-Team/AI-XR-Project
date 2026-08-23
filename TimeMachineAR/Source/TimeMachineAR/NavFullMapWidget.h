@@ -7,6 +7,11 @@
 
 class UBorder;
 class UTextBlock;
+class UPanelWidget;
+class UNavDestButton;
+
+/** 전체 지도가 닫혔을 때(뷰포트에서 내려갈 때). Follow 미니맵이 §D 안내 로그를 되돌린다. */
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnNavFullMapClosed);
 
 /**
  * 전체 지도 오버레이. UNavMinimapWidget(Full 모드)을 품고, 반투명 배경과 터치 처리를 얹는다.
@@ -55,6 +60,10 @@ public:
 	UPROPERTY(BlueprintAssignable, Category = "Nav|FullMap")
 	FOnNavDestinationChosen OnDestinationChosen;
 
+	/** 닫힐 때. Follow 미니맵이 받아 안내 로그를 되돌린다. */
+	UPROPERTY(BlueprintAssignable, Category = "Nav|FullMap")
+	FOnNavFullMapClosed OnClosed;
+
 	/** 전체 지도를 닫는다(뷰포트에서 제거). */
 	UFUNCTION(BlueprintCallable, Category = "Nav|FullMap")
 	void Close();
@@ -81,4 +90,23 @@ protected:
 	/** 선택 제목. */
 	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "Nav|FullMap")
 	TObjectPtr<UTextBlock> TitleText;
+
+	/**
+	 * 목적지 리스트 버튼을 담을 컨테이너(선택). 지정하면 여기에 넣고, 없으면 루트 패널에
+	 * 하단 중앙으로 직접 붙인다 — 어느 쪽이든 에디터 배선 없이 동작한다(final §B-2).
+	 */
+	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "Nav|FullMap")
+	TObjectPtr<UPanelWidget> DestButtonHost;
+
+private:
+	/** 그래프의 목적지 6종으로 하단 버튼을 C++ 로 동적 생성한다(§B-2). */
+	void BuildDestinationButtons(const FNavGraph& InGraph);
+
+	/** 버튼 클릭 → 목적지 선택. */
+	UFUNCTION()
+	void HandleDestButtonClicked(const FString& NodeId);
+
+	/** 생성한 버튼들(재빌드 시 정리용). */
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<UNavDestButton>> DestButtons;
 };

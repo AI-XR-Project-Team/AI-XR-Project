@@ -2,15 +2,21 @@
 
 #include "CoreMinimal.h"
 #include "Blueprint/UserWidget.h"
+#include "Styling/SlateBrush.h"   // FSlateBrush(목적지 아이콘 브러시 캐시)
 #include "NavTypes.h"
 #include "NavMinimapWidget.generated.h"
 
 class UWidget;
 class UNavRouteProgress;
 class UNavFullMapWidget;
+class UNavGuideLogWidget;
+class UTexture2D;
 
 /** 전체 지도에서 노드를 골랐을 때. BP 가 NavClient.RequestRoute 로 잇는다. */
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnNavDestinationChosen, const FString&, NodeId);
+
+/** 전체 지도가 열리거나 닫혔을 때(8단계 §D 안내 로그가 "확대 지도" 상태를 안다). */
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnNavFullMapOpenChanged, bool, bOpen);
 
 /** 매 틱 갱신되는 턴바이턴 안내(5-D). BP 가 WBP_NavStatus 배너로 잇는다. */
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnNavGuidanceUpdated, const FNavGuidance&, Guidance);
@@ -69,7 +75,7 @@ enum class ENavMinimapMode : uint8
  *
  * 계약 원문: docs/nav-server-integration-guide.md
  */
-UCLASS(Abstract)
+UCLASS(Abstract, Config = Game)
 class TIMEMACHINEAR_API UNavMinimapWidget : public UUserWidget
 {
 	GENERATED_BODY()
@@ -114,6 +120,22 @@ public:
 	 */
 	bool FindNodeAtLocal(const FVector2D& LocalPos, float RadiusPx, FString& OutNodeId) const;
 
+	/**
+	 * FindNodeAtLocal 과 같지만 **목적지 노드(아이콘이 있는 것)만** 판정한다(8단계 §B-1·D-5).
+	 * 노드 터치 목적지 선택은 폐지됐고 아이콘을 눌렀을 때만 경로가 잡힌다 — 그 판정을 여기서.
+	 */
+	bool FindDestinationNodeAtLocal(const FVector2D& LocalPos, float RadiusPx, FString& OutNodeId) const;
+
+	/** 노드 id 로 node_type / label 을 찾는다(없으면 빈 문자열). 안내 로그·아이콘 분기용. */
+	UFUNCTION(BlueprintPure, Category = "Nav|Minimap")
+	FString GetNodeType(const FString& NodeId) const;
+	UFUNCTION(BlueprintPure, Category = "Nav|Minimap")
+	FString GetNodeLabel(const FString& NodeId) const;
+
+	/** 현재 목적지의 node_type / label(SetDestinationNode 로 지정된 노드). 안내 로그가 문구를 가른다. */
+	FString GetDestinationNodeType() const { return GetNodeType(DestinationNodeId); }
+	FString GetDestinationLabel() const { return GetNodeLabel(DestinationNodeId); }
+
 	/** 폴리라인(맵 cm)을 직접 넣는다(전체 지도로 상태를 넘길 때 등). */
 	UFUNCTION(BlueprintCallable, Category = "Nav|Minimap")
 	void SetRouteXY(const TArray<FVector2D>& InRouteXY);
@@ -135,6 +157,10 @@ public:
 	/** 전체 지도에서 목적지를 골랐을 때 재방송. BP 가 NavClient.RequestRoute 로 잇는다. */
 	UPROPERTY(BlueprintAssignable, Category = "Nav|Minimap")
 	FOnNavDestinationChosen OnDestinationChosen;
+
+	/** 전체 지도가 열리고/닫힐 때(8단계 §D 안내 로그가 구독). Follow 인스턴스가 방송한다. */
+	UPROPERTY(BlueprintAssignable, Category = "Nav|Minimap")
+	FOnNavFullMapOpenChanged OnFullMapOpenChanged;
 
 	/**
 	 * 턴바이턴 안내가 갱신될 때(측위 중, Follow 모드만). BP 가 WBP_NavStatus 배너로 잇는다.
@@ -299,6 +325,49 @@ public:
 		meta = (ClampMin = "6.0"))
 	float NodeHitRadiusPx = 28.f;
 
+	/**
+	 * true 면 노드 점·엣지 선을 다시 그린다(디버그). 기본 false — 사용자 화면에는 도면·구조물·
+	 * 목적지 아이콘·경로선만 남긴다(final §D-7). 경로가 이상할 때 ini 로 켜서 원인을 본다.
+	 */
+	UPROPERTY(Config, EditAnywhere, BlueprintReadWrite, Category = "Nav|Minimap|Full")
+	bool bDrawGraphDebug = false;
+
+	// ------------------------------------------------------------------ 목적지 아이콘(§B-1 · D-8)
+	//
+	// 전시물·화장실·입구를 마름모 + 아이콘으로 지도에 얹는다. 색은 node_type 으로 고른다
+	// (FNavDestinations). Full·Follow 공통이고 **화면 px 고정 크기**다(Follow 는 배율이 커서
+	// 월드 크기로 그리면 거대해진다, final §D-8).
+
+	/** 아이콘 그림의 한 변(px). E-2 에서 현우가 최종 조정. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Nav|Minimap|Dest",
+		meta = (ClampMin = "8.0"))
+	float DestIconSizePx = 30.f;
+
+	/** 마름모의 중심→꼭짓점 거리(px). 아이콘을 감싸도록 아이콘 반보다 크게. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Nav|Minimap|Dest",
+		meta = (ClampMin = "6.0"))
+	float DestDiamondHalfPx = 24.f;
+
+	/** 마름모 테두리 굵기(px). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Nav|Minimap|Dest",
+		meta = (ClampMin = "0.5"))
+	float DestDiamondThicknessPx = 2.5f;
+
+	/** 현재 안내 중인 목적지의 마름모 테두리 굵기(px). 다른 목적지보다 두껍게 강조. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Nav|Minimap|Dest",
+		meta = (ClampMin = "0.5"))
+	float DestActiveDiamondThicknessPx = 4.5f;
+
+	// ------------------------------------------------------------------ 안내 로그(§D)
+
+	/**
+	 * 안내 로그 오버레이 클래스. 비우면 순수 C++ 위젯(UNavGuideLogWidget)을 그대로 만들어
+	 * 스스로 화면 상단에 띄운다(에디터 작업 0, final §0-E). WBP 로 꾸미고 싶을 때만 지정.
+	 * Follow(HUD) 인스턴스만 만든다.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Nav|Minimap")
+	TSubclassOf<UNavGuideLogWidget> GuideLogWidgetClass;
+
 	// ------------------------------------------------------------------ 여백
 
 	/** 미니맵 테두리 안쪽 여백(px). 노드 링이 잘리지 않을 만큼은 줘야 한다. */
@@ -327,6 +396,7 @@ public:
 
 protected:
 	virtual void NativeConstruct() override;
+	virtual void NativeDestruct() override;
 
 	virtual int32 NativePaint(const FPaintArgs& Args, const FGeometry& AllottedGeometry,
 		const FSlateRect& MyCullingRect, FSlateWindowElementList& OutDrawElements,
@@ -398,9 +468,30 @@ private:
 	UFUNCTION()
 	void HandleDestinationChosen(const FString& NodeId);
 
+	/** 전체 지도가 닫힐 때. OnFullMapOpenChanged(false) 를 방송한다. */
+	UFUNCTION()
+	void HandleFullMapClosed();
+
 	/** 현재 떠 있는 전체 지도(중복 오픈 방지). */
 	UPROPERTY(Transient)
 	TWeakObjectPtr<UNavFullMapWidget> FullMapInstance;
+
+	/** 안내 로그 오버레이(Follow 인스턴스가 만들어 화면에 붙인다). */
+	UPROPERTY(Transient)
+	TObjectPtr<UNavGuideLogWidget> GuideLog;
+
+	/** 아직 없으면 안내 로그를 만들어 화면 상단에 붙인다(Follow·비디자인만). */
+	void EnsureGuideLog();
+
+	/** 목적지 아이콘 텍스처 브러시 캐시(오브젝트 경로 → 브러시). NativePaint 가 채운다. */
+	mutable TMap<FString, FSlateBrush> IconBrushCache;
+
+	/** 오브젝트 경로로 아이콘 브러시를 얻는다(없으면 로드해 캐시, 실패면 nullptr). */
+	const FSlateBrush* ResolveIconBrush(const FString& ObjectPath) const;
+
+	/** 목적지 노드마다 마름모 + 아이콘을 그린다(Full·Follow 공통, px 고정 크기). */
+	void PaintDestinationIcons(FSlateWindowElementList& Out, int32& Layer,
+		const FGeometry& AllottedGeometry) const;
 
 	/** EmptyHint 를 경로 유무에 맞춘다. */
 	void RefreshEmptyHint();
