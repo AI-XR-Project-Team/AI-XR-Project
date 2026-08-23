@@ -108,9 +108,9 @@ void UNavFullMapWidget::BuildDestinationButtons(const FNavGraph& InGraph)
 	}
 	Grid->SetSlotPadding(FMargin(6.f));
 
-	for (int32 Slot = 0; Slot < Order.Num(); ++Slot)
+	for (int32 SlotIndex = 0; SlotIndex < Order.Num(); ++SlotIndex)
 	{
-		const FNavMapNode& N = InGraph.Nodes[Order[Slot]];
+		const FNavMapNode& N = InGraph.Nodes[Order[SlotIndex]];
 		const FLinearColor Accent = FNavDestinations::AccentColor(N.NodeType);
 
 		UNavDestButton* Button = WidgetTree->ConstructWidget<UNavDestButton>(UNavDestButton::StaticClass());
@@ -155,7 +155,7 @@ void UNavFullMapWidget::BuildDestinationButtons(const FNavGraph& InGraph)
 
 		Button->SetContent(Row);
 
-		if (UUniformGridSlot* GridSlot = Grid->AddChildToUniformGrid(Button, Slot / 2, Slot % 2))
+		if (UUniformGridSlot* GridSlot = Grid->AddChildToUniformGrid(Button, SlotIndex / 2, SlotIndex % 2))
 		{
 			GridSlot->SetHorizontalAlignment(HAlign_Fill);
 			GridSlot->SetVerticalAlignment(VAlign_Fill);
