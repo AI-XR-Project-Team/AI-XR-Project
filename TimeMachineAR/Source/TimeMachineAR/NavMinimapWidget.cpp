@@ -1023,7 +1023,7 @@ void UNavMinimapWidget::PaintDestinationIcons(FSlateWindowElementList& Out, int3
 		Diamond.Add(C + FVector2D(Half, 0.f));
 		Diamond.Add(C + FVector2D(0.f, Half));
 		Diamond.Add(C + FVector2D(-Half, 0.f));
-		Diamond.Add(Diamond[0]);   // 닫는다.
+		Diamond.Add(C + FVector2D(0.f, -Half));   // 닫는다(첫 점 = Diamond[0]. 자기참조 Add(Diamond[0])는 재할당 시 크래시).
 		FSlateDrawElement::MakeLines(Out, Layer, LineGeom, Diamond,
 			ESlateDrawEffect::None, Accent, true,
 			bActive ? DestActiveDiamondThicknessPx : DestDiamondThicknessPx);

@@ -163,7 +163,7 @@ void UNavDestMarkerWidget::DrawMarker(FSlateWindowElementList& Out, int32 Layer,
 	Diamond.Add(At + FVector2D(Half, 0.f));
 	Diamond.Add(At + FVector2D(0.f, Half));
 	Diamond.Add(At + FVector2D(-Half, 0.f));
-	Diamond.Add(Diamond[0]);
+	Diamond.Add(At + FVector2D(0.f, -Half));   // 닫는다(자기참조 Add(Diamond[0]) 금지 — 재할당 시 크래시).
 	FSlateDrawElement::MakeLines(Out, Layer, LineGeom, Diamond,
 		ESlateDrawEffect::None, Accent, true, DiamondThicknessPx);
 
