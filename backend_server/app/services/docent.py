@@ -161,6 +161,31 @@ def build_chat_prompt(
     return "\n".join(lines)
 
 
+def build_general_chat_prompt() -> str:
+    """전시물을 고르지 않은 자유 대화용 system 프롬프트.
+
+    마커를 인식하기 전에도 도슨트와 이야기할 수 있어야 한다. 이때는 특정
+    전시물을 전제하지 않고 공룡·관람 일반으로 답한다. 전시물 맥락이 있어야
+    답할 수 있는 질문에는 마커 인식을 안내하게 해서, 없는 정보를 지어내지
+    않도록 한다.
+    """
+    return "\n".join(
+        [
+            CHAT_PERSONA,
+            "",
+            "관람객이 아직 전시물을 고르지 않았습니다. 특정 전시물을 전제하지 말고 "
+            "공룡과 박물관 관람에 대한 일반적인 지식으로 답하세요. 눈앞의 전시물에 "
+            "대한 세부 정보가 필요한 질문이라면, 바닥의 마커를 인식해 전시물을 "
+            "선택해 달라고 안내하세요.",
+        ]
+    )
+
+
+def build_general_chat_fallback() -> str:
+    """전시물 없는 자유 대화에서 LLM 을 쓸 수 없을 때의 폴백 문구."""
+    return "지금 답변을 생성하지 못했습니다. 잠시 후 다시 물어봐 주세요."
+
+
 def build_chat_fallback(poi: Optional[Poi], exhibit: Exhibit) -> str:
     """LLM 을 쓸 수 없을 때 돌려줄 대화용 폴백 문구.
 

@@ -89,6 +89,15 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Docent|Chat")
 	bool IsChatOpen() const { return bIsOpen; }
 
+	/**
+	 * 마커로 고른 공룡이 있는지.
+	 *
+	 * 없으면 전시물을 상정하지 않는 일반 AI 챗이고, 빠른 질문 칩도 띄우지
+	 * 않는다. 칩 문구가 "이 공룡"을 가리키는데 가리킬 대상이 없기 때문이다.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Docent|Chat")
+	bool HasExhibitContext() const { return bExhibitContextSet && !ExhibitId.IsEmpty(); }
+
 protected:
 	virtual void NativeConstruct() override;
 	virtual void NativeDestruct() override;
@@ -208,8 +217,12 @@ protected:
 	bool bHideChipsAfterFirstQuestion = true;
 
 	/**
-	 * 창이 열릴 때 세션을 열 전시물. 비워 두면 OpenChat 을 직접 불러야 한다.
-	 * POI 마커가 붙기 전까지는 여기에 시드 전시물 UUID 를 넣어 시험한다.
+	 * 대화 대상 전시물. 런타임에는 OpenChat 이 채운다.
+	 *
+	 * 클래스 기본값은 마커가 없던 시절의 시험용이라 NativeConstruct 가 무시한다.
+	 * 마커로 공룡을 고르지 않고 도슨트에 들어오면 특정 공룡을 상정하지 않는
+	 * 일반 AI 챗이어야 하는데, 기본값을 그대로 쓰면 늘 그 전시물(티라노) 기준으로
+	 * 답한다. 전시물 대화는 OpenChat 으로만 시작한다.
 	 */
 	UPROPERTY(EditDefaultsOnly, Category = "Docent|Chat")
 	FString ExhibitId;
@@ -263,6 +276,9 @@ private:
 	/** 열림 상태를 위젯에 반영한다. ShowChat/HideChat 의 공통부. */
 	void ApplyOpenState(bool bOpen);
 
+	/** 빠른 질문 칩 자리를 보일지 접을지 정한다. 전시물이 없으면 늘 접는다. */
+	void ApplyQuickQuestionVisibility();
+
 	/**
 	 * 가상 키보드가 가리는 높이를 레이아웃에 반영한다.
 	 *
@@ -315,6 +331,15 @@ private:
 	FString FocusedPoiId;
 
 	bool bHasAskedOnce = false;
+
+	/**
+	 * OpenChat 으로 전시물을 지정받았는지. WBP 클래스 기본값과 구분하려고 둔다.
+	 *
+	 * ExhibitId 가 비었는지만 봐서는 둘을 구분할 수 없다. 위젯을 만든 직후
+	 * NativeConstruct 전에 OpenChat 이 불릴 수 있어서(공룡을 이미 알고 여는 경로)
+	 * 이 값이 서 있으면 NativeConstruct 는 지정된 전시물을 지우지 않는다.
+	 */
+	bool bExhibitContextSet = false;
 
 	bool bIsOpen = true;
 };
