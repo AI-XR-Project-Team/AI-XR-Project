@@ -108,9 +108,11 @@ void UNavFullMapWidget::BuildDestinationButtons(const FNavGraph& InGraph)
 	}
 	Grid->SetSlotPadding(FMargin(6.f));
 
-	for (int32 Slot = 0; Slot < Order.Num(); ++Slot)
+	// 지역변수 이름을 Slot 으로 두면 UWidget::Slot 멤버를 가려 MSVC 에서 C4458(-Werror)로
+	// 컴파일이 막힌다(clang 은 -Wno-error=shadow 라 통과 — 윈도우 팀원만 깨진다). SlotIdx 로 둔다.
+	for (int32 SlotIdx = 0; SlotIdx < Order.Num(); ++SlotIdx)
 	{
-		const FNavMapNode& N = InGraph.Nodes[Order[Slot]];
+		const FNavMapNode& N = InGraph.Nodes[Order[SlotIdx]];
 		const FLinearColor Accent = FNavDestinations::AccentColor(N.NodeType);
 
 		UNavDestButton* Button = WidgetTree->ConstructWidget<UNavDestButton>(UNavDestButton::StaticClass());
@@ -155,7 +157,7 @@ void UNavFullMapWidget::BuildDestinationButtons(const FNavGraph& InGraph)
 
 		Button->SetContent(Row);
 
-		if (UUniformGridSlot* GridSlot = Grid->AddChildToUniformGrid(Button, Slot / 2, Slot % 2))
+		if (UUniformGridSlot* GridSlot = Grid->AddChildToUniformGrid(Button, SlotIdx / 2, SlotIdx % 2))
 		{
 			GridSlot->SetHorizontalAlignment(HAlign_Fill);
 			GridSlot->SetVerticalAlignment(VAlign_Fill);
