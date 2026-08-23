@@ -10,6 +10,8 @@ class UWidget;
 class UNavRouteProgress;
 class UNavFullMapWidget;
 class UNavGuideLogWidget;
+class UNavDestMarkerWidget;   // 9단계 §C-2 목적지 마름모 HUD
+class ANavFloorGuideActor;    // 9단계 §C-1 바닥 발자국 액터
 class UTexture2D;
 
 /** 전체 지도에서 노드를 골랐을 때. BP 가 NavClient.RequestRoute 로 잇는다. */
@@ -368,6 +370,19 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Nav|Minimap")
 	TSubclassOf<UNavGuideLogWidget> GuideLogWidgetClass;
 
+	// ------------------------------------------------------------------ AR 화면(§C, 9단계)
+	//
+	// Follow(HUD) 인스턴스가 C++ 로 소유·구동한다(GuideLog 와 같은 방식, 에디터 배선 0).
+	// 바닥 발자국은 액터, 목적지 마름모는 HUD 오버레이. 둘 다 클래스를 비우면 순수 C++ 로 만든다.
+
+	/** 바닥 발자국 액터 클래스(§C-1). 비우면 ANavFloorGuideActor 기본 클래스를 스폰. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Nav|Minimap")
+	TSubclassOf<ANavFloorGuideActor> FloorGuideActorClass;
+
+	/** 목적지 마름모 HUD 클래스(§C-2). 비우면 순수 C++ UNavDestMarkerWidget 을 만든다. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Nav|Minimap")
+	TSubclassOf<UNavDestMarkerWidget> DestMarkerWidgetClass;
+
 	// ------------------------------------------------------------------ 여백
 
 	/** 미니맵 테두리 안쪽 여백(px). 노드 링이 잘리지 않을 만큼은 줘야 한다. */
@@ -482,6 +497,31 @@ private:
 
 	/** 아직 없으면 안내 로그를 만들어 화면 상단에 붙인다(Follow·비디자인만). */
 	void EnsureGuideLog();
+
+	// --------------------------------------------------------------- AR 화면(§C, 9단계)
+
+	/** 바닥 발자국 액터(Follow 인스턴스가 스폰·소유). */
+	UPROPERTY(Transient)
+	TObjectPtr<ANavFloorGuideActor> FloorGuide;
+
+	/** 목적지 마름모 HUD(Follow 인스턴스가 만들어 화면에 붙인다). */
+	UPROPERTY(Transient)
+	TObjectPtr<UNavDestMarkerWidget> DestMarker;
+
+	/** 아직 없으면 발자국 액터를 스폰한다(Follow·비디자인만). */
+	void EnsureFloorGuide();
+
+	/** 아직 없으면 목적지 마름모 HUD 를 만들어 붙인다(Follow·비디자인만). */
+	void EnsureDestMarker();
+
+	/** 목적지 마름모에 현재 목적지(맵 좌표·종류·이름)를 실어 준다. 목적지 변경 시 부른다. */
+	void PushDestinationToMarker();
+
+	/** 매 프레임 바닥 발자국·목적지 남은거리를 갱신한다(Follow, 측위·경로 있을 때). */
+	void RefreshArGuides(const FNavProgress& P);
+
+	/** 노드 id 의 맵 좌표(cm)를 찾는다. 없으면 false. */
+	bool GetNodePos(const FString& NodeId, FVector2D& OutXY) const;
 
 	/** 목적지 아이콘 텍스처 브러시 캐시(오브젝트 경로 → 브러시). NativePaint 가 채운다. */
 	mutable TMap<FString, FSlateBrush> IconBrushCache;
