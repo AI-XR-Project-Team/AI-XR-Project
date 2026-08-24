@@ -1,5 +1,7 @@
 #include "NavGuideLogWidget.h"
 
+#include "TimerManager.h"
+#include "Engine/World.h"
 #include "Blueprint/WidgetTree.h"
 #include "Components/CanvasPanel.h"
 #include "Components/CanvasPanelSlot.h"
@@ -20,10 +22,12 @@ TSharedRef<SWidget> UNavGuideLogWidget::RebuildWidget()
 		WidgetTree->RootWidget = Root;
 
 		UBorder* Bar = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());
-		Bar->SetBrushColor(FLinearColor(0.08f, 0.08f, 0.10f, 0.82f));   // 반투명 짙은 바.
+		Bar->SetBrushColor(FLinearColor(0.06f, 0.06f, 0.08f, 0.94f));   // 짙은 바(지도 위에서도 선명).
 		Bar->SetPadding(FMargin(18.f, 10.f));
-		Bar->SetHorizontalAlignment(HAlign_Center);
+		Bar->SetHorizontalAlignment(HAlign_Fill);   // 텍스트가 바 폭에 맞춰 줄바꿈되도록 채움.
 		Bar->SetVerticalAlignment(VAlign_Center);
+		// 바깥으로 글씨가 삐져나가도 잘라 낸다(안전망). 폭·높이는 아래에서 넉넉히 준다.
+		Bar->SetClipping(EWidgetClipping::ClipToBounds);
 		BarPanel = Bar;
 
 		UTextBlock* Msg = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
@@ -31,18 +35,19 @@ TSharedRef<SWidget> UNavGuideLogWidget::RebuildWidget()
 		Msg->SetAutoWrapText(true);
 		Msg->SetColorAndOpacity(FSlateColor(FLinearColor::White));
 		FSlateFontInfo Font = Msg->GetFont();
-		Font.Size = 20;
+		Font.Size = 18;   // 긴 문구가 네모 안에 들어오도록 살짝 줄인다.
 		Msg->SetFont(Font);
 		MessageText = Msg;
 		Bar->SetContent(Msg);
 
 		if (UCanvasPanelSlot* BarSlot = Cast<UCanvasPanelSlot>(Root->AddChild(Bar)))
 		{
-			// 화면 상단, 가로로 좌우 5% 를 뺀 폭으로 스트레치. 세로는 고정 높이 안에서 줄바꿈.
+			// 화면 상단 왼쪽. 오른쪽 미니맵 자리를 비우되, 긴 문구가 삐져나가지 않도록
+			// 폭을 화면의 왼쪽 ~75% 까지 넓히고 높이도 넉넉히(줄바꿈 3줄까지) 잡는다.
 			// 스트레치 앵커라 Offsets 는 (좌인셋, 상단Y, 우인셋, 높이) 로 읽힌다.
-			BarSlot->SetAnchors(FAnchors(0.05f, 0.f, 0.95f, 0.f));
+			BarSlot->SetAnchors(FAnchors(0.03f, 0.f, 0.75f, 0.f));
 			BarSlot->SetAutoSize(false);
-			BarSlot->SetOffsets(FMargin(0.f, 24.f, 0.f, 96.f));
+			BarSlot->SetOffsets(FMargin(0.f, 24.f, 0.f, 132.f));
 		}
 	}
 	return Super::RebuildWidget();
@@ -51,11 +56,49 @@ TSharedRef<SWidget> UNavGuideLogWidget::RebuildWidget()
 void UNavGuideLogWidget::NativeConstruct()
 {
 	Super::NativeConstruct();
+	// 표시 전용 오버레이(터치 안 먹음). 미니맵이 실제로 표출되기 전엔 숨겨 두고(시작 깜빡임 방지),
+	// 타이머가 미니맵의 표출을 확인하면 켠다. 타이머는 위젯 visibility 와 무관하게 돌아 Collapsed
+	// 로 시작해도 되살릴 수 있다(NativeTick 은 Collapsed 면 멈춰 못 씀).
+	SetVisibility(ESlateVisibility::Collapsed);
 	Refresh();
+
+	// 표시/숨김 + 문구 갱신은 월드 타이머로 돌린다(0.12초 간격).
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().SetTimer(
+			VisSyncTimer, this, &UNavGuideLogWidget::SyncWithMinimap, 0.12f, true);
+	}
+}
+
+void UNavGuideLogWidget::SyncWithMinimap()
+{
+	// 안내 로그는 **미니맵이 화면에 실제로 표출될 때만** 보인다(=네비 기능 활성). 미니맵은
+	// 앱 내내 살아 있고 네비 버튼이 표시/숨김만 토글하므로, 존재 여부가 아니라 "지금 그려지고
+	// 있는가"로 판정해야 한다. 숨겨진(부모 접힘 포함) 위젯은 NativePaint 가 멈춰 시각이 안 는다.
+	const bool bNavShown = BoundMinimap.IsValid() && BoundMinimap->WasRecentlyPainted();
+
+	const ESlateVisibility Want = bNavShown
+		? ESlateVisibility::HitTestInvisible   // 표시 전용(터치 안 먹음).
+		: ESlateVisibility::Collapsed;
+	if (GetVisibility() != Want)
+	{
+		SetVisibility(Want);
+	}
+
+	// 보이는 동안은 문구를 미니맵의 실제 상태(목적지 유무 등)에 맞춰 다시 계산한다 —
+	// 신호가 안 와도 "목적지 없는데 안내 문구" 같은 꼬임이 남지 않는다.
+	if (bNavShown)
+	{
+		Refresh();
+	}
 }
 
 void UNavGuideLogWidget::NativeDestruct()
 {
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(VisSyncTimer);
+	}
 	if (BoundLocalizer.IsValid())
 	{
 		BoundLocalizer->OnLocalized.RemoveDynamic(this, &UNavGuideLogWidget::HandleLocalized);
@@ -189,16 +232,26 @@ void UNavGuideLogWidget::ApplyPhase()
 
 	// 목적지 종류/이름은 미니맵이 들고 있는 걸 그때그때 본다(새 데이터 없음).
 	FString DestType, DestLabel;
+	bool bDestSet = false;
 	if (BoundMinimap.IsValid())
 	{
 		DestType = BoundMinimap->GetDestinationNodeType();
 		DestLabel = BoundMinimap->GetDestinationLabel();
+		bDestSet = BoundMinimap->HasDestination();
+	}
+
+	// 상태가 꼬여 목적지가 없는데 안내/도착 문구(예: "공룡 발자국을 따라가주세요")로 가 있으면
+	// 목적지 설정 안내로 되돌린다. 미니맵의 실제 목적지 유무를 진실의 근원으로 삼는다.
+	ENavGuidePhase Effective = Phase;
+	if (!bDestSet && (Effective == ENavGuidePhase::Guiding || Effective == ENavGuidePhase::Arrived))
+	{
+		Effective = ENavGuidePhase::Localized;
 	}
 
 	FString Text;
 	FLinearColor Color = FLinearColor::White;
 
-	switch (Phase)
+	switch (Effective)
 	{
 	case ENavGuidePhase::NavOn:
 		Text = TEXT("바닥의 마커를 인식시켜주세요");

@@ -84,6 +84,7 @@ bool FNavDestinationsTest::RunTest(const FString& Parameters)
 		// 일부러 뒤섞어 넣는다 — 정렬이 자리를 바로잡아야 한다.
 		Add(TEXT("id-b"), TEXT("waypoint"), TEXT("B지점"));
 		Add(TEXT("id-g"), TEXT("exhibit"),  TEXT("브라키오사우르스"));  // EX2
+		Add(TEXT("id-a2"), TEXT("entrance"), TEXT("A지점"));            // 중복 entrance → 제거돼야
 		Add(TEXT("id-a"), TEXT("entrance"), TEXT("입구·출구"));
 		Add(TEXT("id-l"), TEXT("exhibit"),  TEXT("안킬로사우르스"));    // EX4
 		Add(TEXT("id-e"), TEXT("facility"), TEXT("화장실"));
@@ -92,13 +93,13 @@ bool FNavDestinationsTest::RunTest(const FString& Parameters)
 
 		TArray<int32> Order;
 		FNavDestinations::BuildDestinationOrder(Nodes, Order);
-		TestEqual(TEXT("목적지 6개만"), Order.Num(), 6);
+		TestEqual(TEXT("목적지 6개만(중복 entrance 제거)"), Order.Num(), 6);
 		TestEqual(TEXT("1칸=EX1 트리케라톱스"), Nodes[Order[0]].NodeId, FString(TEXT("id-f")));
 		TestEqual(TEXT("2칸=EX2 브라키오"),   Nodes[Order[1]].NodeId, FString(TEXT("id-g")));
 		TestEqual(TEXT("3칸=EX3 티라노렉스"), Nodes[Order[2]].NodeId, FString(TEXT("id-i")));
 		TestEqual(TEXT("4칸=EX4 안킬로"),     Nodes[Order[3]].NodeId, FString(TEXT("id-l")));
 		TestEqual(TEXT("5칸=화장실"),         Nodes[Order[4]].NodeId, FString(TEXT("id-e")));
-		TestEqual(TEXT("6칸=입구/출구"),      Nodes[Order[5]].NodeId, FString(TEXT("id-a")));
+		TestEqual(TEXT("6칸=입구/출구(A지점 아님)"), Nodes[Order[5]].NodeId, FString(TEXT("id-a")));
 	}
 
 	return true;

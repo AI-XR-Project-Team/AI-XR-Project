@@ -75,9 +75,13 @@ public:
 	UPROPERTY(Config, EditAnywhere, BlueprintReadWrite, Category = "Nav|Floor")
 	float FloorZOffsetCm = 1.0f;
 
-	/** 발자국 방향 보정각(도). 텍스처 +V(위)가 진행 방향과 어긋나면 현장에서 맞춘다. */
+	/**
+	 * 발자국 방향 보정각(도). 텍스처 +V(위)가 진행 방향과 어긋나면 맞춘다.
+	 * 실기기에서 발자국이 진행 방향 대비 반시계 90도로 누워 보여 시계방향 90도(+90) 보정.
+	 * (UE yaw 는 진행-정면(위) 시점에서 양수가 시계방향.)
+	 */
 	UPROPERTY(Config, EditAnywhere, BlueprintReadWrite, Category = "Nav|Floor")
-	float FloorYawOffsetDeg = 0.f;
+	float FloorYawOffsetDeg = 90.f;
 
 	/** 발자국 한 변 크기(cm). Plane 권장 60(발자국 실물 약 30, final §C-1). */
 	UPROPERTY(Config, EditAnywhere, BlueprintReadWrite, Category = "Nav|Floor",

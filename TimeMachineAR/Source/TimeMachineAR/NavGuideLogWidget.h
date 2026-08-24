@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "Blueprint/UserWidget.h"
+#include "Engine/TimerHandle.h"
 #include "NavTypes.h"
 #include "NavGuideLogWidget.generated.h"
 
@@ -85,6 +86,16 @@ private:
 
 	/** 단계 → 문구·색을 정해 텍스트에 반영. */
 	void ApplyPhase();
+
+	/**
+	 * 미니맵 상태에 맞춰 로그의 표시/숨김을 동기화하고 문구를 갱신한다. **월드 타이머**로 돈다.
+	 * 위젯 NativeTick 은 Collapsed 되면 안 돌아(자기 자신을 숨기면 되살아날 tick 이 없다) 못 쓴다 —
+	 * 타이머는 visibility 와 무관하게 돌아 미니맵이 다시 떠도 로그를 되살린다.
+	 */
+	void SyncWithMinimap();
+
+	/** SyncWithMinimap 반복 타이머 핸들. NativeDestruct 에서 해제. */
+	FTimerHandle VisSyncTimer;
 
 	/** 현재 목적지가 정해졌나(안내/도착 문구 갈래에 필요). */
 	bool bHasDestination = false;
