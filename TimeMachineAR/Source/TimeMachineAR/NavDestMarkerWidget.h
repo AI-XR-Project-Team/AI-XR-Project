@@ -40,29 +40,29 @@ public:
 
 	// ------------------------------------------------------------------ 스타일(ini)
 
-	/** 마름모 중심→꼭짓점(px). */
+	/** 마름모 중심→꼭짓점(px). 목적지 표시판을 크게(약 4배) — 54→216. */
 	UPROPERTY(Config, EditAnywhere, BlueprintReadWrite, Category = "Nav|DestMarker",
 		meta = (ClampMin = "10.0"))
-	float DiamondHalfPx = 54.f;
+	float DiamondHalfPx = 216.f;
 
-	/** 마름모 테두리 굵기(px). */
+	/** 마름모 테두리 굵기(px). 커진 마름모에 맞춰 굵게. */
 	UPROPERTY(Config, EditAnywhere, BlueprintReadWrite, Category = "Nav|DestMarker",
 		meta = (ClampMin = "1.0"))
-	float DiamondThicknessPx = 5.f;
+	float DiamondThicknessPx = 12.f;
 
-	/** 안쪽 아이콘 한 변(px). */
+	/** 안쪽 아이콘 한 변(px). 마름모와 함께 약 4배 — 64→256. */
 	UPROPERTY(Config, EditAnywhere, BlueprintReadWrite, Category = "Nav|DestMarker",
 		meta = (ClampMin = "8.0"))
-	float IconSizePx = 64.f;
+	float IconSizePx = 256.f;
 
 	/** 바닥에서 마름모를 띄우는 높이(cm). final §C-2 = 100cm. */
 	UPROPERTY(Config, EditAnywhere, BlueprintReadWrite, Category = "Nav|DestMarker")
 	float MarkerHeightCm = 100.f;
 
-	/** 화면 가장자리 방향 표시 여백(px). 마름모/화살표가 잘리지 않을 만큼. */
+	/** 화면 가장자리 방향 표시 여백(px). 커진 마름모가 화면 끝에서 잘리기 전에 화살표로 넘어가도록 넉넉히. */
 	UPROPERTY(Config, EditAnywhere, BlueprintReadWrite, Category = "Nav|DestMarker",
 		meta = (ClampMin = "0.0"))
-	float EdgeMarginPx = 60.f;
+	float EdgeMarginPx = 120.f;
 
 protected:
 	/** WBP 없이 만들어졌으면 전체화면 빈 캔버스를 루트로 세운다(NativePaint 가 전체화면 위에 그린다). */

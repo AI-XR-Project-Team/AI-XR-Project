@@ -42,15 +42,52 @@ bool FNavFloorGuideTest::RunTest(const FString& Parameters)
 		}
 	}
 
-	// (2) 사용자가 중간(250)에 있으면 그 앞에서만 낸다(350..850).
+	// (2) 사용자가 중간(250)에 있으면 그 앞의 **고정 그리드**(300·400·…·800)만 낸다.
+	//     그리드는 경로 시작 기준 k·100 이라 사용자 위치와 무관하게 월드에 고정된다.
 	{
 		const TArray<FVector2D> Route = { FVector2D(0, 0), FVector2D(1000, 0) };
 		FNavFloorGuide::BuildPlacements(Route, FVector2D(250, 0), 100.f, 600.f, Out);
-		TestEqual(TEXT("중간 사용자: 6개"), Out.Num(), 6);
+		TestEqual(TEXT("중간 사용자: 6개(300..800)"), Out.Num(), 6);
 		if (Out.Num() >= 1)
 		{
-			TestTrue(TEXT("첫 발자국 x=350(앞)"), FMath::IsNearlyEqual(Out[0].MapPos.X, 350.f, 0.5f));
+			TestTrue(TEXT("첫 발자국 x=300(그리드 고정)"), FMath::IsNearlyEqual(Out[0].MapPos.X, 300.f, 0.5f));
 		}
+	}
+
+	// (2b) 발자국은 월드 고정 그리드(k·100)에만 놓인다. 사용자가 임의 위치에 있어도 모든
+	//      자리는 100 의 배수 → 예전처럼 사용자를 따라 미끄러지지 않는다(350·450… 이 아님).
+	{
+		const TArray<FVector2D> Route = { FVector2D(0, 0), FVector2D(1000, 0) };
+		FNavFloorGuide::BuildPlacements(Route, FVector2D(237, 0), 100.f, 600.f, Out);
+		bool bAllOnGrid = Out.Num() > 0;
+		for (const FNavFloorPlacement& P : Out)
+		{
+			const float R = FMath::Abs(FMath::Fmod(P.MapPos.X, 100.f));
+			const float DistToGrid = FMath::Min(R, 100.f - R);   // 가장 가까운 100 배수까지(양쪽).
+			if (DistToGrid > 0.5f)
+			{
+				bAllOnGrid = false;
+			}
+		}
+		TestTrue(TEXT("모든 발자국이 100 그리드에 고정(사용자 237 무관)"), bAllOnGrid);
+	}
+
+	// (2c) 사용자가 걸으면 겹치는 발자국은 같은 월드 위치를 유지한다(뒤는 빠지고 앞이 들어옴).
+	{
+		const TArray<FVector2D> Route = { FVector2D(0, 0), FVector2D(1000, 0) };
+		TArray<FNavFloorPlacement> A, B;
+		FNavFloorGuide::BuildPlacements(Route, FVector2D(250, 0), 100.f, 600.f, A);   // 300..800
+		FNavFloorGuide::BuildPlacements(Route, FVector2D(270, 0), 100.f, 600.f, B);   // 400..900
+		// A 의 400..800 은 B 에도 같은 X 로 존재해야 한다(자리 고정).
+		bool bOverlapStable = A.Num() >= 2 && B.Num() >= 2;
+		for (int32 i = 1; i < A.Num(); ++i)   // A[0]=300 은 B 창에서 빠지므로 제외.
+		{
+			const float X = A[i].MapPos.X;
+			const bool bFound = B.ContainsByPredicate([X](const FNavFloorPlacement& P)
+				{ return FMath::IsNearlyEqual(P.MapPos.X, X, 0.5f); });
+			if (!bFound) { bOverlapStable = false; }
+		}
+		TestTrue(TEXT("걸어도 겹치는 발자국 월드 고정"), bOverlapStable);
 	}
 
 	// (3) 범위가 경로 끝을 넘으면 끝에서 멈춘다(700에서 범위600이어도 끝=1000).
