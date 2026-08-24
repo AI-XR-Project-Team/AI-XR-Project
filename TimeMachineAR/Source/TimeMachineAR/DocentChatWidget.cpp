@@ -2,6 +2,7 @@
 
 #include "DocentChatBubble.h"
 #include "DocentQuickChip.h"
+#include "ARTrackingManager.h"
 #include "Components/Button.h"
 #include "Components/EditableTextBox.h"
 #include "Blueprint/WidgetLayoutLibrary.h"
@@ -81,6 +82,18 @@ void UDocentChatWidget::NativeConstruct()
 	if (OpenButton != nullptr)
 	{
 		OpenButton->OnClicked.AddUniqueDynamic(this, &UDocentChatWidget::HandleOpenClicked);
+	}
+	if (Btn_CloseAR != nullptr)
+	{
+		Btn_CloseAR->OnClicked.AddUniqueDynamic(this, &UDocentChatWidget::HandleCloseARClicked);
+		// 처음에는 숨김
+		Btn_CloseAR->SetVisibility(ESlateVisibility::Hidden);
+	}
+
+	if (AARTrackingManager* TrackingMgr = AARTrackingManager::GetARTrackingManager(this))
+	{
+		TrackingMgr->OnMarkerFound.AddUniqueDynamic(this, &UDocentChatWidget::HandleMarkerFound);
+		TrackingMgr->OnScanStateChanged.AddUniqueDynamic(this, &UDocentChatWidget::HandleScanStateChanged);
 	}
 
 	// 안드로이드 가상 키보드. Slate 는 이 이벤트를 아무도 받지 않아서, 받아 두지
@@ -213,6 +226,16 @@ void UDocentChatWidget::NativeDestruct()
 	if (OpenButton != nullptr)
 	{
 		OpenButton->OnClicked.RemoveDynamic(this, &UDocentChatWidget::HandleOpenClicked);
+	}
+	if (Btn_CloseAR != nullptr)
+	{
+		Btn_CloseAR->OnClicked.RemoveDynamic(this, &UDocentChatWidget::HandleCloseARClicked);
+	}
+
+	if (AARTrackingManager* TrackingMgr = AARTrackingManager::GetARTrackingManager(this))
+	{
+		TrackingMgr->OnMarkerFound.RemoveDynamic(this, &UDocentChatWidget::HandleMarkerFound);
+		TrackingMgr->OnScanStateChanged.RemoveDynamic(this, &UDocentChatWidget::HandleScanStateChanged);
 	}
 
 	if (FSlateApplication::IsInitialized())
@@ -465,6 +488,34 @@ void UDocentChatWidget::HandleCloseClicked()
 void UDocentChatWidget::HandleOpenClicked()
 {
 	ShowChat();
+}
+
+void UDocentChatWidget::HandleCloseARClicked()
+{
+	if (AARTrackingManager* TrackingManager = AARTrackingManager::GetARTrackingManager(this))
+	{
+		TrackingManager->ClearOverlay();
+	}
+	if (Btn_CloseAR != nullptr)
+	{
+		Btn_CloseAR->SetVisibility(ESlateVisibility::Hidden);
+	}
+}
+
+void UDocentChatWidget::HandleMarkerFound(UARPin* Pin, const FTransform& MarkerPose, const FString& MarkerCode)
+{
+	if (Btn_CloseAR != nullptr)
+	{
+		Btn_CloseAR->SetVisibility(ESlateVisibility::Visible);
+	}
+}
+
+void UDocentChatWidget::HandleScanStateChanged(bool bIsScanning)
+{
+	if (Btn_CloseAR != nullptr && bIsScanning)
+	{
+		Btn_CloseAR->SetVisibility(ESlateVisibility::Hidden);
+	}
 }
 
 void UDocentChatWidget::HandleSessionReady(const FString& SessionId)
