@@ -2,6 +2,9 @@
 
 #include "Blueprint/WidgetTree.h"
 #include "Components/PanelWidget.h"
+#include "Components/ContentWidget.h"
+#include "Components/Overlay.h"
+#include "Components/CanvasPanel.h"
 #include "Components/UniformGridPanel.h"
 #include "Components/UniformGridSlot.h"
 #include "Components/HorizontalBox.h"
@@ -106,7 +109,7 @@ void UNavFullMapWidget::BuildDestinationButtons(const FNavGraph& InGraph)
 	{
 		return;
 	}
-	Grid->SetSlotPadding(FMargin(6.f));
+	Grid->SetSlotPadding(FMargin(12.f));
 
 	// 지역변수 이름을 Slot 으로 두면 UWidget::Slot 멤버를 가려 MSVC 에서 C4458(-Werror)로
 	// 컴파일이 막힌다(clang 은 -Wno-error=shadow 라 통과 — 윈도우 팀원만 깨진다). SlotIdx 로 둔다.
@@ -121,11 +124,14 @@ void UNavFullMapWidget::BuildDestinationButtons(const FNavGraph& InGraph)
 
 		// 테두리 두껍게 + node_type 색(final §B-2). 흰 바탕 + 굵은 색 외곽선(둥근 모서리).
 		FButtonStyle Style = Button->GetStyle();
-		const FSlateRoundedBoxBrush Normal(FLinearColor::White, 8.f, Accent, 4.f);
-		const FSlateRoundedBoxBrush Hover(FLinearColor(0.94f, 0.94f, 0.96f), 8.f, Accent, 5.f);
+		const FSlateRoundedBoxBrush Normal(FLinearColor::White, 14.f, Accent, 7.f);
+		const FSlateRoundedBoxBrush Hover(FLinearColor(0.94f, 0.94f, 0.96f), 14.f, Accent, 9.f);
 		Style.SetNormal(Normal);
 		Style.SetHovered(Hover);
 		Style.SetPressed(Hover);
+		// 버튼 자체 여백을 키워 클릭 영역·시각 크기를 2배 수준으로.
+		Style.SetNormalPadding(FMargin(14.f, 12.f));
+		Style.SetPressedPadding(FMargin(14.f, 12.f));
 		Button->SetStyle(Style);
 		Button->WireClick();
 		Button->OnDestClicked.AddDynamic(this, &UNavFullMapWidget::HandleDestButtonClicked);
@@ -138,29 +144,38 @@ void UNavFullMapWidget::BuildDestinationButtons(const FNavGraph& InGraph)
 		{
 			UImage* Icon = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass());
 			Icon->SetBrushFromTexture(Tex);
-			Icon->SetDesiredSizeOverride(FVector2D(34.f, 34.f));
+			Icon->SetDesiredSizeOverride(FVector2D(68.f, 68.f));   // 2배.
 			if (UHorizontalBoxSlot* IconSlot = Cast<UHorizontalBoxSlot>(Row->AddChild(Icon)))
 			{
 				IconSlot->SetVerticalAlignment(VAlign_Center);
-				IconSlot->SetPadding(FMargin(4.f, 4.f, 8.f, 4.f));
+				IconSlot->SetPadding(FMargin(8.f, 8.f, 14.f, 8.f));
 			}
 		}
 
 		UTextBlock* Label = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
 		Label->SetText(FText::FromString(N.Label));
 		Label->SetColorAndOpacity(FSlateColor(FLinearColor(0.10f, 0.10f, 0.11f)));
+		Label->SetJustification(ETextJustify::Center);
+		Label->SetAutoWrapText(true);   // "티라노사우루스 렉스"처럼 긴 이름이 버튼 밖으로 안 나가게.
+		{
+			FSlateFontInfo LabelFont = Label->GetFont();
+			LabelFont.Size = 26;   // 키우되, 긴 이름이 삐져나가지 않을 만큼만.
+			Label->SetFont(LabelFont);
+		}
 		if (UHorizontalBoxSlot* TextSlot = Cast<UHorizontalBoxSlot>(Row->AddChild(Label)))
 		{
 			TextSlot->SetVerticalAlignment(VAlign_Center);
-			TextSlot->SetPadding(FMargin(0.f, 4.f, 8.f, 4.f));
+			TextSlot->SetHorizontalAlignment(HAlign_Fill);
+			TextSlot->SetSize(FSlateChildSize(ESlateSizeRule::Fill));   // 남는 폭을 글자가 차지 → 줄바꿈 여유.
+			TextSlot->SetPadding(FMargin(0.f, 8.f, 16.f, 8.f));
 		}
 
 		Button->SetContent(Row);
 
 		if (UUniformGridSlot* GridSlot = Grid->AddChildToUniformGrid(Button, SlotIdx / 2, SlotIdx % 2))
 		{
-			GridSlot->SetHorizontalAlignment(HAlign_Fill);
-			GridSlot->SetVerticalAlignment(VAlign_Fill);
+			GridSlot->SetHorizontalAlignment(HAlign_Fill);   // 셀 폭을 꽉 채워 버튼을 넓게.
+			GridSlot->SetVerticalAlignment(VAlign_Center);   // 높이는 내용대로(과하게 커지지 않게).
 		}
 		DestButtons.Add(Button);
 	}
@@ -170,29 +185,73 @@ void UNavFullMapWidget::BuildDestinationButtons(const FNavGraph& InGraph)
 	{
 		DestButtonHost->ClearChildren();
 		DestButtonHost->AddChild(Grid);
+		UE_LOG(LogNav, Log, TEXT("[fullmap] 목적지 버튼 %d개 → DestButtonHost(%s)."),
+			DestButtons.Num(), *DestButtonHost->GetClass()->GetName());
 		return;
 	}
 
-	UPanelWidget* Root = Cast<UPanelWidget>(WidgetTree->RootWidget);
-	if (Root == nullptr)
+	UWidget* RootW = (WidgetTree != nullptr) ? WidgetTree->RootWidget : nullptr;
+	UPanelWidget* Root = Cast<UPanelWidget>(RootW);
+
+	// 다자식 패널(Canvas/Overlay 등)이면 바로 붙는다. 단일자식(Border 등)이면 AddChild 가
+	// null 을 돌려주므로 아래에서 기존 자식과 함께 Overlay 로 묶어 재부모한다.
+	UPanelSlot* Added = (Root != nullptr) ? Root->AddChild(Grid) : nullptr;
+
+	if (Added == nullptr)
 	{
-		UE_LOG(LogNav, Warning,
-			TEXT("[fullmap] 루트가 패널이 아니라 목적지 버튼을 붙일 곳이 없습니다. "
-			     "WBP_NavMinimapFull 에 DestButtonHost 를 두거나 루트를 CanvasPanel 로 두세요."));
+		// 루트가 단일자식 컨테이너(WBP_NavMinimapFull 은 Border 가 루트). 기존 내용(MapView)과
+		// 버튼 그리드를 Overlay 로 묶어 Border 의 유일 자식으로 되꽂는다.
+		UContentWidget* Content = Cast<UContentWidget>(RootW);
+		if (Content == nullptr)
+		{
+			UE_LOG(LogNav, Warning,
+				TEXT("[fullmap] 루트(%s)에 버튼을 붙일 수 없습니다. WBP 에 DestButtonHost(패널)를 두세요."),
+				RootW ? *RootW->GetClass()->GetName() : TEXT("null"));
+			return;
+		}
+		UWidget* Existing = Content->GetContent();
+		// Overlay 로는 세로 위치를 하단/중앙 같은 정렬로만 줄 수 있어 "지도 아래~바닥 중간"을
+		// 못 맞춘다. CanvasPanel 로 묶어 세로 앵커를 분수(0.72)로 지정한다.
+		UCanvasPanel* Canvas = WidgetTree->ConstructWidget<UCanvasPanel>(UCanvasPanel::StaticClass());
+		Content->SetContent(Canvas);
+		if (Existing != nullptr)
+		{
+			if (UCanvasPanelSlot* ES = Cast<UCanvasPanelSlot>(Canvas->AddChild(Existing)))
+			{
+				ES->SetAnchors(FAnchors(0.f, 0.f, 1.f, 1.f));   // 지도는 화면 가득.
+				ES->SetOffsets(FMargin(0.f));
+			}
+		}
+		if (UCanvasPanelSlot* GS = Cast<UCanvasPanelSlot>(Canvas->AddChild(Grid)))
+		{
+			// 가로: 좌우 4~96% 로 넓게 스트레치(버튼이 화면 폭을 크게 차지 → 긴 이름도 여유).
+			// 세로: 0.80 지점 — 예전 하단 배치와 0.72 의 중간쯤(사용자 요청).
+			// 스트레치+포인트 혼합 앵커라 Offsets 는 (좌인셋, 상단Y, 우인셋, 높이) 로 읽힌다.
+			GS->SetAnchors(FAnchors(0.04f, 0.80f, 0.96f, 0.80f));
+			GS->SetAlignment(FVector2D(0.f, 0.5f));   // 0.80 선에 세로 중심을 맞춘다.
+			GS->SetAutoSize(false);
+			GS->SetOffsets(FMargin(0.f, 0.f, 0.f, 380.f));   // 높이(3줄까지 여유).
+		}
+		UE_LOG(LogNav, Log,
+			TEXT("[fullmap] 목적지 버튼 %d개 → 단일자식 루트(%s)를 CanvasPanel 로 재부모해 하단 중간 부착."),
+			DestButtons.Num(), *RootW->GetClass()->GetName());
 		return;
 	}
-	UPanelSlot* Added = Root->AddChild(Grid);
+
+	// 다자식 패널에 직접 붙은 경우: 세로 0.80(예전 하단과 0.72 의 중간)에 가로로 넓게 배치.
 	if (UCanvasPanelSlot* CanvasSlot = Cast<UCanvasPanelSlot>(Added))
 	{
-		CanvasSlot->SetAnchors(FAnchors(0.5f, 1.f, 0.5f, 1.f));   // 하단 중앙.
-		CanvasSlot->SetAlignment(FVector2D(0.5f, 1.f));
-		CanvasSlot->SetAutoSize(true);
-		CanvasSlot->SetPosition(FVector2D(0.f, -28.f));
+		CanvasSlot->SetAnchors(FAnchors(0.04f, 0.80f, 0.96f, 0.80f));
+		CanvasSlot->SetAlignment(FVector2D(0.f, 0.5f));
+		CanvasSlot->SetAutoSize(false);
+		CanvasSlot->SetOffsets(FMargin(0.f, 0.f, 0.f, 380.f));
 	}
 	else if (UOverlaySlot* OverlaySlot = Cast<UOverlaySlot>(Added))
 	{
-		OverlaySlot->SetHorizontalAlignment(HAlign_Center);
-		OverlaySlot->SetVerticalAlignment(VAlign_Bottom);
-		OverlaySlot->SetPadding(FMargin(0.f, 0.f, 0.f, 28.f));
+		OverlaySlot->SetHorizontalAlignment(HAlign_Fill);
+		OverlaySlot->SetVerticalAlignment(VAlign_Center);
+		OverlaySlot->SetPadding(FMargin(40.f, 0.f, 40.f, 0.f));
 	}
+	UE_LOG(LogNav, Log, TEXT("[fullmap] 목적지 버튼 %d개 → %s 에 직접 부착."),
+		DestButtons.Num(), *Root->GetClass()->GetName());
 }

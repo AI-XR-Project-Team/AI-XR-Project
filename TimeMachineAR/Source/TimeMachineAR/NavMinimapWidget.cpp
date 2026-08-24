@@ -8,6 +8,7 @@
 #include "NavRouteProgress.h"
 #include "NavFullMapWidget.h"
 #include "NavGuideLogWidget.h"   // 안내 로그 오버레이(§D)
+#include "Misc/App.h"            // FApp::GetCurrentTime (표출 판정 타임스탬프)
 #include "NavDestinations.h"     // 목적지 색·아이콘 규칙(§B)
 #include "NavLocalizer.h"   // 측위 품질(reroute 게이트)·현재 pose
 #include "NavClient.h"      // LogNav, Reroute
@@ -52,6 +53,7 @@ void UNavMinimapWidget::SetWaypoints(const TArray<FNavWaypoint>& InWaypoints)
 void UNavMinimapWidget::SetGraph(const FNavGraph& InGraph)
 {
 	Graph = InGraph;
+	RebuildIconBrushes();   // 목적지 아이콘 텍스처를 미리 로드(paint 중 로드 금지).
 	if (UNavMinimapWidget* Full = GetOpenFullMapView()) { Full->SetGraph(InGraph); }
 	Invalidate(EInvalidateWidgetReason::Paint);
 }
@@ -158,7 +160,7 @@ void UNavMinimapWidget::EnsureGuideLog()
 	if (GuideLog != nullptr)
 	{
 		GuideLog->BindToMinimap(this);
-		GuideLog->AddToViewport(50);   // 전체 지도(100)보다 아래, 일반 HUD 위.
+		GuideLog->AddToViewport(200);   // 전체 지도(100)보다 **위** — 지도를 켜도 로그가 선명하게 보인다.
 	}
 }
 
@@ -441,6 +443,15 @@ FString UNavMinimapWidget::GetNodeLabel(const FString& NodeId) const
 	return FString();
 }
 
+bool UNavMinimapWidget::WasRecentlyPainted(double WithinSeconds) const
+{
+	if (LastPaintSeconds <= 0.0)
+	{
+		return false;   // 아직 한 번도 안 그려짐(표출 전).
+	}
+	return (FApp::GetCurrentTime() - LastPaintSeconds) <= WithinSeconds;
+}
+
 bool UNavMinimapWidget::FindDestinationNodeAtLocal(const FVector2D& LocalPos, float RadiusPx,
 	FString& OutNodeId) const
 {
@@ -453,9 +464,9 @@ bool UNavMinimapWidget::FindDestinationNodeAtLocal(const FVector2D& LocalPos, fl
 	bool bFound = false;
 	for (const FNavMapNode& Node : Graph.Nodes)
 	{
-		if (!FNavDestinations::IsDestination(Node.NodeType))
+		if (!IconNodeIds.Contains(Node.NodeId))
 		{
-			continue;   // 아이콘이 없는 노드(junction·waypoint)는 목적지로 못 고른다(D-5).
+			continue;   // 지도에 아이콘으로 그린 목적지만 고를 수 있다(중복 entrance·junction 제외, D-5).
 		}
 		const FVector2D L = WorldToLocal(FVector2D(Node.PosXCm, Node.PosYCm));
 		const float D2 = static_cast<float>((L - LocalPos).SizeSquared());
@@ -568,6 +579,13 @@ int32 UNavMinimapWidget::NativePaint(const FPaintArgs& Args, const FGeometry& Al
 {
 	int32 Layer = Super::NativePaint(Args, AllottedGeometry, MyCullingRect, OutDrawElements,
 		LayerId, InWidgetStyle, bParentEnabled);
+
+	// "표출 중" 표식 — 숨겨지면(부모 접힘 포함) 이 호출 자체가 멈춘다. 안내 로그가 이 신선도로
+	// 미니맵이 화면에 떠 있는지(네비 활성)를 판정한다. 디자인 미리보기는 제외.
+	if (!IsDesignTime())
+	{
+		LastPaintSeconds = FApp::GetCurrentTime();
+	}
 
 	bHasCachedTransform = false;   // 이번 프레임 변환을 새로 잡는다.
 
@@ -962,31 +980,55 @@ void UNavMinimapWidget::PaintFullMapBase(FSlateWindowElementList& Out, int32& La
 
 // ---------------------------------------------------------------------- 목적지 아이콘
 
+void UNavMinimapWidget::RebuildIconBrushes()
+{
+	IconBrushCache.Reset();
+	LoadedIconTextures.Reset();
+
+	// 하단 버튼과 동일한 목적지 집합(중복 entrance 제거 등)만 지도에 그린다.
+	IconNodeIds.Reset();
+	TArray<int32> Order;
+	FNavDestinations::BuildDestinationOrder(Graph.Nodes, Order);
+	for (int32 Idx : Order)
+	{
+		IconNodeIds.Add(Graph.Nodes[Idx].NodeId);
+	}
+
+	for (const FNavMapNode& N : Graph.Nodes)
+	{
+		if (!IconNodeIds.Contains(N.NodeId))
+		{
+			continue;
+		}
+		const FString Path = FNavDestinations::IconObjectPath(N.NodeType, N.Label);
+		if (Path.IsEmpty() || IconBrushCache.Contains(Path))
+		{
+			continue;
+		}
+		UTexture2D* Tex = LoadObject<UTexture2D>(nullptr, *Path);
+		if (Tex == nullptr)
+		{
+			UE_LOG(LogNav, Warning,
+				TEXT("[minimap] 목적지 아이콘 로드 실패: %s (텍스처 임포트/쿡 누락?). 마름모만 그린다."), *Path);
+			continue;
+		}
+		LoadedIconTextures.Add(Tex);   // GC 방지.
+		TSharedPtr<FSlateBrush> Brush = MakeShared<FSlateBrush>();
+		Brush->SetResourceObject(Tex);
+		Brush->DrawAs = ESlateBrushDrawType::Image;
+		Brush->ImageSize = FVector2D(DestIconSizePx, DestIconSizePx);
+		IconBrushCache.Add(Path, Brush);
+	}
+}
+
 const FSlateBrush* UNavMinimapWidget::ResolveIconBrush(const FString& ObjectPath) const
 {
 	if (ObjectPath.IsEmpty())
 	{
 		return nullptr;
 	}
-	if (FSlateBrush* Cached = IconBrushCache.Find(ObjectPath))
-	{
-		// 이미 시도했다. 리소스가 비어 있으면(로드 실패) 다시 로드하지 않고 건너뛴다.
-		return (Cached->GetResourceObject() != nullptr) ? Cached : nullptr;
-	}
-	FSlateBrush Brush;
-	if (UTexture2D* Tex = LoadObject<UTexture2D>(nullptr, *ObjectPath))
-	{
-		Brush.SetResourceObject(Tex);
-		Brush.DrawAs = ESlateBrushDrawType::Image;
-		Brush.ImageSize = FVector2D(DestIconSizePx, DestIconSizePx);
-	}
-	else
-	{
-		UE_LOG(LogNav, Warning,
-			TEXT("[minimap] 목적지 아이콘 로드 실패: %s (텍스처 임포트 누락?)."), *ObjectPath);
-	}
-	FSlateBrush& Stored = IconBrushCache.Add(ObjectPath, Brush);
-	return (Stored.GetResourceObject() != nullptr) ? &Stored : nullptr;
+	const TSharedPtr<FSlateBrush>* Found = IconBrushCache.Find(ObjectPath);
+	return (Found != nullptr) ? Found->Get() : nullptr;
 }
 
 void UNavMinimapWidget::PaintDestinationIcons(FSlateWindowElementList& Out, int32& Layer,
@@ -1003,9 +1045,9 @@ void UNavMinimapWidget::PaintDestinationIcons(FSlateWindowElementList& Out, int3
 	++Layer;
 	for (const FNavMapNode& N : Graph.Nodes)
 	{
-		if (!FNavDestinations::IsDestination(N.NodeType))
+		if (!IconNodeIds.Contains(N.NodeId))
 		{
-			continue;
+			continue;   // 하단 버튼과 같은 6개만(중복 entrance 등 제외).
 		}
 		const FVector2D C = WorldToLocal(FVector2D(N.PosXCm, N.PosYCm));
 		if (bCull && !IsLocalInView(C, CullMargin))

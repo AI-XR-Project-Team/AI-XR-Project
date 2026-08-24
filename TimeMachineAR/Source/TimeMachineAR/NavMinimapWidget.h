@@ -138,6 +138,17 @@ public:
 	FString GetDestinationNodeType() const { return GetNodeType(DestinationNodeId); }
 	FString GetDestinationLabel() const { return GetNodeLabel(DestinationNodeId); }
 
+	/** 목적지가 실제로 지정돼 있나. 안내 로그가 "안내/도착" 문구를 띄워도 되는지 판정한다. */
+	UFUNCTION(BlueprintPure, Category = "Nav|Minimap")
+	bool HasDestination() const { return !DestinationNodeId.IsEmpty(); }
+
+	/**
+	 * 이 미니맵이 최근 WithinSeconds 초 안에 화면에 그려졌나(=실제로 표출 중인가).
+	 * 숨겨진(부모가 접힘 포함) 위젯은 NativePaint 가 안 불려 시각이 갱신되지 않는다.
+	 * 안내 로그가 "미니맵이 화면에 떠 있을 때만" 보이려고 이 신호를 쓴다(네비 활성 판정).
+	 */
+	bool WasRecentlyPainted(double WithinSeconds = 0.3) const;
+
 	/** 폴리라인(맵 cm)을 직접 넣는다(전체 지도로 상태를 넘길 때 등). */
 	UFUNCTION(BlueprintCallable, Category = "Nav|Minimap")
 	void SetRouteXY(const TArray<FVector2D>& InRouteXY);
@@ -343,22 +354,22 @@ public:
 	/** 아이콘 그림의 한 변(px). E-2 에서 현우가 최종 조정. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Nav|Minimap|Dest",
 		meta = (ClampMin = "8.0"))
-	float DestIconSizePx = 30.f;
+	float DestIconSizePx = 60.f;
 
 	/** 마름모의 중심→꼭짓점 거리(px). 아이콘을 감싸도록 아이콘 반보다 크게. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Nav|Minimap|Dest",
 		meta = (ClampMin = "6.0"))
-	float DestDiamondHalfPx = 24.f;
+	float DestDiamondHalfPx = 48.f;
 
 	/** 마름모 테두리 굵기(px). */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Nav|Minimap|Dest",
 		meta = (ClampMin = "0.5"))
-	float DestDiamondThicknessPx = 2.5f;
+	float DestDiamondThicknessPx = 3.5f;
 
 	/** 현재 안내 중인 목적지의 마름모 테두리 굵기(px). 다른 목적지보다 두껍게 강조. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Nav|Minimap|Dest",
 		meta = (ClampMin = "0.5"))
-	float DestActiveDiamondThicknessPx = 4.5f;
+	float DestActiveDiamondThicknessPx = 6.5f;
 
 	// ------------------------------------------------------------------ 안내 로그(§D)
 
@@ -468,6 +479,9 @@ private:
 	/** 이번 프레임 위젯 로컬 크기(px). Follow 뷰 컬링·셰브론 창 판정에 쓴다. */
 	mutable FVector2D CachedLocalSize = FVector2D::ZeroVector;
 
+	/** 마지막으로 NativePaint 가 불린 앱 시각(초). WasRecentlyPainted 로 "표출 중" 판정. */
+	mutable double LastPaintSeconds = 0.0;
+
 	/**
 	 * 로컬 점이 위젯 영역(여백 Margin 포함) 안에 있나. Follow 창 밖 요소를 솎아낸다.
 	 * Full 모드는 fit-to-bounds 라 전부 안에 들어오므로 사실상 통과한다.
@@ -523,10 +537,27 @@ private:
 	/** 노드 id 의 맵 좌표(cm)를 찾는다. 없으면 false. */
 	bool GetNodePos(const FString& NodeId, FVector2D& OutXY) const;
 
-	/** 목적지 아이콘 텍스처 브러시 캐시(오브젝트 경로 → 브러시). NativePaint 가 채운다. */
-	mutable TMap<FString, FSlateBrush> IconBrushCache;
+	/**
+	 * 목적지 아이콘 텍스처 브러시 캐시(오브젝트 경로 → 브러시). **SetGraph 에서 미리 채운다**
+	 * (paint 중 LoadObject 금지). TSharedPtr 로 힙에 고정해 맵이 재해시돼도 Slate 에 넘긴
+	 * 브러시 포인터가 dangling 되지 않게 한다(MakeBox 는 프레임 끝까지 포인터를 붙든다).
+	 */
+	TMap<FString, TSharedPtr<FSlateBrush>> IconBrushCache;
 
-	/** 오브젝트 경로로 아이콘 브러시를 얻는다(없으면 로드해 캐시, 실패면 nullptr). */
+	/** 로드한 아이콘 텍스처를 GC 로부터 지킨다(브러시가 raw 컨테이너라 GC 가 못 본다). */
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<UTexture2D>> LoadedIconTextures;
+
+	/**
+	 * 아이콘을 그릴 목적지 노드 id 집합. BuildDestinationOrder 로 골라(중복 entrance 제거 등)
+	 * 하단 버튼과 **같은 6개**만 지도에도 표시한다. RebuildIconBrushes 가 채운다.
+	 */
+	TSet<FString> IconNodeIds;
+
+	/** Graph 의 목적지 노드 텍스처를 로드해 브러시 캐시를 다시 만든다. SetGraph 가 부른다. */
+	void RebuildIconBrushes();
+
+	/** 오브젝트 경로로 아이콘 브러시를 얻는다(캐시 조회만, 없으면 nullptr). paint 안전. */
 	const FSlateBrush* ResolveIconBrush(const FString& ObjectPath) const;
 
 	/** 목적지 노드마다 마름모 + 아이콘을 그린다(Full·Follow 공통, px 고정 크기). */

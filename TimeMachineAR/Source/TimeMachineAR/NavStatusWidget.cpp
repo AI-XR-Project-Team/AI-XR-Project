@@ -22,6 +22,13 @@ void UNavStatusWidget::NativeConstruct()
 			TEXT("[status] NavLocalizer 를 못 찾았습니다. 측위 경고 자동 연결 실패(월드 준비 전?)."));
 	}
 
+	// §D 안내 로그가 화면 최상단을 쓰므로, 측위 경고(QR 다시 찍기)는 그 아래로 내려
+	// 겹치지 않게 한다. RenderTranslation 은 레이아웃을 안 건드리고 그리기만 내린다.
+	if (WarningPanel != nullptr)
+	{
+		WarningPanel->SetRenderTranslation(FVector2D(0.f, 150.f));
+	}
+
 	// 시작 상태: 전부 숨김. 디자이너에서는 배치 확인을 위해 배너를 보여 준다.
 	if (IsDesignTime() && bPreviewInDesigner)
 	{
@@ -112,23 +119,15 @@ void UNavStatusWidget::RefreshPanels()
 		return;   // 디자이너 미리보기는 NativeConstruct 에서 고정.
 	}
 
-	const bool bArrived = LastGuidance.bValid && LastGuidance.bArrived;
-	const bool bGuiding = LastGuidance.bValid && !bArrived;
-
-	// 우선순위: 도착 > 경고 > 배너. 하나만 보인다.
-	SetWidgetShown(ArrivalPanel, bArrived);
-	SetWidgetShown(WarningPanel, bWarningActive && !bArrived);
-	SetWidgetShown(BannerPanel, bGuiding && !bWarningActive);
+	// 턴바이턴 배너(5-D)·도착 패널은 8단계 §D 안내 로그(NavGuideLogWidget, 그래픽/문구)가
+	// 대체하므로 더 이상 띄우지 않는다. 이 위젯은 측위 경고(QR 다시 찍기)만 담당한다.
+	SetWidgetShown(BannerPanel, false);
+	SetWidgetShown(ArrivalPanel, false);
+	SetWidgetShown(WarningPanel, bWarningActive);
 
 	if (bWarningActive)
 	{
 		SetTextSafe(WarningText, WarningMessage);
-	}
-	if (bGuiding)
-	{
-		SetTextSafe(InstructionText, LastGuidance.Instruction);
-		SetTextSafe(DistanceText, FormatDistanceCm(LastGuidance.StepRemainingCm));
-		SetTextSafe(NextText, LastGuidance.NextInstruction);
 	}
 }
 

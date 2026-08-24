@@ -125,13 +125,24 @@ void FNavDestinations::BuildDestinationOrder(const TArray<FNavMapNode>& Nodes, T
 	});
 	OutOrder.Append(Exhibits);
 
-	// 아래 2칸: 화장실 → 입구/출구.
+	// 아래 칸: 화장실(들).
 	for (int32 i = 0; i < Nodes.Num(); ++i)
 	{
 		if (Classify(Nodes[i].NodeType) == ENavDestKind::Facility) { OutOrder.Add(i); }
 	}
+
+	// 입구/출구는 **하나만**. 시드에 시작점(예: "A지점")과 "입구·출구" 가 둘 다 entrance 로
+	// 들어와 겹치므로, "입구"/"출구" 라벨을 우선 고르고 없으면 첫 entrance 만 남긴다.
+	int32 EntranceIdx = INDEX_NONE;
 	for (int32 i = 0; i < Nodes.Num(); ++i)
 	{
-		if (Classify(Nodes[i].NodeType) == ENavDestKind::Entrance) { OutOrder.Add(i); }
+		if (Classify(Nodes[i].NodeType) != ENavDestKind::Entrance) { continue; }
+		if (EntranceIdx == INDEX_NONE) { EntranceIdx = i; }
+		if (Nodes[i].Label.Contains(TEXT("입구")) || Nodes[i].Label.Contains(TEXT("출구")))
+		{
+			EntranceIdx = i;
+			break;
+		}
 	}
+	if (EntranceIdx != INDEX_NONE) { OutOrder.Add(EntranceIdx); }
 }
