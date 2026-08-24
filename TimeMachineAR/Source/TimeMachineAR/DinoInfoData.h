@@ -158,13 +158,19 @@ public:
 	TArray<FDinoStat> Stats;
 
 	/**
-	 * 도슨트 대화를 열 때 넘길 전시물 UUID.
+	 * 도슨트 대화를 열 때 넘길 전시물 안정 키.
 	 *
-	 * 서버의 exhibits.id 와 같아야 한다. 비워 두면 카드가 도슨트 버튼을
-	 * 눌러도 아무 일이 없으니, 대화까지 이으려면 반드시 채운다.
+	 * 서버 dinosaurs.model_asset_key 와 **글자까지 같아야** 한다
+	 * (예: trex_full_skeleton). 이 값은 DB 를 재시드해도, 서버 머신이 바뀌어도
+	 * 변하지 않는다. 예전에는 exhibits.id(UUID)를 넣었으나 그 값은 재시드마다
+	 * 새로 발급돼(gen_random_uuid) 앱에 박아 두면 전부 무효가 됐다 — 도슨트가
+	 * "연결 실패 / 어떤 공룡인지 모름"으로 빠지던 원인이다. 네비게이션이 마커
+	 * code 라는 안정 키로 조회하는 것과 같은 방식으로 통일했다.
+	 * 비워 두면 카드가 도슨트 버튼을 눌러도 아무 일이 없으니, 대화까지
+	 * 이으려면 반드시 채운다.
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Dino|도슨트")
-	FString ExhibitId;
+	FString ExhibitKey;
 
 	// ------------------------------------------------------------------ 마커
 

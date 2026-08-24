@@ -124,6 +124,29 @@ def load_exhibit_context(
     return exhibit, db.get(Dinosaur, exhibit.dinosaur_id), list(exhibit.pois)
 
 
+def find_exhibit_by_key(db: Session, exhibit_key: str) -> Optional[Exhibit]:
+    """안정 자연키로 전시물을 찾는다. 없으면 None.
+
+    `exhibits.id` 는 `gen_random_uuid()` 로 발급돼 DB 를 재시드할 때마다,
+    또 머신마다 값이 달라진다. 클라이언트가 그 UUID 를 에셋에 박아 두면
+    재시드 한 번에 전부 무효가 된다(도슨트 연결 실패의 원인이었다).
+
+    그래서 클라이언트는 UUID 대신 재시드에도 변하지 않는 자연키
+    `dinosaurs.model_asset_key`(예: ``trex_full_skeleton``)를 보내고, 서버가
+    그 키로 전시물을 해석한다. 네비게이션이 마커 code 로 조회하는 것과 같은
+    방식이다. 한 공룡에 전시물이 여럿이면 가장 먼저 만들어진 것을 쓴다.
+    """
+    if not exhibit_key:
+        return None
+    return (
+        db.query(Exhibit)
+        .join(Dinosaur, Exhibit.dinosaur_id == Dinosaur.id)
+        .filter(Dinosaur.model_asset_key == exhibit_key)
+        .order_by(Exhibit.created_at)
+        .first()
+    )
+
+
 def build_chat_prompt(
     exhibit: Exhibit,
     dinosaur: Optional[Dinosaur],

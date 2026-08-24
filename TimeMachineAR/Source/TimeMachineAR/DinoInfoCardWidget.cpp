@@ -102,7 +102,7 @@ void UDinoInfoCardWidget::ShowFor(UDinoInfoData* InInfo)
 
 	UE_LOG(LogDinoCard, Log, TEXT("[card] 열기: %s (exhibit=%s)"),
 		*CurrentInfo->NameKo.ToString(),
-		CurrentInfo->ExhibitId.IsEmpty() ? TEXT("(미설정)") : *CurrentInfo->ExhibitId);
+		CurrentInfo->ExhibitKey.IsEmpty() ? TEXT("(미설정)") : *CurrentInfo->ExhibitKey);
 }
 
 void UDinoInfoCardWidget::HideCard()
@@ -153,7 +153,7 @@ void UDinoInfoCardWidget::ApplyInfo()
 	// 전시물 UUID 가 없으면 도슨트에 물어볼 수가 없다. 버튼만 숨기면 마스코트와
 	// "물어보세요" 문구만 남아 더 어색하므로, DocentCta 가 지정돼 있으면 그 줄을
 	// 통째로 접는다. 지정 안 된 예전 구성에서는 버튼만 접는다.
-	const bool bCanAsk = !CurrentInfo->ExhibitId.IsEmpty();
+	const bool bCanAsk = !CurrentInfo->ExhibitKey.IsEmpty();
 	const ESlateVisibility CtaVisibility = bCanAsk
 		? ESlateVisibility::Visible
 		: ESlateVisibility::Collapsed;
@@ -374,12 +374,12 @@ void UDinoInfoCardWidget::HandleCloseClicked()
 
 void UDinoInfoCardWidget::HandleAskDocentClicked()
 {
-	if (CurrentInfo == nullptr || CurrentInfo->ExhibitId.IsEmpty())
+	if (CurrentInfo == nullptr || CurrentInfo->ExhibitKey.IsEmpty())
 	{
 		return;
 	}
 
-	OnAskDocentClicked.Broadcast(CurrentInfo->ExhibitId);
+	OnAskDocentClicked.Broadcast(CurrentInfo->ExhibitKey);
 }
 
 void UDinoInfoCardWidget::HandleFullscreenClicked()

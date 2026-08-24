@@ -15,6 +15,9 @@ class UScrollBox;
 class UTextBlock;
 
 /** 카드의 "AI 도슨트에게 질문하기" 를 눌렀을 때. 대상 전시물 UUID 를 넘긴다. */
+// 파라미터 이름(ExhibitId)은 BP 노드 핀 이름이라 바꾸면 AR_MainMap 레벨 BP 가
+// 깨진다(핀 유실). 그래서 이름은 그대로 두되, 실제로 흐르는 값은 안정 키
+// (DinoInfoData::ExhibitKey = 서버 model_asset_key)다.
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnAskDocentClicked, const FString&, ExhibitId);
 
 /** 히어로 오른쪽 아래 전체화면 버튼을 눌렀을 때. 지금 보고 있는 공룡을 넘긴다. */

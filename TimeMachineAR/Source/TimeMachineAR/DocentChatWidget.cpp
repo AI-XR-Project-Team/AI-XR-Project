@@ -136,11 +136,11 @@ void UDocentChatWidget::NativeConstruct()
 	ApplyOpenState(bStartOpen || !bCanReopen);
 
 	// 마커로 공룡을 고르기 전에는 특정 전시물을 상정하지 않는다. 클래스
-	// 기본값의 ExhibitId 는 마커가 없던 시절의 시험용이라 여기서 버린다.
+	// 기본값의 ExhibitKey 는 마커가 없던 시절의 시험용이라 여기서 버린다.
 	// OpenChat 이 먼저 불려 전시물이 정해진 경우에만 그대로 둔다.
 	if (!bExhibitContextSet)
 	{
-		ExhibitId.Reset();
+		ExhibitKey.Reset();
 	}
 
 	BuildQuickQuestions();
@@ -182,7 +182,7 @@ void UDocentChatWidget::NativeConstruct()
 	}
 	else
 	{
-		Client->StartChatSession(ExhibitId);
+		Client->StartChatSession(ExhibitKey);
 	}
 }
 
@@ -236,7 +236,8 @@ void UDocentChatWidget::NativeDestruct()
 
 void UDocentChatWidget::OpenChat(const FString& InExhibitId)
 {
-	ExhibitId = InExhibitId;
+	// 파라미터 이름은 BP 핀 호환을 위해 유지한다. 값은 안정 키(model_asset_key)다.
+	ExhibitKey = InExhibitId;
 	bExhibitContextSet = !InExhibitId.IsEmpty();
 
 	// 공룡이 새로 정해졌으면 그 공룡용 칩을 다시 띄운다. 앞선 대화에서 이미
@@ -253,7 +254,7 @@ void UDocentChatWidget::OpenChat(const FString& InExhibitId)
 	}
 
 	SetInputEnabled(false);
-	Client->StartChatSession(ExhibitId);
+	Client->StartChatSession(ExhibitKey);
 }
 
 void UDocentChatWidget::SendQuestion(const FString& Question)

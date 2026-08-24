@@ -66,6 +66,7 @@ def db_factory(monkeypatch):
                 name_sci="Tyrannosaurus rex",
                 period="백악기 후기",
                 length_m=Decimal("12.3"),
+                model_asset_key="trex_full_skeleton",
                 ai_prompt_context="티라노사우루스는 백악기 후기의 최상위 포식자였다.",
                 created_at=NOW,
             ),
@@ -153,6 +154,64 @@ def test_create_session(client):
 
 def test_create_session_with_unknown_exhibit_404(client):
     res = client.post("/docent/sessions", json={"exhibit_id": str(MISSING_ID)})
+    assert res.status_code == 404
+
+
+def test_create_session_with_exhibit_key_resolves_exhibit(client):
+    """안정 자연키(model_asset_key)로 세션을 열면 그 전시물이 붙는다.
+
+    클라이언트는 재시드마다 바뀌는 UUID 대신 이 키를 보낸다. UUID 를
+    몰라도 세션에 전시물 맥락이 정확히 걸려야 한다.
+    """
+    res = client.post(
+        "/docent/sessions",
+        json={"device_uuid": "android-key", "exhibit_key": "trex_full_skeleton"},
+    )
+    assert res.status_code == 200, res.text
+    assert res.json()["exhibit_id"] == str(EXHIBIT_ID)
+
+
+def test_create_session_with_unknown_exhibit_key_404(client):
+    res = client.post(
+        "/docent/sessions", json={"exhibit_key": "no_such_asset_key"}
+    )
+    assert res.status_code == 404
+
+
+def test_chat_with_exhibit_key_uses_that_exhibit(client):
+    """세션에 전시물이 없어도 요청의 exhibit_key 로 전시물 맥락이 걸린다.
+
+    이 경로가 깨지면 '현재 어떤 공룡인지 알 수 없다'는 일반 대화로 빠진다.
+    """
+    res = client.post("/docent/sessions", json={"device_uuid": "android-3"})
+    session_id = res.json()["session_id"]
+    res = client.post(
+        "/docent/chat",
+        json={
+            "session_id": session_id,
+            "message": "이 공룡 설명해줘",
+            "exhibit_key": "trex_full_skeleton",
+        },
+    )
+    assert res.status_code == 200, res.text
+    # MockLlmClient 는 system 프롬프트를 echo 한다. 전시물이 걸리면 프롬프트에
+    # [전시물] 배경 블록이 들어가고, 일반 대화로 빠지면 그 블록이 없다.
+    answer = res.json()["answer"]
+    assert "[전시물]" in answer
+    assert "1관 티라노 전신골격" in answer
+
+
+def test_chat_with_unknown_exhibit_key_404(client):
+    res = client.post("/docent/sessions", json={"device_uuid": "android-4"})
+    session_id = res.json()["session_id"]
+    res = client.post(
+        "/docent/chat",
+        json={
+            "session_id": session_id,
+            "message": "안녕",
+            "exhibit_key": "no_such_asset_key",
+        },
+    )
     assert res.status_code == 404
 
 
