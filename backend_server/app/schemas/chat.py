@@ -25,6 +25,15 @@ class SessionCreateRequest(BaseModel):
             "생략하면 매 요청마다 `exhibit_id` 나 `poi_id` 를 줘야 한다."
         ),
     )
+    exhibit_key: Optional[str] = Field(
+        None,
+        max_length=200,
+        description=(
+            "전시물을 UUID 대신 안정 자연키(`dinosaurs.model_asset_key`, 예: "
+            "`trex_full_skeleton`)로 지정한다. `exhibit_id` 는 재시드마다 바뀌므로 "
+            "클라이언트는 이 키를 쓴다. 둘 다 주면 `exhibit_key` 가 우선한다."
+        ),
+    )
 
 
 class SessionCreateResponse(BaseModel):
@@ -57,6 +66,14 @@ class ChatAskRequest(BaseModel):
     exhibit_id: Optional[uuid.UUID] = Field(
         None,
         description="세션에 전시물이 지정되지 않았을 때 이번 요청에서만 지정한다.",
+    )
+    exhibit_key: Optional[str] = Field(
+        None,
+        max_length=200,
+        description=(
+            "세션에 전시물이 없을 때 이번 요청에서만 안정 자연키"
+            "(`dinosaurs.model_asset_key`)로 전시물을 지정한다. `exhibit_id` 보다 우선한다."
+        ),
     )
 
 

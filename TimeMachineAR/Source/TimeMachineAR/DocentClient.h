@@ -131,11 +131,12 @@ public:
 	 * 채팅창을 열 때 한 번 호출한다. 완료되면 OnChatSessionReady 가 뜨고,
 	 * 그 뒤부터 SendChatMessage 를 쓸 수 있다.
 	 *
-	 * @param ExhibitId 대화 대상 전시물의 UUID. 비우면 매 질문마다 PoiId 를
-	 *                  줘야 한다.
+	 * @param ExhibitKey 대화 대상 전시물의 안정 키(서버 model_asset_key,
+	 *                   예: trex_full_skeleton). 비우면 매 질문마다 PoiId 를
+	 *                   줘야 한다. UUID 가 아니라 재시드에도 변하지 않는 키를 쓴다.
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Docent|Chat")
-	void StartChatSession(const FString& ExhibitId);
+	void StartChatSession(const FString& ExhibitKey);
 
 	/**
 	 * 질문을 보내고 응답을 조각 단위로 받는다 (POST /docent/chat/stream).

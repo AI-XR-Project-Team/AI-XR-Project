@@ -58,6 +58,8 @@ public:
 	 * 다른 전시물 앞으로 이동했을 때 부른다. 화면의 기존 대화는 지우지 않는다.
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Docent|Chat")
+	// 파라미터 이름(InExhibitId)은 BP 노드 핀 이름이라 바꾸면 AR_MainMap 레벨
+	// BP 의 OpenChat 호출 노드가 깨진다. 이름은 유지하고, 값은 안정 키가 흐른다.
 	void OpenChat(const FString& InExhibitId);
 
 	/** 이번 질문에 딸려 보낼 부위. 빈 문자열이면 전시물 전체를 대상으로 답한다. */
@@ -96,7 +98,7 @@ public:
 	 * 않는다. 칩 문구가 "이 공룡"을 가리키는데 가리킬 대상이 없기 때문이다.
 	 */
 	UFUNCTION(BlueprintPure, Category = "Docent|Chat")
-	bool HasExhibitContext() const { return bExhibitContextSet && !ExhibitId.IsEmpty(); }
+	bool HasExhibitContext() const { return bExhibitContextSet && !ExhibitKey.IsEmpty(); }
 
 protected:
 	virtual void NativeConstruct() override;
@@ -225,7 +227,7 @@ protected:
 	 * 답한다. 전시물 대화는 OpenChat 으로만 시작한다.
 	 */
 	UPROPERTY(EditDefaultsOnly, Category = "Docent|Chat")
-	FString ExhibitId;
+	FString ExhibitKey;
 
 	/**
 	 * 처음부터 채팅창을 펼쳐 둘지.
@@ -335,7 +337,7 @@ private:
 	/**
 	 * OpenChat 으로 전시물을 지정받았는지. WBP 클래스 기본값과 구분하려고 둔다.
 	 *
-	 * ExhibitId 가 비었는지만 봐서는 둘을 구분할 수 없다. 위젯을 만든 직후
+	 * ExhibitKey 가 비었는지만 봐서는 둘을 구분할 수 없다. 위젯을 만든 직후
 	 * NativeConstruct 전에 OpenChat 이 불릴 수 있어서(공룡을 이미 알고 여는 경로)
 	 * 이 값이 서 있으면 NativeConstruct 는 지정된 전시물을 지우지 않는다.
 	 */

@@ -41,6 +41,7 @@ from app.services.docent import (
     build_chat_prompt,
     build_general_chat_fallback,
     build_general_chat_prompt,
+    find_exhibit_by_key,
     load_exhibit_context,
 )
 from app.services.llm.base import ChatTurn, LlmClient
@@ -68,11 +69,21 @@ def _sse(event: str, payload: dict) -> str:
     tags=["chat"],
 )
 def create_session(payload: SessionCreateRequest, db: Session = Depends(get_db)):
-    """대화 세션을 만든다. 이후 모든 대화 요청은 이 `session_id` 를 쓴다."""
-    if payload.exhibit_id is not None and load_exhibit_context(db, payload.exhibit_id) is None:
+    """대화 세션을 만든다. 이후 모든 대화 요청은 이 `session_id` 를 쓴다.
+
+    전시물은 안정 자연키(`exhibit_key`)로 받는 것이 정석이다. `exhibit_id`(UUID)는
+    재시드마다 바뀌어 클라이언트가 들고 있으면 깨지므로 하위호환용으로만 남긴다.
+    """
+    exhibit_id = payload.exhibit_id
+    if payload.exhibit_key is not None:
+        exhibit = find_exhibit_by_key(db, payload.exhibit_key)
+        if exhibit is None:
+            raise HTTPException(status_code=404, detail="exhibit not found")
+        exhibit_id = exhibit.id
+    elif exhibit_id is not None and load_exhibit_context(db, exhibit_id) is None:
         raise HTTPException(status_code=404, detail="exhibit not found")
 
-    session = ChatSession(device_uuid=payload.device_uuid, exhibit_id=payload.exhibit_id)
+    session = ChatSession(device_uuid=payload.device_uuid, exhibit_id=exhibit_id)
     db.add(session)
     db.commit()
     db.refresh(session)
@@ -117,6 +128,14 @@ def _prepare_turn(
 
     poi: Optional[Poi] = None
     exhibit_id = payload.exhibit_id or session.exhibit_id
+
+    # 안정 자연키가 오면 UUID 보다 우선한다. 세션에 전시물이 안 붙은 채로
+    # 대화가 시작돼도 이 요청의 키로 맥락을 살린다.
+    if payload.exhibit_key is not None:
+        keyed = find_exhibit_by_key(db, payload.exhibit_key)
+        if keyed is None:
+            raise HTTPException(status_code=404, detail="exhibit not found")
+        exhibit_id = keyed.id
 
     if payload.poi_id is not None:
         poi = db.get(Poi, payload.poi_id)

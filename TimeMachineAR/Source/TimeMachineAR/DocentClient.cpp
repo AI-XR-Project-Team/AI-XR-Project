@@ -85,7 +85,7 @@ void UDocentClient::RegisterDebugConsoleCommands()
 
 	DebugConsoleCommands.Add(IConsoleManager::Get().RegisterConsoleCommand(
 		TEXT("Docent.StartSession"),
-		TEXT("대화 세션을 연다. 인자: <ExhibitId>"),
+		TEXT("대화 세션을 연다. 인자: <ExhibitKey>"),
 		FConsoleCommandWithArgsDelegate::CreateLambda([WeakThis](const TArray<FString>& Args)
 		{
 			UDocentClient* Self = WeakThis.Get();
@@ -111,7 +111,7 @@ void UDocentClient::RegisterDebugConsoleCommands()
 		})));
 
 	UE_LOG(LogDocent, Log,
-		TEXT("진단 콘솔 명령 등록: Docent.Health / Docent.StartSession <ExhibitId> / Docent.Ask <질문>"));
+		TEXT("진단 콘솔 명령 등록: Docent.Health / Docent.StartSession <ExhibitKey> / Docent.Ask <질문>"));
 }
 #endif
 
@@ -273,13 +273,15 @@ void UDocentClient::ReportFailure(const FString& Reason)
 
 // ---------------------------------------------------------------------- 챗봇
 
-void UDocentClient::StartChatSession(const FString& ExhibitId)
+void UDocentClient::StartChatSession(const FString& ExhibitKey)
 {
 	const TSharedRef<FJsonObject> Body = MakeShared<FJsonObject>();
 	Body->SetStringField(TEXT("device_uuid"), DeviceUuid);
-	if (!ExhibitId.IsEmpty())
+	if (!ExhibitKey.IsEmpty())
 	{
-		Body->SetStringField(TEXT("exhibit_id"), ExhibitId);
+		// 안정 자연키(model_asset_key)로 보낸다. 서버가 이 키로 전시물을
+		// 해석한다. UUID(exhibit_id)는 재시드마다 바뀌어 더 이상 쓰지 않는다.
+		Body->SetStringField(TEXT("exhibit_key"), ExhibitKey);
 	}
 
 	FString Payload;
@@ -296,8 +298,8 @@ void UDocentClient::StartChatSession(const FString& ExhibitId)
 	Request->SetContentAsString(Payload);
 	Request->OnProcessRequestComplete().BindUObject(this, &UDocentClient::OnSessionCreated);
 
-	UE_LOG(LogDocent, Log, TEXT("[chat] 세션 생성 POST %s exhibit=%s"), *Url,
-		ExhibitId.IsEmpty() ? TEXT("(없음)") : *ExhibitId);
+	UE_LOG(LogDocent, Log, TEXT("[chat] 세션 생성 POST %s exhibit_key=%s"), *Url,
+		ExhibitKey.IsEmpty() ? TEXT("(없음)") : *ExhibitKey);
 	Request->ProcessRequest();
 }
 
