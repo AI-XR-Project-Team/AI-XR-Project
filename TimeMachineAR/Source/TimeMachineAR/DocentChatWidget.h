@@ -152,6 +152,10 @@ protected:
 	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "Docent|Chat")
 	TObjectPtr<UButton> OpenButton;
 
+	/** 우측 상단 X 버튼 (AR 렌더링 종료) */
+	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "Docent|AR")
+	TObjectPtr<UButton> Btn_CloseAR;
+
 	/**
 	 * AR 화면 하단 바. 채팅이 열리면 접히고, 닫히면 다시 나온다.
 	 *
@@ -274,6 +278,9 @@ private:
 	UFUNCTION() void HandleTextCommitted(const FText& Text, ETextCommit::Type CommitMethod);
 	UFUNCTION() void HandleCloseClicked();
 	UFUNCTION() void HandleOpenClicked();
+	UFUNCTION() void HandleCloseARClicked();
+	UFUNCTION() void HandleMarkerFound(UARPin* Pin, const FTransform& MarkerPose, const FString& MarkerCode);
+	UFUNCTION() void HandleScanStateChanged(bool bIsScanning);
 
 	/** 열림 상태를 위젯에 반영한다. ShowChat/HideChat 의 공통부. */
 	void ApplyOpenState(bool bOpen);
