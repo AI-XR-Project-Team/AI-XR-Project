@@ -10,9 +10,11 @@
 그래프는 `map_id` 별 프로세스 메모리 캐시(수정 드묾). 시드 갱신 시 `invalidate()`
 호출 또는 서버 재기동으로 대응한다(핫리로드는 후속 과제).
 """
+import heapq
 import math
 import threading
 import uuid
+from itertools import count
 from typing import Dict, List, Optional, Tuple
 
 import networkx as nx
@@ -188,18 +190,88 @@ def snap_to_edge(graph: nx.DiGraph, x: float, y: float, z: float):
     return [(u, du, foot), (v, dv, foot)]
 
 
+# 동점(같은 총거리) 경로가 여러 개일 때의 2차 정렬 기준. 값이 클수록 그 노드를
+# '지나가는' 것을 꺼린다. 전시물/편의시설 한복판을 관통하는 대신 분기점·경유점
+# (rank 0)을 지나는 경로를 택하게 한다. 예) E→G 가 E→F(전시물)→G 와
+# E→H(분기점)→G 로 거리가 완전히 같을 때 H 쪽을 고른다.
+# 이 값은 f(거리+휴리스틱)가 '동일'할 때만 순서를 가르므로 최단 경로 자체는
+# 바뀌지 않는다(더 짧은 경로가 있으면 언제나 그쪽을 택한다).
+_TRANSIT_RANK = {"exhibit": 2, "facility": 1}
+
+
+def _transit_rank(node_type: Optional[str]) -> int:
+    return _TRANSIT_RANK.get(node_type or "", 0)
+
+
+def _astar_path(graph: nx.DiGraph, source, target, heuristic) -> List:
+    """networkx.astar_path 의 tie-break 개량판.
+
+    heap 우선순위에 (f, transit_rank) 를 써서, f(=거리+휴리스틱)가 같은 노드들
+    사이에서는 `_transit_rank` 가 낮은(전시물/편의시설이 아닌) 노드를 먼저 확장한다.
+    networkx 기본 구현은 삽입 순서(count)로만 tie-break 해서 간선 시드 순서에 따라
+    전시물 관통 경로가 뽑히곤 했다. 거리 최적성은 그대로다.
+
+    source/target 이 그래프에 없으면 nx.NodeNotFound, 경로 없으면 nx.NetworkXNoPath.
+    """
+    if source not in graph:
+        raise nx.NodeNotFound(f"Source {source} is not in G")
+    if target not in graph:
+        raise nx.NodeNotFound(f"Target {target} is not in G")
+
+    c = count()
+    # (f, transit_rank, tie_counter, node, g_dist, parent)
+    queue = [(0.0, 0, next(c), source, 0.0, None)]
+    enqueued: Dict = {}   # node → (g_dist, h)
+    explored: Dict = {}   # node → parent
+    while queue:
+        _, _, _, curnode, dist, parent = heapq.heappop(queue)
+        if curnode == target:
+            path = [curnode]
+            node = parent
+            while node is not None:
+                path.append(node)
+                node = explored[node]
+            path.reverse()
+            return path
+        if curnode in explored:
+            if explored[curnode] is None:
+                continue
+            qcost, _ = enqueued[curnode]
+            if qcost < dist:
+                continue
+        explored[curnode] = parent
+        for neighbor, attrs in graph[curnode].items():
+            ncost = dist + attrs["weight"]
+            if neighbor in enqueued:
+                qcost, h = enqueued[neighbor]
+                if qcost <= ncost:
+                    continue
+            else:
+                h = heuristic(neighbor, target)
+            enqueued[neighbor] = ncost, h
+            # 목적지 노드는 '관통'이 아니라 도착이므로 rank 를 매기지 않는다.
+            rank = 0 if neighbor == target else _transit_rank(
+                graph.nodes[neighbor].get("node_type"))
+            heapq.heappush(
+                queue, (ncost + h, rank, next(c), neighbor, ncost, curnode))
+    raise nx.NetworkXNoPath(f"Node {target} not reachable from {source}")
+
+
 def find_route(graph: nx.DiGraph, start, goal) -> Optional[Tuple[List[dict], float]]:
     """start→goal 최단 경로. A*(유클리드 휴리스틱).
 
     반환: (웨이포인트 dict 리스트, 총거리 cm) 또는 경로가 없으면 None.
     각 웨이포인트: {node_id, pos_x_cm, pos_y_cm, pos_z_cm, node_type}.
     start/goal 이 그래프에 없으면 nx.NodeNotFound 를 그대로 올린다(호출측이 404 처리).
+
+    거리가 완전히 같은 경로가 여럿이면 `_astar_path` 의 tie-break 로 전시물·편의시설
+    관통을 피하는 쪽을 택한다(spec: E→G 동점 시 F 대신 H 경유).
     """
     def heuristic(a, b) -> float:
         return _euclidean(_node_pos(graph, a), _node_pos(graph, b))
 
     try:
-        path = nx.astar_path(graph, start, goal, heuristic=heuristic, weight="weight")
+        path = _astar_path(graph, start, goal, heuristic=heuristic)
     except nx.NetworkXNoPath:
         return None
 

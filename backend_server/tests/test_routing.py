@@ -364,3 +364,59 @@ def test_route_kl_projection_picks_L_not_K(client2):
     assert order[1] == str(NID2["n-l"])
     assert order[-1] == str(NID2["n-m"])
     assert str(NID2["n-k"]) not in order
+
+
+# --- 4. 동점 경로 tie-break — 전시물 관통 회피(E→G 는 F 아닌 H 경유) ---------
+#
+# E-F-G-H 는 완전한 직사각형이라 E→G 두 경로의 거리가 정확히 같다:
+#   E→F→G = 360+600 = 960,  E→H→G = 600+360 = 960.
+# 실제 시드에서 F 는 exhibit(트리케라톱스), H 는 junction 이므로 동점이면 전시물
+# 한복판을 관통하는 F 대신 분기점 H 를 지나야 한다. build_graph 는 node_type 을
+# 그래프에 실어두므로 여기선 실제 타입으로 미니 그래프를 만들어 검증한다.
+
+def _rect_graph():
+    """E-F-G-H 직사각형(실제 node_type 반영)."""
+    g = nx.DiGraph()
+    defs = [
+        ("e", 1740, 1740, "facility"),   # 화장실
+        ("f", 1740, 2100, "exhibit"),    # 트리케라톱스
+        ("g", 1140, 2100, "exhibit"),    # 티라노(목적지)
+        ("h", 1140, 1740, "junction"),   # H 분기점
+    ]
+    for k, x, y, t in defs:
+        g.add_node(k, x=float(x), y=float(y), z=120.0, node_type=t)
+    for a, b in [("e", "f"), ("f", "g"), ("e", "h"), ("g", "h")]:
+        w = routing._euclidean(routing._node_pos(g, a), routing._node_pos(g, b))
+        g.add_edge(a, b, weight=w)
+        g.add_edge(b, a, weight=w)
+    return g
+
+
+def test_tiebreak_prefers_junction_over_exhibit():
+    g = _rect_graph()
+
+    def h(a, b):
+        return routing._euclidean(routing._node_pos(g, a), routing._node_pos(g, b))
+
+    path = routing._astar_path(g, "e", "g", heuristic=h)
+    # 동점(960=960)이면 전시물 F 가 아니라 분기점 H 를 경유해야 한다.
+    assert path == ["e", "h", "g"]
+    assert "f" not in path
+    # 두 경로의 거리가 실제로 같은지(진짜 동점) 재확인.
+    ef_fg = g["e"]["f"]["weight"] + g["f"]["g"]["weight"]
+    eh_hg = g["e"]["h"]["weight"] + g["h"]["g"]["weight"]
+    assert ef_fg == pytest.approx(eh_hg)
+
+
+def test_tiebreak_does_not_override_shorter_path():
+    """전시물이라도 그 경로가 더 짧으면 그대로 택한다(최적성 우선)."""
+    g = _rect_graph()
+    # H 경유를 크게 늘려 E→F→G 가 유일한 최단이 되게 한다(유클리드 휴리스틱은
+    # 간선을 늘려도 여전히 admissible → 최적성 보장).
+    g["e"]["h"]["weight"] = 5000.0
+    g["h"]["e"]["weight"] = 5000.0
+
+    def h(a, b):
+        return routing._euclidean(routing._node_pos(g, a), routing._node_pos(g, b))
+
+    assert routing._astar_path(g, "e", "g", heuristic=h) == ["e", "f", "g"]
