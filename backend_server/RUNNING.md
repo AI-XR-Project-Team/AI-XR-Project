@@ -76,8 +76,18 @@ cd backend_server
    ServerBaseUrl="http://<이 PC IP>:8000"
    ```
    NavClient 섹션은 비워 두면 위 값으로 폴백한다(IP 는 한 군데만 고치면 됨).
-3. `DefaultGame.ini` 의 `DefaultMapId` 는 로컬 DB 시드가 만든 맵 UUID 라 머신마다
-   다르다. 필요 시 `SELECT id FROM map_spaces;` 로 확인해 채운다.
+3. `DefaultGame.ini` 의 `DefaultMapId` 는 이제 **머신과 무관하게 고정**이다.
+   `seed_nav.py` 가 `map_key` 로부터 결정적으로 유도하기(uuid5) 때문에, 어느 PC 에서
+   시드해도 `neuti4f`(느티나무 4층 확장) 맵은 항상 아래 UUID 다:
+   ```
+   [/Script/TimeMachineAR.NavClient]
+   DefaultMapId=385f15c8-bf2c-58ec-a2d7-8db2aa34ac0b
+   ```
+   따라서 팀원은 이 값을 손댈 필요가 없다(예전엔 `gen_random_uuid()` 라 머신마다
+   달라 여기 값이 남의 DB 것이면 네비가 전부 404 로 죽었다). 값을 직접 확인하려면
+   `SELECT id, name FROM map_spaces;`. 다른 맵의 고정 UUID:
+   `floor1=1cdb729e-0e7f-555c-99cf-6b83eb973e7b`,
+   `neuti4=341e5556-333e-5dc1-b43b-5df649a830bd`.
 4. **IP 를 바꿨으면 앱을 재빌드·재설치해야 한다** (APK 안에 쿡되어 들어간다).
    빌드 레시피는 별도 문서/메모 참고.
 5. cleartext HTTP 는 앱 전역으로 허용돼 있다(`DefaultEngine.ini`
