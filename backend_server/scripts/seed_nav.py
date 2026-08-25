@@ -142,8 +142,14 @@ def _seed_map_spaces(db):
 
 
 def _seed_nav_nodes(db, map_ids):
-    """nav_nodes 적재. (map_id, label) 또는 (map_id, 좌표) 를 자연키로 멱등.
-    반환: node_key → id."""
+    """nav_nodes 적재. (map_id, 좌표) 를 자연키로 멱등. 반환: node_key → id.
+
+    자연키를 좌표로 잡는 이유: node_key(n-g 등)는 DB에 없고, 노드의 물리적
+    정체성은 '위치'다. label 은 UI 표시명이라 운영 중 바뀔 수 있는데(예: 4단계
+    'G지점' → 7단계 '브라키오사우르스'), label 을 자연키로 쓰면 재시드가 같은
+    좌표에 새 노드를 만들어 그래프가 두 겹으로 갈라진다(우회 경로 버그). 좌표로
+    매칭하고 label/node_type 은 CSV 값으로 UPDATE 해 그 재발을 막는다.
+    """
     node_ids = {}
     for row in _read_csv("nav_nodes.csv"):
         key = row["node_key"].strip()
@@ -157,12 +163,12 @@ def _seed_nav_nodes(db, map_ids):
         label = (row.get("label") or "").strip() or None
         node_type = (row.get("node_type") or "").strip() or "waypoint"
 
-        # 자연키: label 있으면 (map_id, label), 없으면 (map_id, 좌표)
-        q = db.query(NavNode).filter_by(map_id=map_id)
-        if label is not None:
-            node = q.filter_by(label=label).first()
-        else:
-            node = q.filter_by(pos_x_cm=x, pos_y_cm=y, pos_z_cm=z).first()
+        # 자연키: (map_id, 좌표). 라벨이 바뀌어도 같은 노드로 인식된다.
+        node = (
+            db.query(NavNode)
+            .filter_by(map_id=map_id, pos_x_cm=x, pos_y_cm=y, pos_z_cm=z)
+            .first()
+        )
 
         if node is None:
             node = NavNode(
@@ -172,6 +178,10 @@ def _seed_nav_nodes(db, map_ids):
             db.add(node)
             db.flush()  # node.id 확보
             print(f"[+] nav_node 삽입: {key} ({label or f'{x},{y},{z}'})")
+        elif node.label != label or node.node_type != node_type:
+            old = node.label
+            node.label, node.node_type = label, node_type
+            print(f"[~] nav_node 갱신: {key} ({old} → {label})")
         else:
             print(f"[=] nav_node 이미 존재: {key} (건너뜀)")
         node_ids[key] = node.id

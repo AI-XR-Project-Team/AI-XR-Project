@@ -57,12 +57,18 @@ void FNavFloorGuide::BuildPlacements(const TArray<FVector2D>& RoutePts, const FV
 		}
 	}
 
-	// (2) 시작 호길이 + SpacingCm 부터, RangeCm(또는 경로 끝)까지 SpacingCm 간격.
+	// (2) 발자국을 **경로 시작 기준 k·SpacingCm 의 고정 그리드**에만 놓는다(월드 고정).
+	// 사용자가 걸으면 [StartArc, StartArc+RangeCm] 창만 앞으로 밀려 뒤 발자국이 빠지고
+	// 앞에서 새 발자국이 들어오되, 각 발자국의 월드 위치는 그리드에 고정 → 미끄러지지 않는다.
+	// (예전엔 StartArc+k·Spacing 이라 발자국 전부가 사용자를 따라 슬라이드했다.)
+	const float NearCm = SpacingCm * 0.5f;                 // 이보다 가까운 그리드 점은 숨김(발밑 겹침 방지).
+	const float WindowStart = StartArc + NearCm;
 	const float EndArc = FMath::Min(StartArc + RangeCm, TotalLen);
+	const float FirstArc = FMath::CeilToFloat(WindowStart / SpacingCm) * SpacingCm;  // WindowStart 이상인 첫 그리드 점.
 
 	// 지금 훑는 세그먼트 커서. 호길이가 단조 증가하므로 세그먼트도 앞으로만 간다.
 	int32 Seg = 0;
-	for (float Arc = StartArc + SpacingCm; Arc <= EndArc + KINDA_SMALL_NUMBER; Arc += SpacingCm)
+	for (float Arc = FirstArc; Arc <= EndArc + KINDA_SMALL_NUMBER; Arc += SpacingCm)
 	{
 		const float ClampedArc = FMath::Min(Arc, TotalLen);
 
