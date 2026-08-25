@@ -115,9 +115,10 @@ void UNavClient::NormalizeServerBaseUrl()
 	{
 		if (bDocentValid)
 		{
-			// 네비 주소를 비워 두면 IP 를 도슨트 한 군데만 고쳐도 네비가 따라온다.
-			UE_LOG(LogNav, Warning,
-				TEXT("NavClient.ServerBaseUrl 이 비었거나 무효라 DocentClient 주소로 폴백합니다: %s"), *DocentUrl);
+			// 비워 두는 것이 기본이자 권장 설정이다 — IP 를 도슨트 한 군데만 고쳐도
+			// 네비가 따라온다. 정상 경로이므로 경고가 아니라 로그로 남긴다.
+			UE_LOG(LogNav, Log,
+				TEXT("NavClient.ServerBaseUrl 이 비어 DocentClient 주소를 따릅니다: %s"), *DocentUrl);
 			ServerBaseUrl = DocentUrl;
 		}
 		else
