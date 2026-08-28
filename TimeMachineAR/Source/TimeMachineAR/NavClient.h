@@ -108,12 +108,18 @@ public:
 
 protected:
 	/**
-	 * 네비게이션 서버 주소(끝에 / 없이). 에디터 PIE 는 127.0.0.1, 실기기는 PC 의 LAN IP.
-	 * 서버는 uvicorn --host 0.0.0.0 으로 띄워야 폰에서 붙는다.
-	 * 이름·패턴은 DocentClient.ServerBaseUrl 과 맞춘다.
+	 * 네비게이션 서버 주소(끝에 / 없이). 서버는 uvicorn --host 0.0.0.0 으로
+	 * 띄워야 폰에서 붙는다. 이름·패턴은 DocentClient.ServerBaseUrl 과 맞춘다.
+	 *
+	 * 기본값이 빈 문자열인 것은 의도적이다 — 그래야 "미설정" 을 알아볼 수 있다.
+	 * 예전에는 여기에 http://127.0.0.1:8000 을 박아 뒀는데, ini 에 이 키가 없으면
+	 * 그 값이 그대로 남고 스킴 검증도 통과해서, NormalizeServerBaseUrl 이 도슨트
+	 * 주소로 폴백하는 길이 아예 열리지 않았다. DefaultGame.ini 는 "비워 두면
+	 * 도슨트 주소를 따른다" 고 안내하는데 실제로는 그렇게 동작하지 않아, 실기기에서
+	 * 도슨트만 붙고 네비는 늘 로컬호스트로 나가 스모크 테스트가 0/4 로 떨어졌다.
 	 */
 	UPROPERTY(Config, EditAnywhere, Category = "Nav")
-	FString ServerBaseUrl = TEXT("http://127.0.0.1:8000");
+	FString ServerBaseUrl;
 
 	/** 스모크 테스트가 쓰는 기본 맵 UUID. 비어 있으면 스모크 테스트를 건너뛴다. */
 	UPROPERTY(Config, EditAnywhere, Category = "Nav")

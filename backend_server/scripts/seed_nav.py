@@ -18,6 +18,7 @@ import json
 import math
 import os
 import sys
+import uuid
 from decimal import Decimal, InvalidOperation
 
 # `python scripts/seed_nav.py` 로 직접 실행해도 app 패키지를 찾도록 루트를 경로에 추가
@@ -35,6 +36,24 @@ from app.models.nav_node import NavNode       # noqa: E402
 SEED_DIR = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "seeds", "nav"
 )
+
+
+# --- 맵 UUID: map_key 로부터 결정적으로 유도 -------------------------
+#
+# map_spaces.id 는 원래 DB 의 gen_random_uuid() 로 생겼다. 그러면 시드하는
+# PC 마다 맵 UUID 가 달라져, 앱 DefaultGame.ini 에 하드코딩한 DefaultMapId 가
+# 팀원 DB 에는 없는 값이 돼 네비게이션이 전부 404 로 죽었다.
+# 아래 고정 네임스페이스 + map_key 로 uuid5 를 유도하면 어느 DB 에서 시드해도
+# 같은 맵은 항상 같은 UUID 를 갖는다 → DefaultMapId 를 커밋해 팀 전체가 공유 가능.
+#
+# ⚠️ 이 네임스페이스 값을 바꾸면 모든 맵 UUID 가 바뀐다(앱 DefaultMapId 와의
+#    계약). 절대 변경하지 말 것.
+_MAP_ID_NAMESPACE = uuid.UUID("7f3a1c9e-2b6d-5e84-9f10-6d61705f6964")
+
+
+def _map_uuid(map_key: str) -> uuid.UUID:
+    """map_key → 결정적 맵 UUID(uuid5). 시드하는 머신과 무관하게 동일한 값."""
+    return uuid.uuid5(_MAP_ID_NAMESPACE, map_key.strip())
 
 
 # --- CSV 유틸 --------------------------------------------------------
@@ -108,20 +127,37 @@ def seed() -> None:
 
 
 def _seed_map_spaces(db):
-    """map_spaces 적재. name 을 자연키로 멱등. 반환: map_key → id.
+    """map_spaces 적재. id 는 map_key 로 결정적 유도(_map_uuid), name 으로 멱등.
+    반환: map_key → id.
 
     outline_json 은 seeds/nav/map_outline.json 에서 map_key 로 찾아 채운다. 이미
     존재하는 맵이라도 outline 이 비었거나 달라졌으면 갱신한다(외곽선만 추가하는
-    재시드 지원)."""
+    재시드 지원).
+
+    레거시 맵(예전 gen_random_uuid() 로 생긴 랜덤 id)이 같은 name 으로 있으면,
+    FK 에 onupdate 가 없어 id 를 그 자리에서 못 바꾼다. 그 맵을 삭제(자식 nav_nodes/
+    edges/markers 는 CASCADE, exhibits.nav_node_id 는 SET NULL)한 뒤 결정적 id 로
+    다시 만든다. 노드/엣지/마커/전시물 연결은 같은 시드 실행에서 모두 재생성되므로
+    정합성이 유지된다."""
     outlines = _load_outlines()
     map_ids = {}
     for row in _read_csv("map_spaces.csv"):
         key = row["map_key"].strip()
         name = row["name"].strip()
         outline_json = outlines.get(key)
+        det_id = _map_uuid(key)
+
         space = db.query(MapSpace).filter_by(name=name).first()
+        if space is not None and space.id != det_id:
+            print(f"[~] map_space id 마이그레이션: {name} "
+                  f"{space.id} → {det_id} (레거시 랜덤 UUID 정리, 하위 노드·엣지·마커 재생성)")
+            db.delete(space)
+            db.flush()
+            space = None
+
         if space is None:
             space = MapSpace(
+                id=det_id,
                 name=name,
                 origin_note=(row.get("origin_note") or "").strip() or None,
                 coord_system=(row.get("coord_system") or "").strip() or "ue5_zup_cm",
@@ -129,14 +165,14 @@ def _seed_map_spaces(db):
             )
             db.add(space)
             db.flush()  # space.id 확보
-            print(f"[+] map_space 삽입: {name}"
+            print(f"[+] map_space 삽입: {name} (id={det_id})"
                   f"{' (+outline)' if outline_json else ''}")
         else:
             if outline_json and space.outline_json != outline_json:
                 space.outline_json = outline_json
                 print(f"[~] map_space outline 갱신: {name}")
             else:
-                print(f"[=] map_space 이미 존재: {name} (건너뜀)")
+                print(f"[=] map_space 이미 존재: {name} (id={space.id}, 건너뜀)")
         map_ids[key] = space.id
     return map_ids
 
