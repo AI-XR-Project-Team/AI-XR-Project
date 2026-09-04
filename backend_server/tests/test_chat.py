@@ -437,3 +437,54 @@ def test_stream_falls_back_before_first_chunk(client):
 
 def test_history_unknown_session_404(client):
     assert client.get(f"/docent/sessions/{MISSING_ID}/messages").status_code == 404
+
+
+def test_blank_exhibit_key_is_treated_as_absent(client):
+    """exhibit_key="" 는 "지정 안 함"이지 "없는 전시물"이 아니다.
+
+    예전에는 빈 문자열이 find_exhibit_by_key 의 None 을 거쳐 404 로 바뀌어,
+    전시물을 아직 못 고른 클라이언트가 대화 세션조차 열지 못했다.
+    """
+    res = client.post(
+        "/docent/sessions", json={"device_uuid": "blank-key", "exhibit_key": ""}
+    )
+    assert res.status_code == 200, res.text
+    assert res.json()["exhibit_id"] is None
+
+
+def test_chat_with_blank_exhibit_key_is_absent(client):
+    """대화 요청의 빈 exhibit_key 도 마찬가지로 무시된다."""
+    session_id = client.post(
+        "/docent/sessions", json={"device_uuid": "blank-key-2"}
+    ).json()["session_id"]
+
+    res = client.post(
+        "/docent/chat",
+        json={"session_id": session_id, "message": "안녕하세요", "exhibit_key": ""},
+    )
+    assert res.status_code == 200, res.text
+
+
+def test_whitespace_only_message_rejected(client):
+    """공백뿐인 질문은 LLM 을 부르기 전에 걸러진다."""
+    session_id = client.post(
+        "/docent/sessions", json={"device_uuid": "blank-msg"}
+    ).json()["session_id"]
+
+    res = client.post(
+        "/docent/chat", json={"session_id": session_id, "message": "   "}
+    )
+    assert res.status_code == 422
+
+
+def test_message_is_stripped(client):
+    """앞뒤 공백은 저장 전에 제거된다."""
+    session_id = client.post(
+        "/docent/sessions", json={"device_uuid": "strip-msg"}
+    ).json()["session_id"]
+
+    client.post(
+        "/docent/chat", json={"session_id": session_id, "message": "  안녕하세요  "}
+    )
+    messages = client.get(f"/docent/sessions/{session_id}/messages").json()["messages"]
+    assert messages[0]["content"] == "안녕하세요"

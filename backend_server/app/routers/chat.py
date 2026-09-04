@@ -43,6 +43,7 @@ from app.services.docent import (
     build_general_chat_prompt,
     find_exhibit_by_key,
     load_exhibit_context,
+    load_museum_roster,
 )
 from app.services.llm.base import ChatTurn, LlmClient
 from app.services.llm.factory import get_llm_client
@@ -144,12 +145,16 @@ def _prepare_turn(
         # 부위가 지정되면 그 부위가 속한 전시물이 대화의 대상이다.
         exhibit_id = poi.exhibit_id
 
+    # 관람객은 "비슷한 공룡 있어?" 처럼 이 전시물 밖을 묻는다. 실제 전시물
+    # 목록을 함께 넘겨야 모델이 없는 전시관을 지어내지 않는다.
+    roster = load_museum_roster(db)
+
     if exhibit_id is None:
         # 마커로 전시물을 고르기 전에도 대화는 되어야 한다. 클라이언트가 전시물
         # 없이 세션을 열고 묻는 경로(일반 AI 챗)를 여기서 받는다. 전시물 맥락
         # 없이 도슨트 페르소나만으로 답하고, 세부 정보가 필요하면 마커 인식을
         # 안내하게 한다.
-        system_prompt = build_general_chat_prompt()
+        system_prompt = build_general_chat_prompt(roster)
         fallback_text = build_general_chat_fallback()
     else:
         context = load_exhibit_context(db, exhibit_id)
@@ -157,8 +162,8 @@ def _prepare_turn(
             raise HTTPException(status_code=404, detail="exhibit not found")
         exhibit, dinosaur, pois = context
 
-        system_prompt = build_chat_prompt(exhibit, dinosaur, pois, poi)
-        fallback_text = build_chat_fallback(poi, exhibit)
+        system_prompt = build_chat_prompt(exhibit, dinosaur, pois, poi, roster)
+        fallback_text = build_chat_fallback(poi, exhibit, dinosaur, pois)
 
     history = build_history(session.messages, settings.CHAT_HISTORY_TURNS)
 

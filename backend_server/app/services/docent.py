@@ -25,8 +25,11 @@ DEFAULT_QUESTION = "이 부위를 관람객에게 설명해줘."
 PERSONA = (
     "당신은 공룡 박물관의 AI 도슨트 '렉시'입니다. "
     "관람객은 모바일 기기의 AR 카메라로 실제 크기의 전시물을 화면에 비춰 보고 있습니다.\n"
-    "- 한국어 존댓말로, 3~4문장 이내로 간결하게 답합니다.\n"
-    "- 아래 배경지식에 없는 내용은 지어내지 말고 모른다고 말합니다.\n"
+    "- 한국어 존댓말로 답합니다. 보통 3~4문장이고, 설명할 게 많으면 6문장까지 늘려도 됩니다.\n"
+    "- 아래 배경지식이 이 전시물에 대한 가장 정확한 자료이니 최우선으로 씁니다.\n"
+    "- 배경지식에 없거나 공룡과 무관한 질문에도 거절하지 말고 아는 만큼 답합니다. "
+    "'모릅니다', '답변할 수 없습니다' 같은 답 대신, 확실하지 않은 내용은 "
+    "'아직 논쟁 중입니다' 처럼 자연스럽게 풀어 설명합니다.\n"
     "- 관람객이 지금 보고 있는 부위를 중심으로 설명합니다."
 )
 
@@ -104,10 +107,19 @@ CHAT_PERSONA = (
     "관람객은 모바일 기기의 AR 카메라로 실제 크기의 전시물을 화면에 비춰 보며 "
     "채팅으로 당신과 대화하고 있습니다.\n"
     "- 이름을 물으면 '렉시'라고 답합니다. 그 외에는 이름을 굳이 언급하지 않습니다.\n"
-    "- 한국어 존댓말로, 3~4문장 이내로 간결하게 답합니다.\n"
-    "- 아래 배경지식에 없는 내용은 지어내지 말고 모른다고 말합니다.\n"
+    "- 한국어 존댓말로 답합니다. 보통 3~4문장이고, 설명할 게 많으면 6문장까지 늘려도 됩니다.\n"
+    "- 아래 배경지식이 이 전시물에 대한 가장 정확한 자료이니 최우선으로 씁니다.\n"
+    "- 배경지식에 없거나 공룡과 무관한 질문에도 거절하지 말고 아는 만큼 답합니다. "
+    "'모릅니다', '답변할 수 없습니다' 같은 답 대신, 확실하지 않은 내용은 "
+    "'아직 논쟁 중입니다' 처럼 자연스럽게 풀어 설명합니다.\n"
+    "- 이 박물관에 실제로 있는 전시물은 아래 목록이 전부입니다. 목록에 없는 "
+    "전시물이나 전시관을 여기 있는 것처럼 안내하지 않습니다. 다른 공룡을 예로 "
+    "들 때는 '이 박물관에는 없지만' 처럼 분명히 구분해 말합니다.\n"
     "- 이전 대화의 맥락을 이어서 답합니다.\n"
-    "- 목록이나 표 없이 대화체로 답합니다."
+    "- 두세 문장마다 빈 줄로 문단을 나눕니다. 좁은 휴대폰 화면에서 한 덩어리로 "
+    "이어지면 읽기 어렵습니다.\n"
+    "- 마크다운 기호(**, ##, - 같은 것)는 쓰지 않습니다. 화면에 기호가 그대로 "
+    "보입니다. 나열이 필요하면 문장으로 풀어 씁니다."
 )
 
 
@@ -147,11 +159,38 @@ def find_exhibit_by_key(db: Session, exhibit_key: str) -> Optional[Exhibit]:
     )
 
 
+def load_museum_roster(db: Session) -> List[Tuple[str, str]]:
+    """이 박물관에 실제로 있는 전시물 목록 (공룡 이름, 전시물 라벨).
+
+    프롬프트에 지금 보는 공룡 하나만 넣으면 "비슷한 공룡 알려줘" 같은 질문에서
+    모델이 없는 전시관·전시물을 지어낸다(실제로 '박물관 2관의 타르보사우루스'로
+    안내한 사례가 있었다). 관람객을 없는 곳으로 보내지 않도록 실제 목록을 싣는다.
+    """
+    rows = (
+        db.query(Dinosaur.name_ko, Exhibit.label)
+        .join(Exhibit, Exhibit.dinosaur_id == Dinosaur.id)
+        .order_by(Exhibit.label)
+        .all()
+    )
+    return [(name, label) for name, label in rows]
+
+
+def build_roster_lines(roster: Sequence[Tuple[str, str]]) -> List[str]:
+    """전시물 목록 블록. 비어 있으면 아무것도 넣지 않는다."""
+    if not roster:
+        return []
+    lines = ["[이 박물관의 전시물 — 실제로 있는 것은 이것이 전부]"]
+    for name, label in roster:
+        lines.append(f"- {name} ({label})")
+    return lines
+
+
 def build_chat_prompt(
     exhibit: Exhibit,
     dinosaur: Optional[Dinosaur],
     pois: Sequence[Poi],
     poi: Optional[Poi],
+    roster: Sequence[Tuple[str, str]] = (),
 ) -> str:
     """챗봇용 system 프롬프트.
 
@@ -162,6 +201,10 @@ def build_chat_prompt(
     """
     lines = [CHAT_PERSONA, ""]
     lines += build_background_lines(exhibit, dinosaur)
+
+    roster_lines = build_roster_lines(roster)
+    if roster_lines:
+        lines += [""] + roster_lines
 
     if poi is not None:
         lines += [""]
@@ -184,24 +227,27 @@ def build_chat_prompt(
     return "\n".join(lines)
 
 
-def build_general_chat_prompt() -> str:
+def build_general_chat_prompt(roster: Sequence[Tuple[str, str]] = ()) -> str:
     """전시물을 고르지 않은 자유 대화용 system 프롬프트.
 
-    마커를 인식하기 전에도 도슨트와 이야기할 수 있어야 한다. 이때는 특정
-    전시물을 전제하지 않고 공룡·관람 일반으로 답한다. 전시물 맥락이 있어야
-    답할 수 있는 질문에는 마커 인식을 안내하게 해서, 없는 정보를 지어내지
-    않도록 한다.
+    마커를 인식하기 전에도 도슨트와 이야기할 수 있어야 한다. 전시물 맥락이
+    있어야 답할 수 있는 질문이라도 답변을 미루지 않고 일반적인 설명을 먼저
+    하고, 마커 인식은 '더 자세히 보려면' 정도의 덧붙임으로만 안내한다.
+
+    전시물을 안 골랐어도 이 박물관에 무엇이 있는지는 물어볼 수 있으므로
+    실제 전시물 목록은 함께 싣는다.
     """
-    return "\n".join(
-        [
-            CHAT_PERSONA,
-            "",
-            "관람객이 아직 전시물을 고르지 않았습니다. 특정 전시물을 전제하지 말고 "
-            "공룡과 박물관 관람에 대한 일반적인 지식으로 답하세요. 눈앞의 전시물에 "
-            "대한 세부 정보가 필요한 질문이라면, 바닥의 마커를 인식해 전시물을 "
-            "선택해 달라고 안내하세요.",
-        ]
+    lines = [CHAT_PERSONA, ""]
+    roster_lines = build_roster_lines(roster)
+    if roster_lines:
+        lines += roster_lines + [""]
+    lines.append(
+        "관람객이 아직 전시물을 고르지 않았습니다. 특정 전시물을 전제하지 말고 "
+        "무엇을 묻든 아는 만큼 답하세요. 눈앞의 전시물이 무엇인지 알아야만 답할 수 "
+        "있는 질문이라면, 먼저 일반적인 설명을 해 준 뒤 더 자세히 보려면 마커를 "
+        "인식해 달라고 덧붙이세요. 마커 안내를 이유로 답변 자체를 미루지 마세요."
     )
+    return "\n".join(lines)
 
 
 def build_general_chat_fallback() -> str:
@@ -209,18 +255,57 @@ def build_general_chat_fallback() -> str:
     return "지금 답변을 생성하지 못했습니다. 잠시 후 다시 물어봐 주세요."
 
 
-def build_chat_fallback(poi: Optional[Poi], exhibit: Exhibit) -> str:
+def build_chat_fallback(
+    poi: Optional[Poi],
+    exhibit: Exhibit,
+    dinosaur: Optional[Dinosaur] = None,
+    pois: Sequence[Poi] = (),
+) -> str:
     """LLM 을 쓸 수 없을 때 돌려줄 대화용 폴백 문구.
 
-    부위가 지정됐으면 그 부위의 사전 해설이 가장 쓸모 있다. 자유대화에서는
-    해당하는 사전 해설이 없으므로 상태를 솔직히 알린다.
+    부위가 지정됐으면 그 부위의 사전 해설이 가장 쓸모 있다. 부위가 없으면
+    "생성하지 못했습니다" 같은 빈손 사과 대신 DB 의 사전 해설을 모아 내보낸다.
+    관람객에게 거절로 읽히는 답이 가장 나쁜 결과이고, 사과에는 정보가 없다.
+
+    `dinosaurs.ai_prompt_context` 는 쓰지 않는다. 그것은 LLM 에 넘길 배경자료라
+    "도슨트는 ... 설명한다" 같은 지시문이 섞여 있어 그대로 내보내면 관람객에게
+    프롬프트가 노출된다. 관람객용으로 쓰인 `pois.docent_text` 만 쓴다.
     """
     if poi is not None:
         return build_fallback_answer(poi)
+
+    lines: List[str] = []
+    if dinosaur is not None and dinosaur.name_ko:
+        head = dinosaur.name_ko
+        if dinosaur.period:
+            head += f"는 {dinosaur.period}에 살았던 공룡입니다"
+        else:
+            head += "입니다"
+        if dinosaur.length_m is not None:
+            head += f". 전장은 약 {_trim_number(dinosaur.length_m)}m 입니다"
+        lines.append(head + ".")
+
+    # 사전 해설을 통째로 이어 붙이면 문장이 겹쳐 읽기 나쁘다. 부위 이름만
+    # 대화체로 나열하고, 자세한 해설은 그 부위를 탭했을 때 나가게 둔다.
+    names = [p.part_name.strip() for p in pois if p.part_name]
+    if names:
+        lines.append("주요 부위로는 " + ", ".join(names) + " 등이 있습니다.")
+
+    if lines:
+        return " ".join(lines)
+
     return (
-        f"'{exhibit.label}' 에 대한 답변을 지금 생성하지 못했습니다. "
-        "잠시 후 다시 물어봐 주세요."
+        f"지금 보고 계신 전시물은 '{exhibit.label}' 입니다. "
+        "더 자세한 해설은 잠시 후 다시 물어봐 주세요."
     )
+
+
+def _trim_number(value) -> str:
+    """12.30 처럼 DB Numeric 이 남기는 뒤쪽 0 을 떼어 12.3 으로 만든다."""
+    text = f"{value}"
+    if "." in text:
+        text = text.rstrip("0").rstrip(".")
+    return text
 
 
 def build_fallback_answer(poi: Poi) -> str:
