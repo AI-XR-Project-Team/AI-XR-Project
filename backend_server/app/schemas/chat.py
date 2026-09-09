@@ -2,7 +2,19 @@ import datetime
 import uuid
 from typing import List, Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+
+def _blank_to_none(value):
+    """빈 문자열·공백뿐인 값을 "지정 안 함"(None)으로 바꾼다.
+
+    exhibit_key="" 를 그대로 넘기면 find_exhibit_by_key 가 None 을 돌려주고
+    라우터가 그것을 404 "exhibit not found" 로 바꾼다. 전시물을 지정하지
+    않은 것과 없는 전시물을 가리킨 것은 다르므로, 빈 값은 None 과 같게 본다.
+    """
+    if isinstance(value, str) and not value.strip():
+        return None
+    return value
 
 
 class SessionCreateRequest(BaseModel):
@@ -34,6 +46,12 @@ class SessionCreateRequest(BaseModel):
             "클라이언트는 이 키를 쓴다. 둘 다 주면 `exhibit_key` 가 우선한다."
         ),
     )
+
+
+    @field_validator("exhibit_key", mode="before")
+    @classmethod
+    def _normalize_exhibit_key(cls, value):
+        return _blank_to_none(value)
 
 
 class SessionCreateResponse(BaseModel):
@@ -75,6 +93,25 @@ class ChatAskRequest(BaseModel):
             "(`dinosaurs.model_asset_key`)로 전시물을 지정한다. `exhibit_id` 보다 우선한다."
         ),
     )
+
+
+    @field_validator("exhibit_key", mode="before")
+    @classmethod
+    def _normalize_exhibit_key(cls, value):
+        return _blank_to_none(value)
+
+    @field_validator("message")
+    @classmethod
+    def _message_not_blank(cls, value: str) -> str:
+        """공백뿐인 질문을 거른다.
+
+        min_length=1 은 "   " 를 통과시킨다. 그대로 두면 LLM 왕복을 한 번
+        낭비하고, 저장된 이력에도 내용 없는 user 행이 남는다.
+        """
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("message 가 공백뿐입니다")
+        return stripped
 
 
 class ChatMessageRead(BaseModel):
