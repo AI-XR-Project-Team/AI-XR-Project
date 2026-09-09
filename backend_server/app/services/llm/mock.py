@@ -17,7 +17,7 @@ class MockLlmClient(LlmClient):
     """
 
     _PREFIX = "[MOCK]"
-    _MAX_CONTEXT_CHARS = 300
+    _MAX_CONTEXT_CHARS = 800
     # 스트리밍 테스트가 chunk 경계를 실제로 다루도록 잘게 쪼갠다.
     _CHUNK_CHARS = 12
 
