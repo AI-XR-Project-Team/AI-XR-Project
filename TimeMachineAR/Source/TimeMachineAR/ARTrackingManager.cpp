@@ -155,12 +155,16 @@ void AARTrackingManager::Tick(float DeltaTime)
 	{
 		CheckForTrackedImages();
 	}
+
+	UpdateScanPhase();
 }
 
 void AARTrackingManager::CheckForTrackedImages()
 {
 	// 현재 AR 시스템이 추적 중인 모든 이미지(마커)를 가져옴 (UE5 최신 API 반영)
 	TArray<UARTrackedGeometry*> TrackedGeometries = UARBlueprintLibrary::GetAllGeometriesByClass(UARTrackedImage::StaticClass());
+
+	VisibleCandidateCount = TrackedGeometries.Num();
 
 	if (GEngine)
 	{
@@ -257,4 +261,20 @@ UDinoInfoData* AARTrackingManager::ResolveSpecies(const FString& MarkerCode) con
 	// 마커가 아직 안 정해졌거나 새 마커가 대응표에 없는 동안에도 빈 화면이
 	// 나오지 않게 한다. 폴백도 비어 있으면 BP_DinoOverlay 의 기본값이 쓰인다.
 	return DinoRegistry->FallbackSpecies;
+}
+
+void AARTrackingManager::UpdateScanPhase()
+{
+	EDinoScanPhase NewPhase = EDinoScanPhase::Idle;
+
+	if (bIsAnchored)
+	{
+		NewPhase = EDinoScanPhase::Recognized;
+	}
+	else if (bIsScanning)
+	{
+		NewPhase = (VisibleCandidateCount > 0) ? EDinoScanPhase::Aiming : EDinoScanPhase::Searching;
+	}
+
+	ScanPhase = NewPhase;
 }

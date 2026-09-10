@@ -26,6 +26,78 @@ GPT 가 주는 이미지는 두 종류이고 쓰임이 다르다.
 
 ---
 
+## REQ-002 — 화면 스타일 개선용 에셋
+
+**상태: OPEN**
+요청자: Claude / 등록: 2026-09-10
+
+현황 분석은 [UI_GAP.md](UI_GAP.md) 참고. 두 화면 모두 이미 동작하므로
+필요한 것은 스타일과 에셋 몇 개뿐이다.
+
+### 이미 있어서 요청하지 않는 것
+
+에셋을 새로 만들기 전에 저장소를 뒤졌다. 목업 요소 대부분이 이미 있다.
+
+| 목업 요소 | 기존 파일 |
+|---|---|
+| 말풍선 배경 | `Asset/Docent/talkbox.png` |
+| 전신 렉시 (가리키는 포즈) | `Asset/Docent/T_Lexi_Full.png` |
+| 말풍선 옆 작은 렉시 | `Asset/Docent/T_Lexi_Face.png` |
+| 목적지 버튼 `>` | `Asset/DinoCard/chevron_right.png` |
+| 스캔 코너 브래킷 | `Asset/Bottom_Bar/T_ScanFrame.png` |
+| 셔터 버튼 링 | `Asset/Bottom_Bar/T_Circle.png` |
+| 카메라 아이콘 | `Asset/Bottom_Bar/photo_camera.png` |
+| 카메라 전환 | `Asset/Docent/refresh.png` |
+| 둥근 사각 배경 | `Asset/Docent/T_RoundRect_R32.png` |
+| POI 마름모 마커 | `Content/UI/Nav/Markers/T_Marker_*` |
+| 공룡 POI 아이콘 | `Content/UI/Nav/Icons/T_Icon_*` |
+
+### GPT 가 아니라 Material Symbols 에서 받을 것
+
+기존 아이콘들(`navigation`, `photo_camera`, `refresh`, `chevron_right`,
+`menu_book`, `travel_explore` ...)은 전부 Google Material Symbols 다.
+GPT 에 그리게 하면 선 두께와 모서리 처리가 달라 한 화면에 섞였을 때 티가 난다.
+같은 출처에서 받는 것이 맞다.
+
+<https://fonts.google.com/icons> 에서 아래를 받는다.
+설정은 기존 아이콘과 맞춰 **Outlined / Weight 400 / Grade 0 / Optical size 24**,
+PNG 512px, 흰색.
+
+| 아이콘 이름 | 쓰임 |
+|---|---|
+| `photo_library` | 스캔 화면 갤러리 버튼 |
+| `flash_on` | 스캔 화면 플래시 버튼 |
+| `explore` | 지도 나침반 |
+| `expand_less` / `expand_more` | 지도 층 선택기 |
+
+### GPT 에 요청할 것 — 층 도면 배경 (판단 필요)
+
+**먼저 알아야 할 문제가 있다.** 지금 지도는 서버가 준 nav 그래프(벽·노드
+좌표)를 C++ 이 실시간으로 그린다. 목업처럼 아이소메트릭 렌더 이미지를 깔려면
+그 이미지가 그래프 좌표계와 픽셀 단위로 맞아야 한다. 안 맞으면 공룡 마커가
+벽 위나 허공에 뜬다. GPT 가 그린 그림은 그 정렬을 보장할 수 없다.
+
+두 가지 길이 있다.
+
+- **(a) 벡터 유지, 스타일만 개선** — 배경 이미지를 쓰지 않고 벽 색·두께,
+  바닥 채움, 그림자, 조명 느낌을 C++ 에서 조정한다. 정렬 문제가 없고
+  층이 늘어나도 그대로 동작한다. 에셋 요청 불필요.
+- **(b) 목업 그대로 이미지 배경** — GPT 도면을 깔고 스케일·오프셋을 수동으로
+  맞춘다. 맵이나 층이 바뀌면 매번 다시 맞춰야 한다.
+
+**(a) 를 권한다.** 목업의 인상은 대부분 색과 조명에서 오고, 그건 벡터로도
+상당히 재현된다. (b) 로 가려면 그때 REQ-003 으로 따로 연다.
+
+### [응답]
+
+(사람이 결정을 적거나, GPT 응답을 붙여넣으세요)
+
+### 검증 결과
+
+(Claude 가 채움)
+
+---
+
 ## REQ-001 — 앱 런처 아이콘
 
 **상태: OPEN**

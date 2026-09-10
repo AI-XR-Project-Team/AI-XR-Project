@@ -29,6 +29,15 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnScanStateChanged, bool, bIsScanni
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(FOnMarkerFound,
 	UARPin*, Pin, const FTransform&, MarkerPose, const FString&, MarkerCode);
 
+UENUM(BlueprintType)
+enum class EDinoScanPhase : uint8
+{
+	Idle       UMETA(DisplayName = "대기"),
+	Searching  UMETA(DisplayName = "탐색 중"),
+	Aiming     UMETA(DisplayName = "조준"),
+	Recognized UMETA(DisplayName = "인식됨")
+};
+
 UCLASS()
 class TIMEMACHINEAR_API AARTrackingManager : public AActor
 {
@@ -100,6 +109,9 @@ public:
 	UFUNCTION(BlueprintPure, Category = "AR Tracking")
 	bool IsScanning() const { return bIsScanning; }
 
+	UFUNCTION(BlueprintPure, Category = "AR Tracking|Scan UI")
+	EDinoScanPhase GetScanPhase() const { return ScanPhase; }
+
 	/**
 	 * 레벨에 놓인 매니저를 찾아 준다. 위젯에서 참조를 들고 다니지 않아도 되도록.
 	 * 레벨에 하나만 놓는 것을 전제로 한다.
@@ -117,6 +129,9 @@ private:
 	// 스캔 중일 때만 마커를 찾는다.
 	bool bIsScanning = false;
 
+	EDinoScanPhase ScanPhase = EDinoScanPhase::Idle;
+	int32 VisibleCandidateCount = 0;
+
 	// 생성된 공룡 오버레이 참조
 	UPROPERTY()
 	ADinoOverlayActor* SpawnedOverlay;
@@ -126,6 +141,8 @@ private:
 	UARPin* OverlayPin;
 
 	void CheckForTrackedImages();
+
+	void UpdateScanPhase();
 
 	/** 마커 이름으로 띄울 공룡을 고른다. 못 찾으면 폴백, 그것도 없으면 nullptr. */
 	UDinoInfoData* ResolveSpecies(const FString& MarkerCode) const;
