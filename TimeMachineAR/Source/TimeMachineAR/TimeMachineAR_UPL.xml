@@ -80,4 +80,27 @@
 		</insert>
 	</gameActivityClassAdditions>
 
+	<!--
+		런처 아이콘을 적응형 아이콘(Adaptive Icon)으로 바꾼다.
+
+		UnrealBuildTool 은 매니페스트에 android:icon="@drawable/icon" 을 하드코딩한다
+		(UEDeployAndroid.cs:2827). 엔진 res 에는 mipmap 폴더조차 없다. 그래서
+		Build/Android/res 에 적응형 아이콘을 넣어도 매니페스트가 쳐다보지 않는다.
+
+		레거시 아이콘만 두면 One UI 런처가 흰 둥근 배경 안에 그림을 축소해 넣는다.
+		아이콘을 새로 만드는 목적이 그 흰 테두리를 없애는 것이므로 참조 자체를
+		바꿔야 한다. 이미 있는 android:icon 을 지우고 다시 넣는 이유는, 그냥
+		추가하면 속성이 중복돼 aapt 가 빌드를 세우기 때문이다.
+
+		MinSDKVersion 이 32 라 적응형 아이콘(API 26+)은 항상 쓸 수 있고 레거시
+		폴백 리소스는 필요 없다.
+	-->
+	<androidManifestUpdates>
+		<loopElements tag="application">
+			<removeAttribute tag="$" name="android:icon"/>
+			<addAttribute tag="$" name="android:icon" value="@mipmap/ic_launcher"/>
+			<addAttribute tag="$" name="android:roundIcon" value="@mipmap/ic_launcher_round"/>
+		</loopElements>
+	</androidManifestUpdates>
+
 </root>
