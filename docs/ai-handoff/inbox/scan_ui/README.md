@@ -66,3 +66,44 @@
 
 브래킷 선은 폭이 2~3px 이라 샘플링이 빗나갔다. 눈으로 보면 조준은 밝은
 하늘색, 인식은 밝은 연두색이고 둘 다 바깥으로 글로우가 번진다.
+
+## 배경 제거는 하지 않는다 — 판단 근거
+
+`parts/` 조각에서 배경 사진을 지워 스프라이트로 만들 수 있는지 검토했다.
+결론은 **할 필요가 없다** 이다.
+
+### 반투명 요소는 복원 자체가 불가능하다
+
+탭바, 위치 칩, 말풍선, 원형 버튼 배경은 사진이 비쳐 보이는 반투명 합성이다.
+
+    관측값 = a * UI색 + (1 - a) * 배경색
+
+픽셀당 관측은 하나인데 미지수는 UI색과 a 둘이다. 배경을 모르면 풀 수 없다.
+억지로 지우면 UI 색까지 뭉개진다.
+
+같은 요소가 패널 3장에 서로 다른 배경 위로 나오지만, 배경도 미지수라
+식이 늘어도 여전히 부족하다.
+
+다만 이건 문제가 아니다. 저 요소들은 둥근 사각형과 원에 불투명도만 준
+도형이라 코드로 그리는 편이 더 깨끗하고 상태별 색 전환도 쉽다.
+
+### 진짜 그림은 이미 있다
+
+| 목업 요소 | 출처 |
+|---|---|
+| 탭바 아이콘 3종 | `Asset/Bottom_Bar/navigation.png`, `T_ScanFrame.png`, `robot_2.png` |
+| 셔터 링 | `Asset/Bottom_Bar/T_Circle.png` |
+| 코너 브래킷 | `Asset/Bottom_Bar/T_ScanFrame.png` |
+| 카메라 전환 | `Asset/Docent/refresh.png` |
+| 뒤로가기 | `Asset/Docent/arrow_back.png` |
+| 말풍선 배경 | `Asset/Docent/talkbox.png`, `inbox/sheet/bubble_speech.png` |
+| 말풍선 속 렉시 | `inbox/sheet/lexi_idle.png` |
+| 탭바·칩·버튼 배경 | 코드로 그린다 |
+| 중앙 조준원 | 코드로 그린다 |
+| 미니맵 | 앱이 런타임에 그린다 |
+| 갤러리 · 플래시 아이콘 | **없음.** Material Symbols 에서 받는다 |
+
+부족한 것은 아이콘 두 개뿐이다. 기존 아이콘들이 Material Symbols
+(Outlined, Weight 400, 24dp) 라 같은 출처에서 받아야 선 굵기가 맞는다.
+
+    https://fonts.google.com/icons  ->  photo_library, flash_on
