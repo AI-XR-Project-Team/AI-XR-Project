@@ -53,6 +53,16 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Docent|Chat")
 	void SendQuestion(const FString& Question);
 
+#if !UE_BUILD_SHIPPING
+	/**
+	 * 렌더 미리보기·자동화 테스트용. 서버 없이 말풍선을 채운다.
+	 *
+	 * SendQuestion 은 세션과 클라이언트가 있어야 해서 에디터에서 못 쓴다.
+	 * 첫 호출에 빈 상태(아바타·인사말)를 걷어 실제 대화 시작과 같은 화면을 만든다.
+	 */
+	void AddPreviewBubble(bool bInIsUser, const FString& InText);
+#endif
+
 	/**
 	 * 대화 대상 전시물을 바꾸고 세션을 새로 연다.
 	 *
@@ -286,6 +296,15 @@ private:
 	 * 맞춘다. 위젯 이름이 없으면 그 항목만 건너뛴다.
 	 */
 	void ApplyScanSkin();
+
+	/**
+	 * 레퍼런스 목업대로 채팅 화면을 입힌다.
+	 *
+	 * ApplyScanSkin 과 같은 방식이다. WBP 의 이름 있는 위젯을 찾아 제자리에서 색·글꼴·
+	 * 이미지를 바꾼다. 배치는 WBP 가 이미 채팅 구조로 짜여 있어 그대로 둔다. 텍스처는
+	 * /Game/UI/Docent/Skin 에서 경로로 부르며, 쿡에는 DocentSkinCookLabel 이 묶는다.
+	 */
+	void ApplyChatSkin();
 
 	/** 위치 칩 내용. 제목·부제·점 색을 한 번에 바꾼다. */
 	void SetLocationChip(const FString& Title, const FString& Subtitle, const FLinearColor& DotColor);

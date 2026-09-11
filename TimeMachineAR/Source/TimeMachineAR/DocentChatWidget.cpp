@@ -29,6 +29,7 @@
 #include "Components/HorizontalBoxSlot.h"
 #include "Components/OverlaySlot.h"
 #include "Components/SizeBox.h"
+#include "Components/SizeBoxSlot.h"
 #include "Components/VerticalBox.h"
 #include "Components/VerticalBoxSlot.h"
 #include "Engine/Texture2D.h"
@@ -114,6 +115,7 @@ void UDocentChatWidget::NativeConstruct()
 		CloseButton->OnClicked.AddUniqueDynamic(this, &UDocentChatWidget::HandleCloseClicked);
 	}
 	if (OpenButton != nullptr)
+	ApplyChatSkin();
 	{
 		OpenButton->OnClicked.AddUniqueDynamic(this, &UDocentChatWidget::HandleOpenClicked);
 	}
@@ -1039,3 +1041,180 @@ void UDocentChatWidget::SetLocationChip(const FString& Title, const FString& Sub
 		LocationDot->SetColorAndOpacity(DotColor);
 	}
 }
+
+// ------------------------------------------------------------------ 채팅 스킨
+
+namespace
+{
+	/** /Game/UI/Docent/Skin 의 텍스처. 없으면 nullptr — 호출부가 그냥 건너뛴다. */
+	UTexture2D* DocentSkinTexture(const TCHAR* Name)
+	{
+		return LoadObject<UTexture2D>(nullptr,
+			*FString::Printf(TEXT("/Game/UI/Docent/Skin/%s.%s"), Name, Name));
+	}
+
+	/**
+	 * 둥근 유리 원 + 흰 아이콘 버튼. ApplyScanSkin 의 뒤로가기와 같은 만듦새다.
+	 *
+	 * 시트의 원형 버튼 스프라이트는 거의 검정이라 어두운 배경에서 안 보인다.
+	 * 원은 브러시로 그리고 아이콘은 프로젝트의 흰 Material 아이콘을 쓴다.
+	 */
+	void MakeRoundIconButton(UButton* Button, const TCHAR* IconPath, float Diameter, float IconSize)
+	{
+		if (Button == nullptr)
+		{
+			return;
+		}
+		const FLinearColor Glass   = FLinearColor::FromSRGBColor(FColor(22, 27, 36, 215));
+		const FLinearColor GlassHi = FLinearColor::FromSRGBColor(FColor(38, 45, 58, 235));
+		const FLinearColor Outline = FLinearColor(1.f, 1.f, 1.f, 0.10f);
+
+		FButtonStyle Style = Button->GetStyle();
+		Style.SetNormal (FSlateRoundedBoxBrush(Glass,   Diameter * 0.5f, Outline, 2.f));
+		Style.SetHovered(FSlateRoundedBoxBrush(GlassHi, Diameter * 0.5f, Outline, 2.f));
+		Style.SetPressed(FSlateRoundedBoxBrush(GlassHi, Diameter * 0.5f, Outline, 2.f));
+		Style.SetNormalPadding(FMargin(0.f));
+		Style.SetPressedPadding(FMargin(0.f));
+		Button->SetStyle(Style);
+
+		UWidgetTree* Tree = Cast<UWidgetTree>(Button->GetOuter());
+		UTexture2D* Tex = LoadObject<UTexture2D>(nullptr, IconPath);
+		if (Tree == nullptr || Tex == nullptr)
+		{
+			return;
+		}
+		USizeBox* Box = Tree->ConstructWidget<USizeBox>();
+		Box->SetWidthOverride(Diameter);
+		Box->SetHeightOverride(Diameter);
+		UImage* Icon = Tree->ConstructWidget<UImage>();
+		Icon->SetBrushFromTexture(Tex);
+		Icon->SetDesiredSizeOverride(FVector2D(IconSize, IconSize));
+		Icon->SetColorAndOpacity(FLinearColor::White);
+		Icon->SetVisibility(ESlateVisibility::HitTestInvisible);
+		Box->SetContent(Icon);
+		if (USizeBoxSlot* IS = Cast<USizeBoxSlot>(Icon->Slot))
+		{
+			IS->SetHorizontalAlignment(HAlign_Center);
+			IS->SetVerticalAlignment(VAlign_Center);
+		}
+		Button->SetContent(Box);
+	}
+}
+
+void UDocentChatWidget::ApplyChatSkin()
+{
+	if (WidgetTree == nullptr)
+	{
+		return;
+	}
+
+	// 레퍼런스 목업은 패널 폭 512px 이다. UMG 단위(실기기 1440 폭이 DPI 1.333 으로
+	// 1080)로 옮기면 약 2.1 배다. 아래 수치는 그 비율로 잰 값이다.
+	const FLinearColor Glass    = FLinearColor::FromSRGBColor(FColor(22, 27, 36, 215));
+	const FLinearColor GlassHi  = FLinearColor::FromSRGBColor(FColor(38, 45, 58, 235));
+	const FLinearColor Outline  = FLinearColor(1.f, 1.f, 1.f, 0.10f);
+	const FLinearColor TextMain = FLinearColor::FromSRGBColor(FColor(240, 244, 250));
+	const FLinearColor TextDim  = FLinearColor::FromSRGBColor(FColor(160, 170, 185));
+
+	// ---- 배경: 사진 위 어두운 반투명 막. 목업의 유리 느낌은 이 한 겹이 만든다.
+	if (UImage* Backdrop = Cast<UImage>(ChatBackdrop))
+	{
+		Backdrop->SetColorAndOpacity(FLinearColor::FromSRGBColor(FColor(10, 13, 20, 200)));
+	}
+
+	// ---- 상단 바: 원형 뒤로가기 / 제목 / 원형 더보기
+	MakeRoundIconButton(CloseButton, TEXT("/Game/UI/Docent/arrow_back.arrow_back"), 92.f, 48.f);
+	MakeRoundIconButton(Cast<UButton>(GetWidgetFromName(TEXT("MenuButton"))),
+		TEXT("/Game/UI/Docent/more_vert.more_vert"), 92.f, 48.f);
+	if (DocentNameText != nullptr)
+	{
+		FSlateFontInfo Font = DocentNameText->GetFont();
+		Font.Size = 40;
+		DocentNameText->SetFont(Font);
+		DocentNameText->SetColorAndOpacity(FSlateColor(TextMain));
+		DocentNameText->SetJustification(ETextJustify::Center);
+	}
+
+	// ---- 시작 화면: 링 안의 렉시 + 인사말
+	if (UImage* Hero = Cast<UImage>(GetWidgetFromName(TEXT("Avatar"))))
+	{
+		if (UTexture2D* Halo = DocentSkinTexture(TEXT("lexi_halo")))
+		{
+			Hero->SetBrushFromTexture(Halo);
+			Hero->SetDesiredSizeOverride(FVector2D(420.f, 450.f));
+			Hero->SetVisibility(ESlateVisibility::HitTestInvisible);
+		}
+	}
+	// 시작 화면 덩어리(렉시 + 인사말)를 추천 질문 바로 위에 붙인다. 가운데 정렬로 두면
+	// 남는 공간이 인사말과 추천 질문 사이에 끼어 목업과 달리 둘이 멀어진다.
+	if (EmptyStateBox != nullptr)
+	{
+		if (UOverlaySlot* S = Cast<UOverlaySlot>(EmptyStateBox->Slot))
+		{
+			S->SetVerticalAlignment(VAlign_Bottom);
+			S->SetHorizontalAlignment(HAlign_Fill);
+			S->SetPadding(FMargin(0.f, 0.f, 0.f, 36.f));
+		}
+	}
+	if (GreetingLabel != nullptr)
+	{
+		FSlateFontInfo Font = GreetingLabel->GetFont();
+		Font.Size = 32;
+		GreetingLabel->SetFont(Font);
+		GreetingLabel->SetColorAndOpacity(FSlateColor(TextMain));
+		GreetingLabel->SetJustification(ETextJustify::Center);
+		GreetingLabel->SetLineHeightPercentage(1.35f);
+	}
+
+	// ---- 입력창: 유리 캡슐 + 원형 보내기
+	if (InputBox != nullptr)
+	{
+		FEditableTextBoxStyle Style = InputBox->WidgetStyle;
+		Style.SetBackgroundImageNormal (FSlateRoundedBoxBrush(Glass,   28.f, Outline, 2.f));
+		Style.SetBackgroundImageHovered(FSlateRoundedBoxBrush(Glass,   28.f, Outline, 2.f));
+		Style.SetBackgroundImageFocused(FSlateRoundedBoxBrush(GlassHi, 28.f, Outline, 2.f));
+		Style.SetPadding(FMargin(34.f, 26.f));
+		Style.SetForegroundColor(FSlateColor(TextMain));
+		FSlateFontInfo Font = Style.TextStyle.Font;
+		Font.Size = 30;
+		Style.TextStyle.SetFont(Font);
+		InputBox->WidgetStyle = Style;
+		InputBox->SetHintText(FText::FromString(TEXT("메시지를 입력하세요...")));
+		InputBox->SynchronizeProperties();
+	}
+	if (SendButton != nullptr)
+	{
+		FButtonStyle Style = SendButton->GetStyle();
+		Style.SetNormal (FSlateRoundedBoxBrush(Glass,   50.f, Outline, 2.f));
+		Style.SetHovered(FSlateRoundedBoxBrush(GlassHi, 50.f, Outline, 2.f));
+		Style.SetPressed(FSlateRoundedBoxBrush(GlassHi, 50.f, Outline, 2.f));
+		Style.SetNormalPadding(FMargin(0.f));
+		Style.SetPressedPadding(FMargin(0.f));
+		SendButton->SetStyle(Style);
+	}
+	if (UImage* Send = Cast<UImage>(GetWidgetFromName(TEXT("SendIcon"))))
+	{
+		if (UTexture2D* Tex = DocentSkinTexture(TEXT("icon_send")))
+		{
+			Send->SetBrushFromTexture(Tex);
+			Send->SetDesiredSizeOverride(FVector2D(48.f, 48.f));
+			Send->SetColorAndOpacity(TextMain);
+		}
+	}
+}
+
+#if !UE_BUILD_SHIPPING
+void UDocentChatWidget::AddPreviewBubble(bool bInIsUser, const FString& InText)
+{
+	AddBubble(bInIsUser, InText);
+	if (!bHasAskedOnce)
+	{
+		bHasAskedOnce = true;
+		if (EmptyStateBox != nullptr)
+		{
+			EmptyStateBox->SetVisibility(ESlateVisibility::Collapsed);
+		}
+		ApplyQuickQuestionVisibility();
+	}
+}
+#endif

@@ -53,6 +53,15 @@ protected:
 	TObjectPtr<UTextBlock> MessageText;
 
 private:
+	/**
+	 * 레퍼런스 목업대로 역할별 스킨을 입힌다. Setup 끝에서 부른다.
+	 *
+	 * WBP 의 OnRoleApplied 뒤에 돌아 이쪽이 우선한다. BubbleBg 안에 시각 텍스트를
+	 * 넣기 위해 MessageText 를 VerticalBox 로 감싸는데, MessageText 포인터는 그대로
+	 * 살아 있어 AppendText/SetText 경로에 영향이 없다.
+	 */
+	void ApplySkin();
+
 	/** 화면 갱신은 MessageText 를 거치지만, 이어 붙이기의 기준은 이 값이다. */
 	FString Body;
 

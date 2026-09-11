@@ -45,6 +45,12 @@ protected:
 	TObjectPtr<UTextBlock> ChipText;
 
 private:
+	/** 목업의 추천 질문 행(유리 캡슐 + 아이콘 + 셰브론)으로 입힌다. NativeConstruct 끝에서 부른다. */
+	void ApplySkin();
+
+	/** ApplySkin 이 한 번 돌았는지. WBP 칩 안에도 SizeBox 가 있어 내용 타입으로는 못 가른다. */
+	bool bSkinApplied = false;
+
 	/** UButton::OnClicked 는 다이나믹 델리게이트라 UFUNCTION 이어야 한다. */
 	UFUNCTION()
 	void HandleButtonClicked();
