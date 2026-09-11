@@ -15,6 +15,14 @@
 #include "Framework/Application/SlateApplication.h"
 #include "GenericPlatform/GenericApplication.h"
 #include "TimerManager.h"
+#include "Components/Image.h"
+#include "Components/Border.h"
+#include "DinoRegistry.h"
+#include "DinoInfoData.h"
+#include "Misc/Paths.h"
+#include "UnrealClient.h"
+#include "Misc/CommandLine.h"
+#include "Misc/Parse.h"
 
 #if PLATFORM_ANDROID
 #include "Android/AndroidApplication.h"
@@ -59,6 +67,20 @@ float QueryImeInsetRatio()
 void UDocentChatWidget::NativeConstruct()
 {
 	Super::NativeConstruct();
+#if !UE_BUILD_SHIPPING
+	if (FParse::Param(FCommandLine::Get(), TEXT("ReferenceUIPreview")))
+	{
+		FTimerHandle PreviewTimer;
+		GetWorld()->GetTimerManager().SetTimer(PreviewTimer, FTimerDelegate::CreateWeakLambda(this, [this]()
+		{
+			FScreenshotRequest::RequestScreenshot(FPaths::ProjectSavedDir() / TEXT("Screenshots/ReferenceUIPreview.png"), true, false);
+		}), 8.f, false);
+	}
+#endif
+	if (UButton* B = Cast<UButton>(GetWidgetFromName(TEXT("RefCaptureButton")))) B->OnClicked.AddUniqueDynamic(this, &UDocentChatWidget::HandleReferenceCapture);
+	if (UButton* B = Cast<UButton>(GetWidgetFromName(TEXT("RefRescanButton")))) B->OnClicked.AddUniqueDynamic(this, &UDocentChatWidget::HandleReferenceRescan);
+	for (const FName N : {FName(TEXT("ScanCloseButton")), FName(TEXT("NabButton"))})
+		if (UButton* B = Cast<UButton>(GetWidgetFromName(N))) B->OnClicked.AddUniqueDynamic(this, &UDocentChatWidget::HandleReferenceExit);
 
 	if (DocentNameText != nullptr)
 	{
@@ -201,6 +223,10 @@ void UDocentChatWidget::NativeConstruct()
 
 void UDocentChatWidget::NativeDestruct()
 {
+	if (UButton* B = Cast<UButton>(GetWidgetFromName(TEXT("RefCaptureButton")))) B->OnClicked.RemoveDynamic(this, &UDocentChatWidget::HandleReferenceCapture);
+	if (UButton* B = Cast<UButton>(GetWidgetFromName(TEXT("RefRescanButton")))) B->OnClicked.RemoveDynamic(this, &UDocentChatWidget::HandleReferenceRescan);
+	for (const FName N : {FName(TEXT("ScanCloseButton")), FName(TEXT("NabButton"))})
+		if (UButton* B = Cast<UButton>(GetWidgetFromName(N))) B->OnClicked.RemoveDynamic(this, &UDocentChatWidget::HandleReferenceExit);
 	// 서브시스템은 위젯보다 오래 산다. 언바인드하지 않으면 죽은 위젯으로
 	// 브로드캐스트가 계속 날아간다.
 	if (Client != nullptr)
@@ -403,6 +429,7 @@ void UDocentChatWidget::ApplyOpenState(bool bOpen)
 
 void UDocentChatWidget::PollInputFocus()
 {
+	RefreshReferenceUI();
 #if PLATFORM_ANDROID || PLATFORM_IOS
 	if (InputBox == nullptr || KeyboardSpacer == nullptr)
 	{
@@ -492,6 +519,7 @@ void UDocentChatWidget::HandleOpenClicked()
 
 void UDocentChatWidget::HandleCloseARClicked()
 {
+	bReferenceRecognized = false;
 	if (AARTrackingManager* TrackingManager = AARTrackingManager::GetARTrackingManager(this))
 	{
 		TrackingManager->ClearOverlay();
@@ -504,6 +532,22 @@ void UDocentChatWidget::HandleCloseARClicked()
 
 void UDocentChatWidget::HandleMarkerFound(UARPin* Pin, const FTransform& MarkerPose, const FString& MarkerCode)
 {
+	bReferenceRecognized = true;
+	if (AARTrackingManager* M = AARTrackingManager::GetARTrackingManager(this))
+		if (M->DinoRegistry)
+			if (UDinoInfoData* Info = M->DinoRegistry->FindByMarker(MarkerCode))
+				if (UTextBlock* Location = Cast<UTextBlock>(GetWidgetFromName(TEXT("RefLocationText"))))
+					Location->SetText(FText::FromString(Info->NameKo.ToString() + TEXT(" 전시존\n마커 인식 완료")));
+	// Existing Blueprint delegates hide the scan panel on recognition. Restore only
+	// its nonblocking presentation after that broadcast has finished.
+	if (UWorld* World = GetWorld())
+		World->GetTimerManager().SetTimerForNextTick(FTimerDelegate::CreateWeakLambda(this, [this]()
+		{
+			UWidget* Nav = GetWidgetFromName(TEXT("NavPanel"));
+			if (bReferenceRecognized && !bIsOpen && (!Nav || Nav->GetVisibility() == ESlateVisibility::Collapsed))
+				if (UWidget* Scan = GetWidgetFromName(TEXT("ScanPanel"))) Scan->SetVisibility(ESlateVisibility::SelfHitTestInvisible);
+			RefreshReferenceUI();
+		}));
 	if (Btn_CloseAR != nullptr)
 	{
 		Btn_CloseAR->SetVisibility(ESlateVisibility::Visible);
@@ -512,6 +556,8 @@ void UDocentChatWidget::HandleMarkerFound(UARPin* Pin, const FTransform& MarkerP
 
 void UDocentChatWidget::HandleScanStateChanged(bool bIsScanning)
 {
+	if (bIsScanning) bReferenceRecognized = false;
+	RefreshReferenceUI();
 	if (Btn_CloseAR != nullptr && bIsScanning)
 	{
 		Btn_CloseAR->SetVisibility(ESlateVisibility::Hidden);
@@ -698,4 +744,63 @@ void UDocentChatWidget::ScrollToLatest()
 	{
 		ChatScroll->ScrollToEnd();
 	}
+}
+
+
+void UDocentChatWidget::HandleReferenceRescan()
+{
+	bReferenceRecognized = false;
+	HideChat();
+	if (UWidget* Nav = GetWidgetFromName(TEXT("NavPanel"))) Nav->SetVisibility(ESlateVisibility::Collapsed);
+	if (UWidget* Scan = GetWidgetFromName(TEXT("ScanPanel"))) Scan->SetVisibility(ESlateVisibility::SelfHitTestInvisible);
+	if (AARTrackingManager* Manager = AARTrackingManager::GetARTrackingManager(this)) Manager->StartScan();
+	RefreshReferenceUI();
+}
+
+void UDocentChatWidget::HandleReferenceCapture()
+{
+	AARTrackingManager* Manager = AARTrackingManager::GetARTrackingManager(this);
+	if (Manager && !Manager->IsScanning() && !bReferenceRecognized)
+	{
+		HandleReferenceRescan();
+		return;
+	}
+	FScreenshotRequest::RequestScreenshot(FPaths::ProjectSavedDir() / TEXT("Screenshots/ARCapture.png"), true, true);
+}
+
+void UDocentChatWidget::HandleReferenceExit()
+{
+	bReferenceRecognized = false;
+}
+
+void UDocentChatWidget::RefreshReferenceUI()
+{
+	const AARTrackingManager* Manager = AARTrackingManager::GetARTrackingManager(this);
+	const bool bScanning = Manager && Manager->IsScanning();
+	const FLinearColor Accent = bReferenceRecognized ? FLinearColor(0.23f,0.9f,0.44f,1.f) :
+		(bScanning ? FLinearColor(0.08f,0.43f,1.f,1.f) : FLinearColor::White);
+	if (UImage* Frame = Cast<UImage>(GetWidgetFromName(TEXT("ScanFramImage"))))
+	{
+		Frame->SetColorAndOpacity(Accent);
+	}
+	if (UTextBlock* Hint = Cast<UTextBlock>(GetWidgetFromName(TEXT("ScanHintText"))))
+	{
+		const FText Message = FText::FromString(bReferenceRecognized ?
+			TEXT("대상을 인식했어요!\n공룡을 터치하면 정보를 볼 수 있어요.") :
+			(bScanning ? TEXT("공룡 마커를 화면 중앙에 맞춰주세요\n더 선명하게 인식할 수 있어요!") :
+			TEXT("AR 스캔을 눌러 시작해주세요\n전시물의 마커를 비춰주세요.")));
+		if (!Hint->GetText().EqualTo(Message)) Hint->SetText(Message);
+	}
+	if (UBorder* Hint = Cast<UBorder>(GetWidgetFromName(TEXT("ScanHintBG"))))
+	{
+		FSlateBrush Brush = Hint->Background;
+		Brush.OutlineSettings.Color = FSlateColor(Accent.CopyWithNewOpacity(0.6f));
+		Hint->SetBrush(Brush);
+	}
+	UWidget* Scan = GetWidgetFromName(TEXT("ScanPanel"));
+	const bool bScanVisible = !bIsOpen && Scan && Scan->GetVisibility() != ESlateVisibility::Collapsed;
+	if (UImage* Icon = Cast<UImage>(GetWidgetFromName(TEXT("ScanIcon"))))
+		Icon->SetColorAndOpacity(bScanVisible ? (bReferenceRecognized ? Accent : FLinearColor(0.08f,0.43f,1.f,1.f)) : FLinearColor::White);
+	if (UTextBlock* Label = Cast<UTextBlock>(GetWidgetFromName(TEXT("ScanLabel"))))
+		Label->SetColorAndOpacity(FSlateColor(bScanVisible ? (bReferenceRecognized ? Accent : FLinearColor(0.08f,0.43f,1.f,1.f)) : FLinearColor::White));
 }
