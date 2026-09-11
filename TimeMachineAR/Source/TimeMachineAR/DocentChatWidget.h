@@ -330,6 +330,7 @@ private:
 	/** 전면(셀카) 카메라 상태. 스캔 UI 를 접고 안내 문구를 바꾼다. */
 	bool bFrontCamera = false;
 
+
 	/** 전환 직전에 스캔 중이었으면 후면으로 돌아올 때 다시 켠다. */
 	bool bResumeScanAfterFlip = false;
 
@@ -344,6 +345,10 @@ private:
 	UFUNCTION() void HandleSendClicked();
 	UFUNCTION() void HandleTextCommitted(const FText& Text, ETextCommit::Type CommitMethod);
 	UFUNCTION() void HandleCloseClicked();
+	UFUNCTION() void HandleMenuClicked();
+
+	/** 카드를 붙인 전시물 키. 같은 전시물에 두 번 붙이지 않는다. */
+	FString ExhibitCardShownFor;
 	UFUNCTION() void HandleOpenClicked();
 	UFUNCTION() void HandleCloseARClicked();
 	UFUNCTION() void HandleMarkerFound(UARPin* Pin, const FTransform& MarkerPose, const FString& MarkerCode);
@@ -358,10 +363,6 @@ private:
 	/**
 	 * 가상 키보드가 가리는 높이를 레이아웃에 반영한다.
 	 *
-	UFUNCTION() void HandleMenuClicked();
-
-	/** 카드를 붙인 전시물 키. 같은 전시물에 두 번 붙이지 않는다. */
-	FString ExhibitCardShownFor;
 	 * @param KeyboardPixels 키보드 높이(실제 픽셀). 숨겨졌으면 0.
 	 */
 	void ApplyKeyboardInset(float KeyboardPixels);

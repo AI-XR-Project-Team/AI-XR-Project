@@ -90,6 +90,7 @@ void UDocentChatWidget::NativeConstruct()
 	}
 #endif
 	ApplyScanSkin();
+	ApplyChatSkin();
 	if (UButton* B = Cast<UButton>(GetWidgetFromName(TEXT("RefCaptureButton")))) B->OnClicked.AddUniqueDynamic(this, &UDocentChatWidget::HandleReferenceCapture);
 	// 목업의 ↻ 는 카메라 전환이다. 다시 스캔은 셔터(스캔 중이 아닐 때)와 탭바가 맡는다.
 	if (UButton* B = Cast<UButton>(GetWidgetFromName(TEXT("RefRescanButton")))) B->OnClicked.AddUniqueDynamic(this, &UDocentChatWidget::HandleCameraFlipClicked);
@@ -115,8 +116,11 @@ void UDocentChatWidget::NativeConstruct()
 	{
 		CloseButton->OnClicked.AddUniqueDynamic(this, &UDocentChatWidget::HandleCloseClicked);
 	}
+	if (UButton* Menu = Cast<UButton>(GetWidgetFromName(TEXT("MenuButton"))))
+	{
+		Menu->OnClicked.AddUniqueDynamic(this, &UDocentChatWidget::HandleMenuClicked);
+	}
 	if (OpenButton != nullptr)
-	ApplyChatSkin();
 	{
 		OpenButton->OnClicked.AddUniqueDynamic(this, &UDocentChatWidget::HandleOpenClicked);
 	}
@@ -141,10 +145,6 @@ void UDocentChatWidget::NativeConstruct()
 	if (FSlateApplication::IsInitialized())
 	{
 		if (const TSharedPtr<GenericApplication> PlatformApp = FSlateApplication::Get().GetPlatformApplication())
-	if (UButton* Menu = Cast<UButton>(GetWidgetFromName(TEXT("MenuButton"))))
-	{
-		Menu->OnClicked.AddUniqueDynamic(this, &UDocentChatWidget::HandleMenuClicked);
-	}
 		{
 			TWeakObjectPtr<UDocentChatWidget> WeakThis(this);
 
@@ -270,6 +270,10 @@ void UDocentChatWidget::NativeDestruct()
 	{
 		CloseButton->OnClicked.RemoveDynamic(this, &UDocentChatWidget::HandleCloseClicked);
 	}
+	if (UButton* Menu = Cast<UButton>(GetWidgetFromName(TEXT("MenuButton"))))
+	{
+		Menu->OnClicked.RemoveDynamic(this, &UDocentChatWidget::HandleMenuClicked);
+	}
 	if (OpenButton != nullptr)
 	{
 		OpenButton->OnClicked.RemoveDynamic(this, &UDocentChatWidget::HandleOpenClicked);
@@ -300,10 +304,6 @@ void UDocentChatWidget::NativeDestruct()
 	if (UWorld* World = GetWorld())
 	{
 		World->GetTimerManager().ClearTimer(InputFocusTimer);
-	}
-	if (UButton* Menu = Cast<UButton>(GetWidgetFromName(TEXT("MenuButton"))))
-	{
-		Menu->OnClicked.RemoveDynamic(this, &UDocentChatWidget::HandleMenuClicked);
 	}
 
 	Super::NativeDestruct();
@@ -611,6 +611,8 @@ void UDocentChatWidget::HandleDelta(const FString& Text)
 void UDocentChatWidget::HandleCompleted(const FDocentChatResult& Result)
 {
 	StreamingBubble = nullptr;
+	// 목업처럼 첫 답변 아래에 전시물 카드가 따라온다. AddExhibitCard 가 중복을 거른다.
+	AddExhibitCard();
 	SetInputEnabled(true);
 	OnStreamingChanged(false);
 	ScrollToLatest();
@@ -642,8 +644,6 @@ void UDocentChatWidget::HandleFailed(const FString& Reason, bool bPartial)
 
 	SetInputEnabled(true);
 	OnStreamingChanged(false);
-	// 목업처럼 첫 답변 아래에 전시물 카드가 따라온다. AddExhibitCard 가 중복을 거른다.
-	AddExhibitCard();
 	ScrollToLatest();
 }
 
