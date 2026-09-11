@@ -7,6 +7,7 @@
 #include "Components/HorizontalBox.h"
 #include "Components/HorizontalBoxSlot.h"
 #include "Components/PanelWidget.h"
+#include "Components/ContentWidget.h"
 #include "Components/Spacer.h"
 #include "Brushes/SlateRoundedBoxBrush.h"
 #include "Engine/Texture2D.h"
@@ -83,26 +84,14 @@ void UDocentChatBubble::ApplySkin()
 		Bg->SetBrush(Brush);
 		Bg->SetPadding(FMargin(30.f, 22.f, 30.f, 20.f));
 
-		// 시각은 말풍선 바깥, 아래 모서리 옆에 작게. 말풍선을 담은 HorizontalBox 를
-		// 위로 거슬러 찾아, 말풍선 쪽 자식 바로 옆(도슨트는 오른쪽, 관람객은 왼쪽)에 끼운다.
+		// 시각은 말풍선 바깥, 아래 모서리 옆에 작게. 런타임에는 패널의 자식 순서를
+		// 바꿀 수 없어(InsertChildAt 은 에디터 전용) BubbleBg 를 감싼 단일 자식 위젯
+		// (SizeBox 등)의 내용을 [말풍선, 시각] 가로 상자로 갈아 끼운다.
 		if (!bSkinApplied)
 		{
 			bSkinApplied = true;
 
-			UWidget* Anchor = Bg;
-			UHorizontalBox* Row = nullptr;
-			while (Anchor != nullptr)
-			{
-				UPanelWidget* Parent = Anchor->GetParent();
-				Row = Cast<UHorizontalBox>(Parent);
-				if (Row != nullptr)
-				{
-					break;
-				}
-				Anchor = Parent;
-			}
-
-			if (Row != nullptr)
+			if (UContentWidget* Holder = Cast<UContentWidget>(Bg->GetParent()))
 			{
 				const FDateTime Now = FDateTime::Now();
 				const int32 Hour12 = (Now.GetHour() % 12 == 0) ? 12 : Now.GetHour() % 12;
@@ -117,19 +106,28 @@ void UDocentChatBubble::ApplySkin()
 				Time->SetColorAndOpacity(FSlateColor(TextDim));
 				Time->SetVisibility(ESlateVisibility::HitTestInvisible);
 
-				// 말풍선 슬롯의 아래 여백만큼 같이 띄워야 시각이 말풍선 아래 모서리 옆에 선다.
-				float Lift = 6.f;
-				if (const UHorizontalBoxSlot* AnchorSlot = Cast<UHorizontalBoxSlot>(Anchor->Slot))
+				UHorizontalBox* Pair = WidgetTree->ConstructWidget<UHorizontalBox>();
+				Bg->RemoveFromParent();
+				if (bIsUser)
 				{
-					Lift += AnchorSlot->GetPadding().Bottom;
+					Pair->AddChild(Time);
+					Pair->AddChild(Bg);
 				}
-				const int32 Index = Row->GetChildIndex(Anchor);
-				Row->InsertChildAt(bIsUser ? Index : Index + 1, Time);
+				else
+				{
+					Pair->AddChild(Bg);
+					Pair->AddChild(Time);
+				}
 				if (UHorizontalBoxSlot* S = Cast<UHorizontalBoxSlot>(Time->Slot))
 				{
 					S->SetVerticalAlignment(VAlign_Bottom);
-					S->SetPadding(bIsUser ? FMargin(0.f, 0.f, 14.f, Lift) : FMargin(14.f, 0.f, 0.f, Lift));
+					S->SetPadding(bIsUser ? FMargin(0.f, 0.f, 14.f, 6.f) : FMargin(14.f, 0.f, 0.f, 6.f));
 				}
+				if (UHorizontalBoxSlot* S = Cast<UHorizontalBoxSlot>(Bg->Slot))
+				{
+					S->SetSize(FSlateChildSize(ESlateSizeRule::Automatic));
+				}
+				Holder->SetContent(Pair);
 			}
 		}
 	}

@@ -1214,21 +1214,6 @@ void UDocentChatWidget::ApplyChatSkin()
 	}
 }
 
-#if !UE_BUILD_SHIPPING
-void UDocentChatWidget::AddPreviewBubble(bool bInIsUser, const FString& InText)
-{
-	AddBubble(bInIsUser, InText);
-	if (!bHasAskedOnce)
-	{
-		bHasAskedOnce = true;
-		if (EmptyStateBox != nullptr)
-		{
-			EmptyStateBox->SetVisibility(ESlateVisibility::Collapsed);
-		}
-		ApplyQuickQuestionVisibility();
-	}
-}
-#endif
 
 void UDocentChatWidget::HandleMenuClicked()
 {
@@ -1241,9 +1226,9 @@ namespace
 	 * 말풍선 열과 같은 왼쪽 선(아바타 폭 + 간격)에 맞춘 스크롤 항목 여백.
 	 * ChatScroll 자체가 좌우 36 을 더 안으로 들이므로, 그만큼 뺀 값이다.
 	 */
-	const FMargin ChatInsertMargin(98.f, 10.f, 14.f, 10.f);
-	/** 위 여백을 뺀 항목 폭. 1080 - 36*2 - 98 - 14. */
-	const float ChatInsertWidth = 896.f;
+	const FMargin ChatInsertMargin(82.f, 10.f, 14.f, 10.f);
+	/** 위 여백을 뺀 항목 폭. 1080 - 36*2 - 82 - 14. */
+	const float ChatInsertWidth = 912.f;
 
 	/** 유리 캡슐 태그 하나. 카드 아래 "육식 / 백악기 후기" 줄에 쓴다. */
 	UWidget* MakeTagPill(UWidgetTree* Tree, const FText& Label)
@@ -1459,3 +1444,18 @@ void UDocentChatWidget::AddTopicMenu()
 	ScrollToLatest();
 }
 
+#if !UE_BUILD_SHIPPING
+void UDocentChatWidget::AddPreviewBubble(bool bInIsUser, const FString& InText)
+{
+	AddBubble(bInIsUser, InText);
+	if (!bHasAskedOnce)
+	{
+		bHasAskedOnce = true;
+		if (EmptyStateBox != nullptr)
+		{
+			EmptyStateBox->SetVisibility(ESlateVisibility::Collapsed);
+		}
+		ApplyQuickQuestionVisibility();
+	}
+}
+#endif
