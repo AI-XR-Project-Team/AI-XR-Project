@@ -64,6 +64,24 @@ public:
 #endif
 
 	/**
+	 * 지금 전시물의 카드(대표 사진·이름·태그)를 대화에 끼운다.
+	 *
+	 * 첫 답변이 끝난 뒤 자동으로 한 번 붙는다(목업 2번 화면). 데이터는 DinoRegistry 에서
+	 * ExhibitKey 로 찾는다. 전시물이 없거나 이미 붙였으면 아무 일도 없다.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Docent|Chat")
+	void AddExhibitCard();
+
+	/**
+	 * 주제 선택 메뉴(목업 3번 화면)를 대화에 끼운다. 상단 ⋮ 버튼이 부른다.
+	 *
+	 * 안내 말풍선 - 주제 행 다섯 개 - 마무리 말풍선 순서로 ChatScroll 에 붙인다.
+	 * 행을 누르면 그 주제 질문을 보낸다.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Docent|Chat")
+	void AddTopicMenu();
+
+	/**
 	 * 대화 대상 전시물을 바꾸고 세션을 새로 연다.
 	 *
 	 * 다른 전시물 앞으로 이동했을 때 부른다. 화면의 기존 대화는 지우지 않는다.
@@ -340,6 +358,10 @@ private:
 	/**
 	 * 가상 키보드가 가리는 높이를 레이아웃에 반영한다.
 	 *
+	UFUNCTION() void HandleMenuClicked();
+
+	/** 카드를 붙인 전시물 키. 같은 전시물에 두 번 붙이지 않는다. */
+	FString ExhibitCardShownFor;
 	 * @param KeyboardPixels 키보드 높이(실제 픽셀). 숨겨졌으면 0.
 	 */
 	void ApplyKeyboardInset(float KeyboardPixels);

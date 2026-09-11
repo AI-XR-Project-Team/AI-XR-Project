@@ -8,6 +8,7 @@
 #include "Blueprint/WidgetLayoutLibrary.h"
 #include "Components/PanelWidget.h"
 #include "Components/ScrollBox.h"
+#include "Components/ScrollBoxSlot.h"
 #include "Components/Spacer.h"
 #include "Components/TextBlock.h"
 #include "Engine/GameInstance.h"
@@ -140,6 +141,10 @@ void UDocentChatWidget::NativeConstruct()
 	if (FSlateApplication::IsInitialized())
 	{
 		if (const TSharedPtr<GenericApplication> PlatformApp = FSlateApplication::Get().GetPlatformApplication())
+	if (UButton* Menu = Cast<UButton>(GetWidgetFromName(TEXT("MenuButton"))))
+	{
+		Menu->OnClicked.AddUniqueDynamic(this, &UDocentChatWidget::HandleMenuClicked);
+	}
 		{
 			TWeakObjectPtr<UDocentChatWidget> WeakThis(this);
 
@@ -295,6 +300,10 @@ void UDocentChatWidget::NativeDestruct()
 	if (UWorld* World = GetWorld())
 	{
 		World->GetTimerManager().ClearTimer(InputFocusTimer);
+	}
+	if (UButton* Menu = Cast<UButton>(GetWidgetFromName(TEXT("MenuButton"))))
+	{
+		Menu->OnClicked.RemoveDynamic(this, &UDocentChatWidget::HandleMenuClicked);
 	}
 
 	Super::NativeDestruct();
@@ -633,6 +642,8 @@ void UDocentChatWidget::HandleFailed(const FString& Reason, bool bPartial)
 
 	SetInputEnabled(true);
 	OnStreamingChanged(false);
+	// 목업처럼 첫 답변 아래에 전시물 카드가 따라온다. AddExhibitCard 가 중복을 거른다.
+	AddExhibitCard();
 	ScrollToLatest();
 }
 
@@ -1218,3 +1229,233 @@ void UDocentChatWidget::AddPreviewBubble(bool bInIsUser, const FString& InText)
 	}
 }
 #endif
+
+void UDocentChatWidget::HandleMenuClicked()
+{
+	AddTopicMenu();
+}
+
+namespace
+{
+	/**
+	 * 말풍선 열과 같은 왼쪽 선(아바타 폭 + 간격)에 맞춘 스크롤 항목 여백.
+	 * ChatScroll 자체가 좌우 36 을 더 안으로 들이므로, 그만큼 뺀 값이다.
+	 */
+	const FMargin ChatInsertMargin(98.f, 10.f, 14.f, 10.f);
+	/** 위 여백을 뺀 항목 폭. 1080 - 36*2 - 98 - 14. */
+	const float ChatInsertWidth = 896.f;
+
+	/** 유리 캡슐 태그 하나. 카드 아래 "육식 / 백악기 후기" 줄에 쓴다. */
+	UWidget* MakeTagPill(UWidgetTree* Tree, const FText& Label)
+	{
+		const FLinearColor Glass    = FLinearColor::FromSRGBColor(FColor(22, 27, 36, 215));
+		const FLinearColor Outline  = FLinearColor(1.f, 1.f, 1.f, 0.14f);
+		const FLinearColor TextMain = FLinearColor::FromSRGBColor(FColor(240, 244, 250));
+
+		UTextBlock* Text = Tree->ConstructWidget<UTextBlock>();
+		Text->SetText(Label);
+		FSlateFontInfo Font = Text->GetFont();
+		Font.Size = 24;
+		Text->SetFont(Font);
+		Text->SetColorAndOpacity(FSlateColor(TextMain));
+
+		UBorder* Pill = Tree->ConstructWidget<UBorder>();
+		Pill->SetBrush(FSlateRoundedBoxBrush(Glass, 22.f, Outline, 2.f));
+		Pill->SetPadding(FMargin(24.f, 10.f, 24.f, 10.f));
+		Pill->SetContent(Text);
+		return Pill;
+	}
+}
+
+void UDocentChatWidget::AddExhibitCard()
+{
+	if (WidgetTree == nullptr || ChatScroll == nullptr || !HasExhibitContext())
+	{
+		return;
+	}
+	if (ExhibitCardShownFor == ExhibitKey)
+	{
+		return;
+	}
+
+	// 카드에 담을 공룡. 레지스트리의 ExhibitKey 와 대화 키가 같은 종을 찾는다.
+	UDinoInfoData* Info = nullptr;
+	if (UDinoRegistry* Registry = Cast<UDinoRegistry>(StaticLoadObject(
+		UDinoRegistry::StaticClass(), nullptr, TEXT("/Game/UI/DinoCard/DA_DinoRegistry.DA_DinoRegistry"))))
+	{
+		for (UDinoInfoData* Species : Registry->Species)
+		{
+			if (Species != nullptr && Species->ExhibitKey.Equals(ExhibitKey, ESearchCase::IgnoreCase))
+			{
+				Info = Species;
+				break;
+			}
+		}
+	}
+	if (Info == nullptr || Info->HeroImage == nullptr)
+	{
+		UE_LOG(LogDocentChat, Verbose, TEXT("전시물 카드 생략: %s 에 맞는 종 데이터가 없습니다."), *ExhibitKey);
+		return;
+	}
+	ExhibitCardShownFor = ExhibitKey;
+
+	const FLinearColor Glass    = FLinearColor::FromSRGBColor(FColor(22, 27, 36, 225));
+	const FLinearColor Outline  = FLinearColor(1.f, 1.f, 1.f, 0.10f);
+	const FLinearColor TextMain = FLinearColor::FromSRGBColor(FColor(240, 244, 250));
+	const FLinearColor TextDim  = FLinearColor::FromSRGBColor(FColor(160, 170, 185));
+	const float CardWidth = ChatInsertWidth;
+	const float Radius = 28.f;
+
+	UVerticalBox* Card = WidgetTree->ConstructWidget<UVerticalBox>();
+
+	// 대표 사진. 위 두 모서리만 둥글게 - 카드 테두리와 맞물린다.
+	{
+		UImage* Hero = WidgetTree->ConstructWidget<UImage>();
+		FSlateBrush Brush;
+		Brush.SetResourceObject(Info->HeroImage);
+		Brush.DrawAs = ESlateBrushDrawType::RoundedBox;
+		Brush.OutlineSettings.RoundingType = ESlateBrushRoundingType::FixedRadius;
+		Brush.OutlineSettings.CornerRadii = FVector4(Radius, Radius, 0.f, 0.f);
+		Brush.TintColor = FSlateColor(FLinearColor::White);
+		const float Aspect = FMath::Clamp(
+			static_cast<float>(Info->HeroImage->GetSizeY()) / FMath::Max(1.f, static_cast<float>(Info->HeroImage->GetSizeX())),
+			0.5f, 0.72f);
+		Brush.ImageSize = FVector2D(CardWidth, FMath::RoundToFloat(CardWidth * Aspect));
+		Hero->SetBrush(Brush);
+		Hero->SetVisibility(ESlateVisibility::HitTestInvisible);
+		Card->AddChild(Hero);
+	}
+
+	// 이름 줄: 한글 이름 / 학명, 오른쪽에 펼치기 아이콘.
+	{
+		UHorizontalBox* NameRow = WidgetTree->ConstructWidget<UHorizontalBox>();
+		UVerticalBox* Names = WidgetTree->ConstructWidget<UVerticalBox>();
+
+		UTextBlock* Ko = WidgetTree->ConstructWidget<UTextBlock>();
+		Ko->SetText(Info->NameKo);
+		FSlateFontInfo KoFont = Ko->GetFont();
+		KoFont.Size = 30;
+		Ko->SetFont(KoFont);
+		Ko->SetColorAndOpacity(FSlateColor(TextMain));
+		Names->AddChild(Ko);
+
+		UTextBlock* Sci = WidgetTree->ConstructWidget<UTextBlock>();
+		Sci->SetText(Info->NameSci);
+		FSlateFontInfo SciFont = Sci->GetFont();
+		SciFont.Size = 24;
+		Sci->SetFont(SciFont);
+		Sci->SetColorAndOpacity(FSlateColor(TextDim));
+		if (UVerticalBoxSlot* S = Cast<UVerticalBoxSlot>(Names->AddChild(Sci)))
+		{
+			S->SetPadding(FMargin(0.f, 6.f, 0.f, 0.f));
+		}
+		if (UHorizontalBoxSlot* S = Cast<UHorizontalBoxSlot>(NameRow->AddChild(Names)))
+		{
+			S->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
+			S->SetVerticalAlignment(VAlign_Center);
+		}
+
+		if (UTexture2D* Expand = LoadObject<UTexture2D>(nullptr, TEXT("/Game/UI/DinoCard/Icons/fullscreen.fullscreen")))
+		{
+			UImage* Icon = WidgetTree->ConstructWidget<UImage>();
+			Icon->SetBrushFromTexture(Expand);
+			Icon->SetDesiredSizeOverride(FVector2D(40.f, 40.f));
+			Icon->SetColorAndOpacity(FLinearColor(1.f, 1.f, 1.f, 0.75f));
+			if (UHorizontalBoxSlot* S = Cast<UHorizontalBoxSlot>(NameRow->AddChild(Icon)))
+			{
+				S->SetVerticalAlignment(VAlign_Center);
+			}
+		}
+
+		if (UVerticalBoxSlot* S = Cast<UVerticalBoxSlot>(Card->AddChild(NameRow)))
+		{
+			S->SetPadding(FMargin(26.f, 20.f, 26.f, 22.f));
+		}
+	}
+
+	UBorder* Frame = WidgetTree->ConstructWidget<UBorder>();
+	Frame->SetBrush(FSlateRoundedBoxBrush(Glass, Radius, Outline, 2.f));
+	Frame->SetPadding(FMargin(0.f));
+	Frame->SetContent(Card);
+
+	// 카드 + 태그 줄을 한 항목으로 묶어 스크롤에 넣는다.
+	UVerticalBox* Item = WidgetTree->ConstructWidget<UVerticalBox>();
+	Item->AddChild(Frame);
+
+	UHorizontalBox* Tags = WidgetTree->ConstructWidget<UHorizontalBox>();
+	for (const FText& Tag : {Info->DietTag, Info->PeriodTag})
+	{
+		if (Tag.IsEmpty())
+		{
+			continue;
+		}
+		if (UHorizontalBoxSlot* S = Cast<UHorizontalBoxSlot>(Tags->AddChild(MakeTagPill(WidgetTree, Tag))))
+		{
+			S->SetPadding(FMargin(0.f, 0.f, 14.f, 0.f));
+		}
+	}
+	if (Tags->GetChildrenCount() > 0)
+	{
+		if (UVerticalBoxSlot* S = Cast<UVerticalBoxSlot>(Item->AddChild(Tags)))
+		{
+			S->SetPadding(FMargin(0.f, 14.f, 0.f, 0.f));
+		}
+	}
+
+	ChatScroll->AddChild(Item);
+	if (UScrollBoxSlot* S = Cast<UScrollBoxSlot>(Item->Slot))
+	{
+		S->SetPadding(ChatInsertMargin);
+	}
+}
+
+void UDocentChatWidget::AddTopicMenu()
+{
+	if (WidgetTree == nullptr || ChatScroll == nullptr || ChipClass == nullptr)
+	{
+		return;
+	}
+
+	// 메뉴는 대화의 일부라, 시작 화면 위에 띄우지 않고 시작 화면을 걷은 뒤 붙인다.
+	if (!bHasAskedOnce)
+	{
+		bHasAskedOnce = true;
+		if (EmptyStateBox != nullptr)
+		{
+			EmptyStateBox->SetVisibility(ESlateVisibility::Collapsed);
+		}
+		ApplyQuickQuestionVisibility();
+	}
+
+	AddBubble(/*bIsUser=*/false, TEXT("어떤 부분이 더 궁금하신가요?\n아래 주제 중에서 선택하거나,\n직접 질문해도 좋아요!"));
+
+	// 전시물이 정해졌으면 "이 공룡", 아니면 공룡 일반으로 묻는다.
+	const TCHAR* Subject = HasExhibitContext() ? TEXT("이 공룡") : TEXT("공룡");
+	struct FTopic { const TCHAR* Title; const TCHAR* Subtitle; FName Icon; FString Question; };
+	const FTopic Topics[] = {
+		{ TEXT("기본 정보"),     TEXT("시대, 크기, 특징"),           TEXT("menu_book"),      FString::Printf(TEXT("%s의 시대, 크기, 특징을 알려줘"), Subject) },
+		{ TEXT("식성"),          TEXT("무엇을 먹었을까?"),            TEXT("eco"),            FString::Printf(TEXT("%s은 무엇을 먹었을까?"), Subject) },
+		{ TEXT("서식지"),        TEXT("어디에 살았을까?"),            TEXT("public"),         FString::Printf(TEXT("%s은 어디에 살았을까?"), Subject) },
+		{ TEXT("발견과 연구"),   TEXT("언제, 어떻게 발견되었을까?"),  TEXT("history"),        FString::Printf(TEXT("%s은 언제, 어떻게 발견되었을까?"), Subject) },
+		{ TEXT("재미있는 사실"), TEXT("더 놀라운 이야기"),            TEXT("travel_explore"), FString::Printf(TEXT("%s에 대한 재미있는 사실을 알려줘"), Subject) },
+	};
+	for (const FTopic& T : Topics)
+	{
+		UDocentQuickChip* Row = CreateWidget<UDocentQuickChip>(this, ChipClass);
+		if (Row == nullptr)
+		{
+			continue;
+		}
+		Row->SetTopic(T.Question, T.Title, T.Subtitle, T.Icon, ChatInsertWidth);
+		Row->OnClicked.BindUObject(this, &UDocentChatWidget::HandleQuickChipClicked);
+		ChatScroll->AddChild(Row);
+		if (UScrollBoxSlot* S = Cast<UScrollBoxSlot>(Row->Slot))
+		{
+			S->SetPadding(FMargin(ChatInsertMargin.Left, 6.f, ChatInsertMargin.Right, 6.f));
+		}
+	}
+
+	AddBubble(/*bIsUser=*/false, TEXT("궁금한 것을 선택해보세요!\n언제든지 다른 질문도 할 수 있어요."));
+	ScrollToLatest();
+}
+

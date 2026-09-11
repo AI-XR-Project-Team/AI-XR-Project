@@ -31,6 +31,14 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Docent|Chat")
 	FString GetQuestion() const { return Question; }
 
+	/**
+	 * 주제 선택 메뉴용 두 줄 행. 표시는 제목·부제, 전송은 InQuestion 이다.
+	 *
+	 * 아이콘은 /Game/UI/DinoCard/Icons 의 이름(menu_book, eco, public, history, ...).
+	 * NativeConstruct 전에 불러야 스킨이 이 값으로 짜인다.
+	 */
+	void SetTopic(const FString& InQuestion, const FString& InTitle, const FString& InSubtitle, FName InIconName, float InRowWidth);
+
 	/** 칩을 누르면 호출된다. 챗 위젯이 여기에 자기 핸들러를 꽂는다. */
 	FOnQuickChipClicked OnClicked;
 
@@ -56,4 +64,12 @@ private:
 	void HandleButtonClicked();
 
 	FString Question;
+
+	/** SetTopic 으로 채운 값. 비어 있으면 한 줄 질문 행이다. */
+	FString Title;
+	FString Subtitle;
+	FName IconName;
+
+	/** 행의 고정 폭. 시작 화면 WrapBox 는 940, 대화 안에 끼우는 주제 행은 말풍선 열 폭. */
+	float RowWidth = 940.f;
 };

@@ -4,8 +4,9 @@
 #include "Blueprint/WidgetTree.h"
 #include "Components/Border.h"
 #include "Components/Image.h"
-#include "Components/VerticalBox.h"
-#include "Components/VerticalBoxSlot.h"
+#include "Components/HorizontalBox.h"
+#include "Components/HorizontalBoxSlot.h"
+#include "Components/PanelWidget.h"
 #include "Components/Spacer.h"
 #include "Brushes/SlateRoundedBoxBrush.h"
 #include "Engine/Texture2D.h"
@@ -80,34 +81,56 @@ void UDocentChatBubble::ApplySkin()
 	{
 		FSlateBrush Brush = FSlateRoundedBoxBrush(bIsUser ? UserFill : AiFill, 26.f, Outline, 2.f);
 		Bg->SetBrush(Brush);
-		Bg->SetPadding(FMargin(30.f, 22.f, 30.f, 16.f));
+		Bg->SetPadding(FMargin(30.f, 22.f, 30.f, 20.f));
 
-		// 시각 텍스트가 아직 없으면 본문 아래에 넣는다. 스트리밍으로 Setup 이 여러 번
-		// 불려도 한 번만 감싸도록 VerticalBox 존재 여부로 가른다.
-		if (Cast<UVerticalBox>(Bg->GetContent()) == nullptr)
+		// 시각은 말풍선 바깥, 아래 모서리 옆에 작게. 말풍선을 담은 HorizontalBox 를
+		// 위로 거슬러 찾아, 말풍선 쪽 자식 바로 옆(도슨트는 오른쪽, 관람객은 왼쪽)에 끼운다.
+		if (!bSkinApplied)
 		{
-			UVerticalBox* Column = WidgetTree->ConstructWidget<UVerticalBox>();
-			MessageText->RemoveFromParent();
-			Column->AddChild(MessageText);
+			bSkinApplied = true;
 
-			const FDateTime Now = FDateTime::Now();
-			const int32 Hour12 = (Now.GetHour() % 12 == 0) ? 12 : Now.GetHour() % 12;
-			const FString Stamp = FString::Printf(TEXT("%s %d:%02d"),
-				Now.GetHour() < 12 ? TEXT("오전") : TEXT("오후"), Hour12, Now.GetMinute());
-
-			UTextBlock* Time = WidgetTree->ConstructWidget<UTextBlock>();
-			Time->SetText(FText::FromString(Stamp));
-			FSlateFontInfo TimeFont = Time->GetFont();
-			TimeFont.Size = 22;
-			Time->SetFont(TimeFont);
-			Time->SetColorAndOpacity(FSlateColor(bIsUser ? FLinearColor(1.f, 1.f, 1.f, 0.7f) : TextDim));
-			Time->SetJustification(bIsUser ? ETextJustify::Right : ETextJustify::Left);
-			if (UVerticalBoxSlot* TimeSlot = Cast<UVerticalBoxSlot>(Column->AddChild(Time)))
+			UWidget* Anchor = Bg;
+			UHorizontalBox* Row = nullptr;
+			while (Anchor != nullptr)
 			{
-				TimeSlot->SetPadding(FMargin(0.f, 10.f, 0.f, 0.f));
-				TimeSlot->SetHorizontalAlignment(bIsUser ? HAlign_Right : HAlign_Left);
+				UPanelWidget* Parent = Anchor->GetParent();
+				Row = Cast<UHorizontalBox>(Parent);
+				if (Row != nullptr)
+				{
+					break;
+				}
+				Anchor = Parent;
 			}
-			Bg->SetContent(Column);
+
+			if (Row != nullptr)
+			{
+				const FDateTime Now = FDateTime::Now();
+				const int32 Hour12 = (Now.GetHour() % 12 == 0) ? 12 : Now.GetHour() % 12;
+				const FString Stamp = FString::Printf(TEXT("%s %d:%02d"),
+					Now.GetHour() < 12 ? TEXT("오전") : TEXT("오후"), Hour12, Now.GetMinute());
+
+				UTextBlock* Time = WidgetTree->ConstructWidget<UTextBlock>();
+				Time->SetText(FText::FromString(Stamp));
+				FSlateFontInfo TimeFont = Time->GetFont();
+				TimeFont.Size = 20;
+				Time->SetFont(TimeFont);
+				Time->SetColorAndOpacity(FSlateColor(TextDim));
+				Time->SetVisibility(ESlateVisibility::HitTestInvisible);
+
+				// 말풍선 슬롯의 아래 여백만큼 같이 띄워야 시각이 말풍선 아래 모서리 옆에 선다.
+				float Lift = 6.f;
+				if (const UHorizontalBoxSlot* AnchorSlot = Cast<UHorizontalBoxSlot>(Anchor->Slot))
+				{
+					Lift += AnchorSlot->GetPadding().Bottom;
+				}
+				const int32 Index = Row->GetChildIndex(Anchor);
+				Row->InsertChildAt(bIsUser ? Index : Index + 1, Time);
+				if (UHorizontalBoxSlot* S = Cast<UHorizontalBoxSlot>(Time->Slot))
+				{
+					S->SetVerticalAlignment(VAlign_Bottom);
+					S->SetPadding(bIsUser ? FMargin(0.f, 0.f, 14.f, Lift) : FMargin(14.f, 0.f, 0.f, Lift));
+				}
+			}
 		}
 	}
 

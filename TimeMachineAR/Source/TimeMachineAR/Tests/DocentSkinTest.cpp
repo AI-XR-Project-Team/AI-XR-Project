@@ -126,9 +126,24 @@ bool FDocentSkinTest::RunTest(const FString& Parameters)
 		Widget->AddPreviewBubble(false, TEXT("안녕하세요!\n궁금한 공룡이 있다면 언제든지\n물어보세요!"));
 		Widget->AddPreviewBubble(true,  TEXT("티라노사우루스에 대해 설명해줘"));
 		Widget->AddPreviewBubble(false, TEXT("티라노사우루스는 약 6,600만 년 전\n백악기 후기에 살았던 대형 육식 공룡이에요.\n강력한 턱과 날카로운 이빨로 유명하며,\n당시 생태계의 최상위 포식자였습니다."));
+		Widget->AddExhibitCard();
+		Widget->AddPreviewBubble(true,  TEXT("크기는 얼마나 컸을까?"));
 		const bool bOk = RenderToPng(Slate, Size, TEXT("DocentSkinPreview_Chat.png"));
 		Widget->RemoveFromRoot();
 		TestTrue(TEXT("Rendered chat preview"), bOk);
+	}
+
+	// 3) 주제 선택 메뉴
+	{
+		UDocentChatWidget* Widget = CreateWidget<UDocentChatWidget>(World, Class);
+		if (!TestNotNull(TEXT("Widget (menu)"), Widget)) { return false; }
+		Widget->AddToRoot();
+		TSharedRef<SWidget> Slate = Widget->TakeWidget();
+		OpenDocentTab(Widget);
+		Widget->AddTopicMenu();
+		const bool bOk = RenderToPng(Slate, Size, TEXT("DocentSkinPreview_Menu.png"));
+		Widget->RemoveFromRoot();
+		TestTrue(TEXT("Rendered menu preview"), bOk);
 	}
 	return true;
 }
