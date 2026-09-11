@@ -269,6 +269,11 @@ protected:
 	void OnChatOpenChanged(bool bOpen);
 
 private:
+	UFUNCTION() void HandleReferenceCapture();
+	UFUNCTION() void HandleReferenceRescan();
+	UFUNCTION() void HandleReferenceExit();
+	void RefreshReferenceUI();
+	bool bReferenceRecognized = false;
 	// 도슨트 델리게이트는 전부 다이나믹이라 핸들러가 UFUNCTION 이어야 한다.
 	UFUNCTION() void HandleSessionReady(const FString& SessionId);
 	UFUNCTION() void HandleDelta(const FString& Text);
