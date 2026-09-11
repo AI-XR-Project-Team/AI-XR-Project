@@ -911,8 +911,14 @@ void UDocentChatWidget::ApplyScanSkin()
 		if (UTexture2D* Arrow = LoadObject<UTexture2D>(nullptr, TEXT("/Game/UI/Docent/arrow_back.arrow_back")))
 		{
 			UImage* Icon = WidgetTree->ConstructWidget<UImage>();
-			Icon->SetBrushFromTexture(Arrow);
-			Icon->SetDesiredSizeOverride(FVector2D(56.f, 56.f));
+			{
+				// 새로 만든 위젯은 아직 Slate 가 없어 SetDesiredSizeOverride 가 무시된다.
+				// 브러시 ImageSize 로 크기를 박아야 한다.
+				FSlateBrush B;
+				B.SetResourceObject(Arrow);
+				B.ImageSize = FVector2D(56.f, 56.f);
+				Icon->SetBrush(B);
+			}
 			Icon->SetColorAndOpacity(FLinearColor::White);
 			Icon->SetVisibility(ESlateVisibility::HitTestInvisible);
 			Back->SetContent(Icon);
@@ -1098,8 +1104,14 @@ namespace
 		Box->SetWidthOverride(Diameter);
 		Box->SetHeightOverride(Diameter);
 		UImage* Icon = Tree->ConstructWidget<UImage>();
-		Icon->SetBrushFromTexture(Tex);
-		Icon->SetDesiredSizeOverride(FVector2D(IconSize, IconSize));
+		{
+			// 새로 만든 위젯은 아직 Slate 가 없어 SetDesiredSizeOverride 가 무시된다.
+			// 브러시 ImageSize 로 크기를 박아야 한다.
+			FSlateBrush B;
+			B.SetResourceObject(Tex);
+			B.ImageSize = FVector2D(IconSize, IconSize);
+			Icon->SetBrush(B);
+		}
 		Icon->SetColorAndOpacity(FLinearColor::White);
 		Icon->SetVisibility(ESlateVisibility::HitTestInvisible);
 		Box->SetContent(Icon);
@@ -1134,9 +1146,10 @@ void UDocentChatWidget::ApplyChatSkin()
 	}
 
 	// ---- 상단 바: 원형 뒤로가기 / 제목 / 원형 더보기
-	MakeRoundIconButton(CloseButton, TEXT("/Game/UI/Docent/arrow_back.arrow_back"), 92.f, 48.f);
+	// 실기기에서 92px 은 손가락보다 작아 보였다 - 1.7 배(156).
+	MakeRoundIconButton(CloseButton, TEXT("/Game/UI/Docent/arrow_back.arrow_back"), 156.f, 82.f);
 	MakeRoundIconButton(Cast<UButton>(GetWidgetFromName(TEXT("MenuButton"))),
-		TEXT("/Game/UI/Docent/more_vert.more_vert"), 92.f, 48.f);
+		TEXT("/Game/UI/Docent/more_vert.more_vert"), 156.f, 82.f);
 	if (DocentNameText != nullptr)
 	{
 		FSlateFontInfo Font = DocentNameText->GetFont();
@@ -1181,9 +1194,11 @@ void UDocentChatWidget::ApplyChatSkin()
 	if (InputBox != nullptr)
 	{
 		FEditableTextBoxStyle Style = InputBox->WidgetStyle;
-		Style.SetBackgroundImageNormal (FSlateRoundedBoxBrush(Glass,   28.f, Outline, 2.f));
-		Style.SetBackgroundImageHovered(FSlateRoundedBoxBrush(Glass,   28.f, Outline, 2.f));
-		Style.SetBackgroundImageFocused(FSlateRoundedBoxBrush(GlassHi, 28.f, Outline, 2.f));
+		// 바깥 입력 바가 이미 유리 캡슐이라 텍스트 상자 자체는 테두리 없이 투명하게.
+		// 캡슐 안에 캡슐이 겹쳐 보이던 것을 없앤다(목업은 한 겹).
+		Style.SetBackgroundImageNormal (FSlateRoundedBoxBrush(FLinearColor::Transparent, 28.f));
+		Style.SetBackgroundImageHovered(FSlateRoundedBoxBrush(FLinearColor::Transparent, 28.f));
+		Style.SetBackgroundImageFocused(FSlateRoundedBoxBrush(FLinearColor(1.f, 1.f, 1.f, 0.04f), 28.f));
 		Style.SetPadding(FMargin(34.f, 26.f));
 		Style.SetForegroundColor(FSlateColor(TextMain));
 		FSlateFontInfo Font = Style.TextStyle.Font;
@@ -1193,25 +1208,9 @@ void UDocentChatWidget::ApplyChatSkin()
 		InputBox->SetHintText(FText::FromString(TEXT("메시지를 입력하세요...")));
 		InputBox->SynchronizeProperties();
 	}
-	if (SendButton != nullptr)
-	{
-		FButtonStyle Style = SendButton->GetStyle();
-		Style.SetNormal (FSlateRoundedBoxBrush(Glass,   50.f, Outline, 2.f));
-		Style.SetHovered(FSlateRoundedBoxBrush(GlassHi, 50.f, Outline, 2.f));
-		Style.SetPressed(FSlateRoundedBoxBrush(GlassHi, 50.f, Outline, 2.f));
-		Style.SetNormalPadding(FMargin(0.f));
-		Style.SetPressedPadding(FMargin(0.f));
-		SendButton->SetStyle(Style);
-	}
-	if (UImage* Send = Cast<UImage>(GetWidgetFromName(TEXT("SendIcon"))))
-	{
-		if (UTexture2D* Tex = DocentSkinTexture(TEXT("icon_send")))
-		{
-			Send->SetBrushFromTexture(Tex);
-			Send->SetDesiredSizeOverride(FVector2D(48.f, 48.f));
-			Send->SetColorAndOpacity(TextMain);
-		}
-	}
+	// 보내기: 상단 버튼과 같은 원형 글래스. 시트의 icon_send 는 어두워서 프로젝트의
+	// 흰 send 아이콘을 쓴다. SendIcon 은 버튼 내용이 통째로 바뀌면서 떨어져 나간다.
+	MakeRoundIconButton(SendButton, TEXT("/Game/UI/Docent/send.send"), 132.f, 72.f);
 }
 
 
@@ -1343,8 +1342,14 @@ void UDocentChatWidget::AddExhibitCard()
 		if (UTexture2D* Expand = LoadObject<UTexture2D>(nullptr, TEXT("/Game/UI/DinoCard/Icons/fullscreen.fullscreen")))
 		{
 			UImage* Icon = WidgetTree->ConstructWidget<UImage>();
-			Icon->SetBrushFromTexture(Expand);
-			Icon->SetDesiredSizeOverride(FVector2D(40.f, 40.f));
+			{
+				// 새로 만든 위젯은 아직 Slate 가 없어 SetDesiredSizeOverride 가 무시된다.
+				// 브러시 ImageSize 로 크기를 박아야 한다.
+				FSlateBrush B;
+				B.SetResourceObject(Expand);
+				B.ImageSize = FVector2D(40.f, 40.f);
+				Icon->SetBrush(B);
+			}
 			Icon->SetColorAndOpacity(FLinearColor(1.f, 1.f, 1.f, 0.75f));
 			if (UHorizontalBoxSlot* S = Cast<UHorizontalBoxSlot>(NameRow->AddChild(Icon)))
 			{

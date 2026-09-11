@@ -98,8 +98,14 @@ void UDocentQuickChip::ApplySkin()
 		*FString::Printf(TEXT("/Game/UI/DinoCard/Icons/%s.%s"), *IconAsset, *IconAsset)))
 	{
 		UImage* Icon = WidgetTree->ConstructWidget<UImage>();
-		Icon->SetBrushFromTexture(IconTex);
-		Icon->SetDesiredSizeOverride(bTwoLine ? FVector2D(72.f, 72.f) : FVector2D(64.f, 64.f));
+		{
+			// 새로 만든 위젯은 아직 Slate 가 없어 SetDesiredSizeOverride 가 무시된다.
+			// 브러시 ImageSize 로 크기를 박아야 한다.
+			FSlateBrush B;
+			B.SetResourceObject(IconTex);
+			B.ImageSize = bTwoLine ? FVector2D(72.f, 72.f) : FVector2D(64.f, 64.f);
+			Icon->SetBrush(B);
+		}
 		Icon->SetVisibility(ESlateVisibility::HitTestInvisible);
 		if (UHorizontalBoxSlot* S = Cast<UHorizontalBoxSlot>(Row->AddChild(Icon)))
 		{
@@ -144,8 +150,14 @@ void UDocentQuickChip::ApplySkin()
 		TEXT("/Game/UI/DinoCard/Icons/chevron_right.chevron_right")))
 	{
 		UImage* Arrow = WidgetTree->ConstructWidget<UImage>();
-		Arrow->SetBrushFromTexture(Chev);
-		Arrow->SetDesiredSizeOverride(FVector2D(36.f, 36.f));
+		{
+			// 새로 만든 위젯은 아직 Slate 가 없어 SetDesiredSizeOverride 가 무시된다.
+			// 브러시 ImageSize 로 크기를 박아야 한다.
+			FSlateBrush B;
+			B.SetResourceObject(Chev);
+			B.ImageSize = FVector2D(36.f, 36.f);
+			Arrow->SetBrush(B);
+		}
 		Arrow->SetColorAndOpacity(FLinearColor(1.f, 1.f, 1.f, 0.6f));
 		Arrow->SetVisibility(ESlateVisibility::HitTestInvisible);
 		if (UHorizontalBoxSlot* S = Cast<UHorizontalBoxSlot>(Row->AddChild(Arrow)))
