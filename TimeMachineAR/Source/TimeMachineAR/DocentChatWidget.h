@@ -9,6 +9,7 @@ class UButton;
 class UDocentChatBubble;
 class UDocentQuickChip;
 class UEditableTextBox;
+class UImage;
 class UPanelWidget;
 class UScrollBox;
 class USpacer;
@@ -272,8 +273,32 @@ private:
 	UFUNCTION() void HandleReferenceCapture();
 	UFUNCTION() void HandleReferenceRescan();
 	UFUNCTION() void HandleReferenceExit();
+	UFUNCTION() void HandleCameraFlipClicked();
+	UFUNCTION() void HandleCameraFacingChanged(bool bFront);
 	void RefreshReferenceUI();
 	bool bReferenceRecognized = false;
+
+	/**
+	 * 스캔 화면의 WBP 배치를 코드로 다듬는다. WBP 는 건드리지 않는다.
+	 *
+	 * 셔터(원이 아니라 타원으로 그려지던 것), 뒤로가기(글리프가 원 아래로 처짐),
+	 * 위치 칩(두 줄 텍스트 상자)을 목업 모양으로 바꾸고 상단 두 요소의 높이를
+	 * 맞춘다. 위젯 이름이 없으면 그 항목만 건너뛴다.
+	 */
+	void ApplyScanSkin();
+
+	/** 위치 칩 내용. 제목·부제·점 색을 한 번에 바꾼다. */
+	void SetLocationChip(const FString& Title, const FString& Subtitle, const FLinearColor& DotColor);
+
+	/** 전면(셀카) 카메라 상태. 스캔 UI 를 접고 안내 문구를 바꾼다. */
+	bool bFrontCamera = false;
+
+	/** 전환 직전에 스캔 중이었으면 후면으로 돌아올 때 다시 켠다. */
+	bool bResumeScanAfterFlip = false;
+
+	// ApplyScanSkin 이 만든 위치 칩 부속. WBP 에 없는 위젯이라 여기서 들고 있는다.
+	UPROPERTY() TObjectPtr<UTextBlock> LocationSubText;
+	UPROPERTY() TObjectPtr<UImage> LocationDot;
 	// 도슨트 델리게이트는 전부 다이나믹이라 핸들러가 UFUNCTION 이어야 한다.
 	UFUNCTION() void HandleSessionReady(const FString& SessionId);
 	UFUNCTION() void HandleDelta(const FString& Text);

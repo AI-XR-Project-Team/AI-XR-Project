@@ -20,6 +20,10 @@ public class TimeMachineAR : ModuleRules
 			// Launch : FJavaWrapper. GameActivity 에 심어 둔 메서드를 JNI 로 부른다.
 			PrivateDependencyModuleNames.Add("Launch");
 
+			// GoogleARCoreBase : 전면 카메라 세션 설정(UGoogleARCoreSessionConfig).
+			// 플러그인이 uproject 에서 Android 전용이라 다른 플랫폼에는 없다.
+			PrivateDependencyModuleNames.Add("GoogleARCoreBase");
+
 			// UPL : 가상 키보드가 가리는 높이를 묻는 메서드를 GameActivity 에 주입한다.
 			// UE 가 자체적으로 재는 값은 몰입 모드에서 음수로 나와 쓸 수 없다.
 			AdditionalPropertiesForReceipt.Add(

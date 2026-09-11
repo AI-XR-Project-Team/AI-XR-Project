@@ -23,6 +23,16 @@
 #include "UnrealClient.h"
 #include "Misc/CommandLine.h"
 #include "Misc/Parse.h"
+#include "Blueprint/WidgetTree.h"
+#include "Components/ButtonSlot.h"
+#include "Components/HorizontalBox.h"
+#include "Components/HorizontalBoxSlot.h"
+#include "Components/OverlaySlot.h"
+#include "Components/SizeBox.h"
+#include "Components/VerticalBox.h"
+#include "Components/VerticalBoxSlot.h"
+#include "Engine/Texture2D.h"
+#include "Brushes/SlateRoundedBoxBrush.h"
 
 #if PLATFORM_ANDROID
 #include "Android/AndroidApplication.h"
@@ -77,8 +87,10 @@ void UDocentChatWidget::NativeConstruct()
 		}), 8.f, false);
 	}
 #endif
+	ApplyScanSkin();
 	if (UButton* B = Cast<UButton>(GetWidgetFromName(TEXT("RefCaptureButton")))) B->OnClicked.AddUniqueDynamic(this, &UDocentChatWidget::HandleReferenceCapture);
-	if (UButton* B = Cast<UButton>(GetWidgetFromName(TEXT("RefRescanButton")))) B->OnClicked.AddUniqueDynamic(this, &UDocentChatWidget::HandleReferenceRescan);
+	// 목업의 ↻ 는 카메라 전환이다. 다시 스캔은 셔터(스캔 중이 아닐 때)와 탭바가 맡는다.
+	if (UButton* B = Cast<UButton>(GetWidgetFromName(TEXT("RefRescanButton")))) B->OnClicked.AddUniqueDynamic(this, &UDocentChatWidget::HandleCameraFlipClicked);
 	for (const FName N : {FName(TEXT("ScanCloseButton")), FName(TEXT("NabButton"))})
 		if (UButton* B = Cast<UButton>(GetWidgetFromName(N))) B->OnClicked.AddUniqueDynamic(this, &UDocentChatWidget::HandleReferenceExit);
 
@@ -116,6 +128,8 @@ void UDocentChatWidget::NativeConstruct()
 	{
 		TrackingMgr->OnMarkerFound.AddUniqueDynamic(this, &UDocentChatWidget::HandleMarkerFound);
 		TrackingMgr->OnScanStateChanged.AddUniqueDynamic(this, &UDocentChatWidget::HandleScanStateChanged);
+		TrackingMgr->OnCameraFacingChanged.AddUniqueDynamic(this, &UDocentChatWidget::HandleCameraFacingChanged);
+		bFrontCamera = TrackingMgr->IsFrontCamera();
 	}
 
 	// 안드로이드 가상 키보드. Slate 는 이 이벤트를 아무도 받지 않아서, 받아 두지
@@ -224,7 +238,7 @@ void UDocentChatWidget::NativeConstruct()
 void UDocentChatWidget::NativeDestruct()
 {
 	if (UButton* B = Cast<UButton>(GetWidgetFromName(TEXT("RefCaptureButton")))) B->OnClicked.RemoveDynamic(this, &UDocentChatWidget::HandleReferenceCapture);
-	if (UButton* B = Cast<UButton>(GetWidgetFromName(TEXT("RefRescanButton")))) B->OnClicked.RemoveDynamic(this, &UDocentChatWidget::HandleReferenceRescan);
+	if (UButton* B = Cast<UButton>(GetWidgetFromName(TEXT("RefRescanButton")))) B->OnClicked.RemoveDynamic(this, &UDocentChatWidget::HandleCameraFlipClicked);
 	for (const FName N : {FName(TEXT("ScanCloseButton")), FName(TEXT("NabButton"))})
 		if (UButton* B = Cast<UButton>(GetWidgetFromName(N))) B->OnClicked.RemoveDynamic(this, &UDocentChatWidget::HandleReferenceExit);
 	// 서브시스템은 위젯보다 오래 산다. 언바인드하지 않으면 죽은 위젯으로
@@ -262,6 +276,7 @@ void UDocentChatWidget::NativeDestruct()
 	{
 		TrackingMgr->OnMarkerFound.RemoveDynamic(this, &UDocentChatWidget::HandleMarkerFound);
 		TrackingMgr->OnScanStateChanged.RemoveDynamic(this, &UDocentChatWidget::HandleScanStateChanged);
+		TrackingMgr->OnCameraFacingChanged.RemoveDynamic(this, &UDocentChatWidget::HandleCameraFacingChanged);
 	}
 
 	if (FSlateApplication::IsInitialized())
@@ -536,8 +551,7 @@ void UDocentChatWidget::HandleMarkerFound(UARPin* Pin, const FTransform& MarkerP
 	if (AARTrackingManager* M = AARTrackingManager::GetARTrackingManager(this))
 		if (M->DinoRegistry)
 			if (UDinoInfoData* Info = M->DinoRegistry->FindByMarker(MarkerCode))
-				if (UTextBlock* Location = Cast<UTextBlock>(GetWidgetFromName(TEXT("RefLocationText"))))
-					Location->SetText(FText::FromString(Info->NameKo.ToString() + TEXT(" 전시존\n마커 인식 완료")));
+				SetLocationChip(Info->NameKo.ToString() + TEXT(" 전시존"), TEXT("현재 위치"), FLinearColor(0.23f, 0.9f, 0.44f, 1.f));
 	// Existing Blueprint delegates hide the scan panel on recognition. Restore only
 	// its nonblocking presentation after that broadcast has finished.
 	if (UWorld* World = GetWorld())
@@ -750,6 +764,10 @@ void UDocentChatWidget::ScrollToLatest()
 void UDocentChatWidget::HandleReferenceRescan()
 {
 	bReferenceRecognized = false;
+	if (!bFrontCamera)
+	{
+		SetLocationChip(TEXT("전시존 탐색 중"), TEXT("현재 위치 확인 중"), FLinearColor(0.6f, 0.6f, 0.65f, 1.f));
+	}
 	HideChat();
 	if (UWidget* Nav = GetWidgetFromName(TEXT("NavPanel"))) Nav->SetVisibility(ESlateVisibility::Collapsed);
 	if (UWidget* Scan = GetWidgetFromName(TEXT("ScanPanel"))) Scan->SetVisibility(ESlateVisibility::SelfHitTestInvisible);
@@ -760,12 +778,49 @@ void UDocentChatWidget::HandleReferenceRescan()
 void UDocentChatWidget::HandleReferenceCapture()
 {
 	AARTrackingManager* Manager = AARTrackingManager::GetARTrackingManager(this);
-	if (Manager && !Manager->IsScanning() && !bReferenceRecognized)
+	// 셀카 모드에서는 마커를 볼 수 없으므로 셔터는 늘 촬영이다.
+	if (Manager && !Manager->IsScanning() && !bReferenceRecognized && !bFrontCamera)
 	{
 		HandleReferenceRescan();
 		return;
 	}
 	FScreenshotRequest::RequestScreenshot(FPaths::ProjectSavedDir() / TEXT("Screenshots/ARCapture.png"), true, true);
+}
+
+void UDocentChatWidget::HandleCameraFlipClicked()
+{
+	AARTrackingManager* Manager = AARTrackingManager::GetARTrackingManager(this);
+	if (Manager == nullptr)
+	{
+		return;
+	}
+	// 후면으로 돌아왔을 때 사용자가 다시 스캔 버튼을 찾지 않아도 되게, 전환 전
+	// 스캔 상태를 기억해 둔다. ToggleCameraFacing 이 스캔을 끄기 전에 읽어야 한다.
+	bResumeScanAfterFlip = !Manager->IsFrontCamera() && Manager->IsScanning();
+	bReferenceRecognized = false;
+	Manager->ToggleCameraFacing();
+}
+
+void UDocentChatWidget::HandleCameraFacingChanged(bool bFront)
+{
+	bFrontCamera = bFront;
+	if (!bFront && bResumeScanAfterFlip)
+	{
+		if (AARTrackingManager* Manager = AARTrackingManager::GetARTrackingManager(this))
+		{
+			Manager->StartScan();
+		}
+	}
+	bResumeScanAfterFlip = false;
+	if (bFront)
+	{
+		SetLocationChip(TEXT("셀카 모드"), TEXT("전면 카메라"), FLinearColor(0.55f, 0.5f, 1.f, 1.f));
+	}
+	else
+	{
+		SetLocationChip(TEXT("전시존 탐색 중"), TEXT("현재 위치 확인 중"), FLinearColor(0.6f, 0.6f, 0.65f, 1.f));
+	}
+	RefreshReferenceUI();
 }
 
 void UDocentChatWidget::HandleReferenceExit()
@@ -777,15 +832,28 @@ void UDocentChatWidget::RefreshReferenceUI()
 {
 	const AARTrackingManager* Manager = AARTrackingManager::GetARTrackingManager(this);
 	const bool bScanning = Manager && Manager->IsScanning();
-	const FLinearColor Accent = bReferenceRecognized ? FLinearColor(0.23f,0.9f,0.44f,1.f) :
+	const FLinearColor Accent = bFrontCamera ? FLinearColor(0.55f, 0.5f, 1.f, 1.f) :
+		bReferenceRecognized ? FLinearColor(0.23f,0.9f,0.44f,1.f) :
 		(bScanning ? FLinearColor(0.08f,0.43f,1.f,1.f) : FLinearColor::White);
 	if (UImage* Frame = Cast<UImage>(GetWidgetFromName(TEXT("ScanFramImage"))))
 	{
 		Frame->SetColorAndOpacity(Accent);
+		// 전면 카메라는 마커를 못 보므로 조준 틀을 걷는다. 인식된 뒤에는 조준원만 거둔다.
+		Frame->SetVisibility(bFrontCamera ? ESlateVisibility::Collapsed : ESlateVisibility::HitTestInvisible);
+	}
+	if (UImage* Reticle = Cast<UImage>(GetWidgetFromName(TEXT("RefReticleImage"))))
+	{
+		Reticle->SetVisibility((bFrontCamera || bReferenceRecognized) ? ESlateVisibility::Collapsed : ESlateVisibility::HitTestInvisible);
+	}
+	if (UImage* Flip = Cast<UImage>(GetWidgetFromName(TEXT("RefRefreshIcon"))))
+	{
+		Flip->SetColorAndOpacity(bFrontCamera ? Accent : FLinearColor::White);
 	}
 	if (UTextBlock* Hint = Cast<UTextBlock>(GetWidgetFromName(TEXT("ScanHintText"))))
 	{
-		const FText Message = FText::FromString(bReferenceRecognized ?
+		const FText Message = FText::FromString(bFrontCamera ?
+			TEXT("셀카 모드예요!\n전환 버튼을 다시 누르면 후면 카메라로 돌아가요.") :
+			bReferenceRecognized ?
 			TEXT("대상을 인식했어요!\n공룡을 터치하면 정보를 볼 수 있어요.") :
 			(bScanning ? TEXT("공룡 마커를 화면 중앙에 맞춰주세요\n더 선명하게 인식할 수 있어요!") :
 			TEXT("AR 스캔을 눌러 시작해주세요\n전시물의 마커를 비춰주세요.")));
@@ -803,4 +871,171 @@ void UDocentChatWidget::RefreshReferenceUI()
 		Icon->SetColorAndOpacity(bScanVisible ? (bReferenceRecognized ? Accent : FLinearColor(0.08f,0.43f,1.f,1.f)) : FLinearColor::White);
 	if (UTextBlock* Label = Cast<UTextBlock>(GetWidgetFromName(TEXT("ScanLabel"))))
 		Label->SetColorAndOpacity(FSlateColor(bScanVisible ? (bReferenceRecognized ? Accent : FLinearColor(0.08f,0.43f,1.f,1.f)) : FLinearColor::White));
+}
+
+void UDocentChatWidget::ApplyScanSkin()
+{
+	if (WidgetTree == nullptr)
+	{
+		return;
+	}
+	// UMG 단위. 실기기(1440 폭)는 DPI 1.333 배로 그려진다.
+	constexpr float TopInset = 48.f;
+	constexpr float TopHeight = 116.f;
+	const FLinearColor Panel = FLinearColor::FromSRGBColor(FColor(18, 22, 30, 215));
+	const FLinearColor PanelOutline = FLinearColor(1.f, 1.f, 1.f, 0.14f);
+
+	// 뒤로가기: 텍스트 글리프는 베이스라인 때문에 원 아래로 처진다. 아이콘으로 바꾼다.
+	if (UButton* Back = Cast<UButton>(GetWidgetFromName(TEXT("ScanCloseButton"))))
+	{
+		FButtonStyle Style = Back->GetStyle();
+		Style.SetNormal(FSlateRoundedBoxBrush(FLinearColor::FromSRGBColor(FColor(20, 22, 28, 180)), TopHeight * 0.5f));
+		Style.SetHovered(FSlateRoundedBoxBrush(FLinearColor::FromSRGBColor(FColor(40, 44, 54, 200)), TopHeight * 0.5f));
+		Style.SetPressed(FSlateRoundedBoxBrush(FLinearColor::FromSRGBColor(FColor(40, 44, 54, 200)), TopHeight * 0.5f));
+		Style.SetNormalPadding(FMargin(0.f));
+		Style.SetPressedPadding(FMargin(0.f));
+		Back->SetStyle(Style);
+		if (UTexture2D* Arrow = LoadObject<UTexture2D>(nullptr, TEXT("/Game/UI/Docent/arrow_back.arrow_back")))
+		{
+			UImage* Icon = WidgetTree->ConstructWidget<UImage>();
+			Icon->SetBrushFromTexture(Arrow);
+			Icon->SetDesiredSizeOverride(FVector2D(56.f, 56.f));
+			Icon->SetColorAndOpacity(FLinearColor::White);
+			Icon->SetVisibility(ESlateVisibility::HitTestInvisible);
+			Back->SetContent(Icon);
+			if (UButtonSlot* IconSlot = Cast<UButtonSlot>(Icon->Slot))
+			{
+				IconSlot->SetPadding(FMargin(0.f));
+				IconSlot->SetHorizontalAlignment(HAlign_Center);
+				IconSlot->SetVerticalAlignment(VAlign_Center);
+			}
+		}
+	}
+	if (USizeBox* BackSize = Cast<USizeBox>(GetWidgetFromName(TEXT("RefBackSize"))))
+	{
+		BackSize->SetWidthOverride(TopHeight);
+		BackSize->SetHeightOverride(TopHeight);
+		if (UOverlaySlot* S = Cast<UOverlaySlot>(BackSize->Slot))
+		{
+			S->SetPadding(FMargin(38.f, TopInset, 0.f, 0.f));
+		}
+	}
+
+	// 위치 칩: 두 줄 텍스트 상자 → 제목 + "현재 위치 ●" 캡슐. 뒤로가기와 같은 높이로 맞춘다.
+	UTextBlock* Title = Cast<UTextBlock>(GetWidgetFromName(TEXT("RefLocationText")));
+	UBorder* Chip = Cast<UBorder>(GetWidgetFromName(TEXT("RefLocationPanel")));
+	if (Title != nullptr && Chip != nullptr)
+	{
+		if (USizeBox* ChipSize = Cast<USizeBox>(GetWidgetFromName(TEXT("RefLocationSize"))))
+		{
+			ChipSize->ClearWidthOverride();
+			ChipSize->SetMinDesiredWidth(360.f);
+			ChipSize->SetHeightOverride(TopHeight);
+			if (UOverlaySlot* S = Cast<UOverlaySlot>(ChipSize->Slot))
+			{
+				S->SetPadding(FMargin(38.f + TopHeight + 16.f, TopInset, 0.f, 0.f));
+			}
+		}
+		Chip->SetBrush(FSlateRoundedBoxBrush(Panel, TopHeight * 0.5f, PanelOutline, 1.5f));
+		Chip->SetBrushColor(FLinearColor::White);
+		Chip->SetPadding(FMargin(32.f, 0.f, 36.f, 0.f));
+		Chip->SetVerticalAlignment(VAlign_Center);
+		Chip->SetHorizontalAlignment(HAlign_Left);
+
+		UVerticalBox* Column = WidgetTree->ConstructWidget<UVerticalBox>();
+		Title->RemoveFromParent();
+		FSlateFontInfo TitleFont = Title->GetFont();
+		TitleFont.Size = 30;
+		Title->SetFont(TitleFont);
+		Title->SetColorAndOpacity(FSlateColor(FLinearColor::White));
+		Title->SetAutoWrapText(false);
+		if (UVerticalBoxSlot* S = Column->AddChildToVerticalBox(Title))
+		{
+			S->SetPadding(FMargin(0.f, 0.f, 0.f, 4.f));
+		}
+
+		UHorizontalBox* Row = WidgetTree->ConstructWidget<UHorizontalBox>();
+		LocationSubText = WidgetTree->ConstructWidget<UTextBlock>();
+		FSlateFontInfo SubFont = TitleFont;
+		SubFont.Size = 23;
+		LocationSubText->SetFont(SubFont);
+		LocationSubText->SetColorAndOpacity(FSlateColor(FLinearColor(0.72f, 0.76f, 0.84f, 1.f)));
+		if (UHorizontalBoxSlot* S = Row->AddChildToHorizontalBox(LocationSubText))
+		{
+			S->SetVerticalAlignment(VAlign_Center);
+		}
+		LocationDot = WidgetTree->ConstructWidget<UImage>();
+		LocationDot->SetBrush(FSlateRoundedBoxBrush(FLinearColor::White, 8.f));
+		LocationDot->SetDesiredSizeOverride(FVector2D(16.f, 16.f));
+		if (UHorizontalBoxSlot* S = Row->AddChildToHorizontalBox(LocationDot))
+		{
+			S->SetPadding(FMargin(10.f, 0.f, 0.f, 0.f));
+			S->SetVerticalAlignment(VAlign_Center);
+		}
+		Column->AddChildToVerticalBox(Row);
+		Chip->SetContent(Column);
+
+		// WBP 기본 문구가 두 줄이라 제목·부제로 나눈다.
+		SetLocationChip(TEXT("전시존 탐색 중"), TEXT("현재 위치 확인 중"), FLinearColor(0.6f, 0.6f, 0.65f, 1.f));
+	}
+
+	// 셔터: 버튼 여백이 [12,2,12,2] 라 안쪽 원이 146x166 타원으로 그려졌다.
+	// 목업은 흰 링 + 틈 + 흰 원이다. 링은 버튼 외곽선, 원은 안쪽 이미지로 그린다.
+	if (UButton* Shutter = Cast<UButton>(GetWidgetFromName(TEXT("RefCaptureButton"))))
+	{
+		constexpr float Size = 170.f;
+		constexpr float Gap = 14.f;
+		FButtonStyle Style = Shutter->GetStyle();
+		Style.SetNormal(FSlateRoundedBoxBrush(FLinearColor(0.f, 0.f, 0.f, 0.25f), Size * 0.5f, FLinearColor::White, 4.f));
+		Style.SetHovered(FSlateRoundedBoxBrush(FLinearColor(0.f, 0.f, 0.f, 0.25f), Size * 0.5f, FLinearColor::White, 4.f));
+		Style.SetPressed(FSlateRoundedBoxBrush(FLinearColor(1.f, 1.f, 1.f, 0.35f), Size * 0.5f, FLinearColor::White, 4.f));
+		Style.SetNormalPadding(FMargin(Gap));
+		Style.SetPressedPadding(FMargin(Gap));
+		Shutter->SetStyle(Style);
+		if (UImage* Inner = Cast<UImage>(GetWidgetFromName(TEXT("RefShutterInner"))))
+		{
+			Inner->SetBrush(FSlateRoundedBoxBrush(FLinearColor::White, (Size - Gap * 2.f) * 0.5f));
+			Inner->SetColorAndOpacity(FLinearColor::White);
+			if (UButtonSlot* S = Cast<UButtonSlot>(Inner->Slot))
+			{
+				S->SetPadding(FMargin(0.f));
+				S->SetHorizontalAlignment(HAlign_Fill);
+				S->SetVerticalAlignment(VAlign_Fill);
+			}
+		}
+	}
+
+	// 전환 버튼: 아이콘이 정중앙에 오도록 비대칭 여백을 없앤다.
+	if (UButton* Flip = Cast<UButton>(GetWidgetFromName(TEXT("RefRescanButton"))))
+	{
+		FButtonStyle Style = Flip->GetStyle();
+		Style.SetNormalPadding(FMargin(0.f));
+		Style.SetPressedPadding(FMargin(0.f));
+		Flip->SetStyle(Style);
+		if (UImage* Icon = Cast<UImage>(GetWidgetFromName(TEXT("RefRefreshIcon"))))
+		{
+			if (UButtonSlot* S = Cast<UButtonSlot>(Icon->Slot))
+			{
+				S->SetHorizontalAlignment(HAlign_Center);
+				S->SetVerticalAlignment(VAlign_Center);
+			}
+		}
+	}
+}
+
+void UDocentChatWidget::SetLocationChip(const FString& Title, const FString& Subtitle, const FLinearColor& DotColor)
+{
+	if (UTextBlock* TitleText = Cast<UTextBlock>(GetWidgetFromName(TEXT("RefLocationText"))))
+	{
+		// 칩을 못 꾸민 구성(부제 위젯 없음)에서는 예전처럼 두 줄로 넣는다.
+		TitleText->SetText(FText::FromString(LocationSubText ? Title : Title + TEXT("\n") + Subtitle));
+	}
+	if (LocationSubText != nullptr)
+	{
+		LocationSubText->SetText(FText::FromString(Subtitle));
+	}
+	if (LocationDot != nullptr)
+	{
+		LocationDot->SetColorAndOpacity(DotColor);
+	}
 }
