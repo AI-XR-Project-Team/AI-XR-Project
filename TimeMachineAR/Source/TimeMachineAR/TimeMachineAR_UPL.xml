@@ -19,7 +19,7 @@
 <root xmlns:android="http://schemas.android.com/apk/res/android">
 
 	<init>
-		<log text="TimeMachineAR: 가상 키보드 인셋 조회 메서드를 주입한다"/>
+		<log text="TimeMachineAR: 가상 키보드 인셋 조회·갤러리 저장 메서드를 주입한다"/>
 	</init>
 
 	<!--
@@ -76,6 +76,58 @@
 			}
 		}
 		return -1;
+	}
+
+	/**
+	 * 앱 전용 폴더에 써 둔 PNG 를 갤러리의 Screenshots 앨범(DCIM/Screenshots)에 넣는다.
+	 *
+	 * UE 의 스크린샷은 앱 전용 저장소에만 떨어져 사용자가 볼 수 없다. API 29+ 의
+	 * 범위 지정 저장소에서는 MediaStore 로 넣어야 갤러리에 뜨고, 이 경로는
+	 * 별도 권한이 필요 없다. IS_PENDING 으로 쓰는 동안 반쪽짜리 파일이 노출되지
+	 * 않게 한다. 삼성 갤러리는 DCIM/Screenshots 를 "스크린샷" 앨범으로 보여 준다.
+	 */
+	public boolean AndroidThunkJava_SaveImageToGallery(String SourcePath, String DisplayName)
+	{
+		try
+		{
+			android.content.ContentValues Values = new android.content.ContentValues();
+			Values.put(android.provider.MediaStore.Images.Media.DISPLAY_NAME, DisplayName);
+			Values.put(android.provider.MediaStore.Images.Media.MIME_TYPE, "image/png");
+			Values.put(android.provider.MediaStore.Images.Media.RELATIVE_PATH,
+				android.os.Environment.DIRECTORY_DCIM + "/Screenshots");
+			Values.put(android.provider.MediaStore.Images.Media.IS_PENDING, 1);
+			android.content.ContentResolver Resolver = getContentResolver();
+			android.net.Uri Uri = Resolver.insert(android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI, Values);
+			if (Uri == null)
+			{
+				return false;
+			}
+			java.io.OutputStream Out = Resolver.openOutputStream(Uri);
+			java.io.InputStream In = new java.io.FileInputStream(SourcePath);
+			try
+			{
+				byte[] Buffer = new byte[65536];
+				int Read;
+				while ((Read = In.read(Buffer)) &gt; 0)
+				{
+					Out.write(Buffer, 0, Read);
+				}
+			}
+			finally
+			{
+				In.close();
+				Out.close();
+			}
+			Values.clear();
+			Values.put(android.provider.MediaStore.Images.Media.IS_PENDING, 0);
+			Resolver.update(Uri, Values, null, null);
+			return true;
+		}
+		catch (Exception e)
+		{
+			android.util.Log.e("UE", "SaveImageToGallery failed: " + e);
+			return false;
+		}
 	}
 		</insert>
 	</gameActivityClassAdditions>

@@ -330,6 +330,19 @@ private:
 	/** 전면(셀카) 카메라 상태. 스캔 UI 를 접고 안내 문구를 바꾼다. */
 	bool bFrontCamera = false;
 
+	/**
+	 * 셔터로 찍은 화면을 받아 갤러리에 넣는다.
+	 *
+	 * 엔진의 스크린샷 델리게이트에 붙어 있으면 엔진은 파일을 쓰지 않고 픽셀만
+	 * 넘긴다. 앱 전용 폴더에 PNG 로 쓴 뒤 안드로이드에서는 MediaStore 로 옮긴다.
+	 * 셔터를 누른 동안만 붙여 두어 다른 스크린샷 경로(개발용 미리보기)를 막지 않는다.
+	 */
+	void HandleScreenshotCaptured(int32 Width, int32 Height, const TArray<FColor>& Pixels);
+	FDelegateHandle ScreenshotCapturedHandle;
+
+	/** 셔터 결과 안내. 만료 시각까지 힌트 말풍선에 대신 띄운다. */
+	FString CaptureToast;
+	double CaptureToastUntil = 0.0;
 
 	/** 전환 직전에 스캔 중이었으면 후면으로 돌아올 때 다시 켠다. */
 	bool bResumeScanAfterFlip = false;

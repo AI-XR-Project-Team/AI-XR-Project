@@ -35,10 +35,16 @@
 #include "Components/VerticalBoxSlot.h"
 #include "Engine/Texture2D.h"
 #include "Brushes/SlateRoundedBoxBrush.h"
+#include "Engine/GameViewportClient.h"
+#include "ImageUtils.h"
+#include "Misc/DateTime.h"
+#include "Misc/FileHelper.h"
+#include "HAL/FileManager.h"
 
 #if PLATFORM_ANDROID
 #include "Android/AndroidApplication.h"
 #include "Android/AndroidJNI.h"
+#include "Android/AndroidJavaEnv.h"
 #endif
 
 DEFINE_LOG_CATEGORY_STATIC(LogDocentChat, Log, All);
@@ -72,6 +78,26 @@ float QueryImeInsetRatio()
 
 	const int32 Permyriad = FJavaWrapper::CallIntMethod(Env, FJavaWrapper::GameActivityThis, Method);
 	return (Permyriad < 0) ? -1.0f : (Permyriad / 10000.0f);
+}
+
+/** 앱 전용 폴더의 PNG 를 갤러리 Screenshots 앨범에 넣는다. UPL 이 심은 메서드를 부른다. */
+bool SaveImageToGallery(const FString& SourcePath, const FString& DisplayName)
+{
+	JNIEnv* Env = FAndroidApplication::GetJavaEnv();
+	if (Env == nullptr)
+	{
+		return false;
+	}
+	static jmethodID Method = FJavaWrapper::FindMethod(
+		Env, FJavaWrapper::GameActivityClassID,
+		"AndroidThunkJava_SaveImageToGallery", "(Ljava/lang/String;Ljava/lang/String;)Z", /*bIsOptional=*/true);
+	if (Method == nullptr)
+	{
+		return false;
+	}
+	auto JPath = FJavaHelper::ToJavaString(Env, SourcePath);
+	auto JName = FJavaHelper::ToJavaString(Env, DisplayName);
+	return FJavaWrapper::CallBooleanMethod(Env, FJavaWrapper::GameActivityThis, Method, *JPath, *JName);
 }
 #endif
 }
@@ -246,6 +272,11 @@ void UDocentChatWidget::NativeDestruct()
 {
 	if (UButton* B = Cast<UButton>(GetWidgetFromName(TEXT("RefCaptureButton")))) B->OnClicked.RemoveDynamic(this, &UDocentChatWidget::HandleReferenceCapture);
 	if (UButton* B = Cast<UButton>(GetWidgetFromName(TEXT("RefRescanButton")))) B->OnClicked.RemoveDynamic(this, &UDocentChatWidget::HandleCameraFlipClicked);
+	if (ScreenshotCapturedHandle.IsValid())
+	{
+		UGameViewportClient::OnScreenshotCaptured().Remove(ScreenshotCapturedHandle);
+		ScreenshotCapturedHandle.Reset();
+	}
 	for (const FName N : {FName(TEXT("ScanCloseButton")), FName(TEXT("NabButton"))})
 		if (UButton* B = Cast<UButton>(GetWidgetFromName(N))) B->OnClicked.RemoveDynamic(this, &UDocentChatWidget::HandleReferenceExit);
 	// 서브시스템은 위젯보다 오래 산다. 언바인드하지 않으면 죽은 위젯으로
@@ -797,7 +828,35 @@ void UDocentChatWidget::HandleReferenceCapture()
 		HandleReferenceRescan();
 		return;
 	}
-	FScreenshotRequest::RequestScreenshot(FPaths::ProjectSavedDir() / TEXT("Screenshots/ARCapture.png"), true, true);
+	if (!ScreenshotCapturedHandle.IsValid())
+	{
+		ScreenshotCapturedHandle = UGameViewportClient::OnScreenshotCaptured().AddUObject(this, &UDocentChatWidget::HandleScreenshotCaptured);
+	}
+	// UI 없이 장면(카메라 영상 + 공룡)만 담는다. 카메라 앱의 사진처럼 쓰려는 것이고,
+	// 안드로이드 GL 에서 Slate 경로(bShowUI)는 백버퍼를 못 읽어 배경이 검게 나온다.
+	FScreenshotRequest::RequestScreenshot(FPaths::ProjectSavedDir() / TEXT("Screenshots/ARCapture.png"), /*bInShowUI=*/false, /*bAddFilenameSuffix=*/true);
+}
+
+void UDocentChatWidget::HandleScreenshotCaptured(int32 Width, int32 Height, const TArray<FColor>& Pixels)
+{
+	UGameViewportClient::OnScreenshotCaptured().Remove(ScreenshotCapturedHandle);
+	ScreenshotCapturedHandle.Reset();
+
+	const FString Name = FString::Printf(TEXT("TimeMachineAR_%s.png"), *FDateTime::Now().ToString(TEXT("%Y%m%d_%H%M%S")));
+	const FString Path = FPaths::ProjectSavedDir() / TEXT("Screenshots") / Name;
+	TArray64<uint8> Png;
+	FImageUtils::PNGCompressImageArray(Width, Height, Pixels, Png);
+	bool bSaved = FFileHelper::SaveArrayToFile(Png, *Path);
+#if PLATFORM_ANDROID
+	// 엔진 경로는 "../../../" 로 시작하는 상대 경로라 자바가 열 수 없다. 실제 저장소 경로로 푼다.
+	bSaved = bSaved && SaveImageToGallery(IFileManager::Get().ConvertToAbsolutePathForExternalAppForRead(*Path), Name);
+#endif
+	UE_LOG(LogDocentChat, Log, TEXT("[셔터] %s (%dx%d) -> %s"), bSaved ? TEXT("저장") : TEXT("저장 실패"), Width, Height, *Path);
+	CaptureToast = bSaved
+		? TEXT("사진을 저장했어요!\n갤러리의 Screenshots 앨범에서 볼 수 있어요.")
+		: TEXT("사진을 저장하지 못했어요.\n저장 공간을 확인해 주세요.");
+	CaptureToastUntil = FPlatformTime::Seconds() + 2.5;
+	RefreshReferenceUI();
 }
 
 void UDocentChatWidget::HandleCameraFlipClicked()
@@ -864,7 +923,9 @@ void UDocentChatWidget::RefreshReferenceUI()
 	}
 	if (UTextBlock* Hint = Cast<UTextBlock>(GetWidgetFromName(TEXT("ScanHintText"))))
 	{
-		const FText Message = FText::FromString(bFrontCamera ?
+		const FText Message = FText::FromString(
+			(FPlatformTime::Seconds() < CaptureToastUntil) ? *CaptureToast :
+			bFrontCamera ?
 			TEXT("셀카 모드예요!\n전환 버튼을 다시 누르면 후면 카메라로 돌아가요.") :
 			bReferenceRecognized ?
 			TEXT("대상을 인식했어요!\n공룡을 터치하면 정보를 볼 수 있어요.") :
