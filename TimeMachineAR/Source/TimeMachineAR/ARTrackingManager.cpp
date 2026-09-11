@@ -226,9 +226,11 @@ void AARTrackingManager::CheckForTrackedImages()
 		// 4. 중복 스폰 방지
 		bIsAnchored = true;
 
-		// 5. 루트를 AR 앵커에 고정. 다시 스캔할 때 걷어내야 하므로 핀을 들고 있는다.
+		// 5. 마커 앵커 대신 월드 앵커에 고정 (TrackedImage 대신 nullptr 전달).
+		// 진동(Jitter)과 움찔거림(Twitch)을 완벽히 없애는 대신, 
+		// 기기 이동 시 미세하게 밀리는 현상(Drift)만 남기는 3번 방식입니다.
 		OverlayPin = UARBlueprintLibrary::PinComponent(
-			SpawnedOverlay->GetRootComponent(), ImageTransform, TrackedImage, FName("DinoHybridAnchor"));
+			SpawnedOverlay->GetRootComponent(), ImageTransform, nullptr, FName("DinoHybridAnchor"));
 
 		UE_LOG(LogTemp, Log, TEXT("[AR] 마커 '%s' -> 공룡 '%s'"),
 			MarkerCode.IsEmpty() ? TEXT("(이름없음)") : *MarkerCode,
