@@ -26,6 +26,13 @@
 			]
 		},
 		{
+			"Name": "GoogleARCoreServices",
+			"Enabled": true,
+			"SupportedTargetPlatforms": [
+				"Android"
+			]
+		},
+		{
 			"Name": "AndroidPermission",
 			"Enabled": true
 		},
