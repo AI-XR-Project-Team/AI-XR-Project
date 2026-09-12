@@ -77,7 +77,8 @@ void UNavGuideLogWidget::SyncWithMinimap()
 	// 있는가"로 판정해야 한다. 숨겨진(부모 접힘 포함) 위젯은 NativePaint 가 멈춰 시각이 안 는다.
 	const bool bNavShown = BoundMinimap.IsValid() && BoundMinimap->WasRecentlyPainted();
 
-	const ESlateVisibility Want = bNavShown
+	// The full map now owns its Lexi speech bubble.
+	const ESlateVisibility Want = bNavShown && Phase != ENavGuidePhase::FullMapOpen
 		? ESlateVisibility::HitTestInvisible   // 표시 전용(터치 안 먹음).
 		: ESlateVisibility::Collapsed;
 	if (GetVisibility() != Want)

@@ -5,6 +5,10 @@
 #include "Engine/GameInstance.h"
 #include "Engine/World.h"
 #include "Engine/Texture2D.h"
+#include "Styling/CoreStyle.h"
+#include "Engine/Font.h"
+#include "Framework/Application/SlateApplication.h"
+#include "Fonts/FontMeasure.h"
 #include "NavRouteProgress.h"
 #include "NavFullMapWidget.h"
 #include "NavGuideLogWidget.h"   // 안내 로그 오버레이(§D)
@@ -22,6 +26,29 @@ namespace
 
 	/** 축척이 0 으로 죽는 것을 막는 하한. */
 	constexpr float MinRangeCm = 1.f;
+
+	FString SkinPath(const TCHAR* Name)
+	{
+		return FString::Printf(TEXT("/Game/UI/Nav/Skin/%s.%s"), Name, Name);
+	}
+	const TCHAR* PoiSkin(const FNavMapNode& Node)
+	{
+		switch (FNavDestinations::Classify(Node.NodeType))
+		{
+		case ENavDestKind::Facility: return TEXT("poi_toilet");
+		case ENavDestKind::Entrance: return TEXT("poi_entrance");
+		case ENavDestKind::Exhibit:
+			switch (FNavDestinations::DinoIndexFromLabel(Node.Label))
+			{
+			case 1: return TEXT("poi_triceratops");
+			case 2: return TEXT("poi_brachiosaurus");
+			case 3: return TEXT("poi_trex");
+			// The supplied ankylosaurus POI depicts a triceratops. Keep the existing correct icon.
+			default: return nullptr;
+			}
+		default: return nullptr;
+		}
+	}
 }
 
 // ---------------------------------------------------------------------- 데이터
@@ -655,6 +682,36 @@ int32 UNavMinimapWidget::NativePaint(const FPaintArgs& Args, const FGeometry& Al
 	bHasCachedTransform = true;
 
 	const FPaintGeometry Geom = AllottedGeometry.ToPaintGeometry();
+	if (bFull && Graph.Outline.Num() >= 3)
+	{
+		// Fill the real graph polygon in narrow horizontal strips: no invented map coordinates.
+		TArray<FVector2D> Poly;
+		float Top = Size.Y, Bottom = 0;
+		for (const FVector2D& P : Graph.Outline)
+		{
+			const FVector2D V = WorldToLocal(P); Poly.Add(V);
+			Top = FMath::Min(Top, float(V.Y)); Bottom = FMath::Max(Bottom, float(V.Y));
+		}
+		++Layer;
+		for (float Y = Top + 1; Y < Bottom; Y += 2)
+		{
+			TArray<float> Crossings;
+			for (int32 I = 0; I < Poly.Num(); ++I)
+			{
+				const FVector2D A = Poly[I], B = Poly[(I + 1) % Poly.Num()];
+				if ((A.Y <= Y && B.Y > Y) || (B.Y <= Y && A.Y > Y))
+					Crossings.Add(A.X + (Y - A.Y) * (B.X - A.X) / (B.Y - A.Y));
+			}
+			Crossings.Sort();
+			const bool bGrout = FMath::Fmod(Y - Top, 48.f) < 2.f;
+			const FLinearColor Floor = FLinearColor::FromSRGBColor(bGrout ? FColor(97, 91, 79) : FColor(64, 60, 52));
+			for (int32 I = 0; I + 1 < Crossings.Num(); I += 2)
+			{
+				TArray<FVector2D> Span = { FVector2D(Crossings[I], Y), FVector2D(Crossings[I + 1], Y) };
+				FSlateDrawElement::MakeLines(OutDrawElements, Layer, Geom, Span, ESlateDrawEffect::None, Floor, false, 2.f);
+			}
+		}
+	}
 
 	// -------- 벽·구조물·전체 엣지·전체 노드를 먼저 깐다 --------
 	// 5-C2: Follow 에도 도면을 깐다("여기가 어디인지" 알 수 있게). 8m 창 밖 요소는
@@ -662,6 +719,19 @@ int32 UNavMinimapWidget::NativePaint(const FPaintArgs& Args, const FGeometry& Al
 	if (Graph.Nodes.Num() > 0)
 	{
 		PaintFullMapBase(OutDrawElements, Layer, Geom);
+		if (bFull)
+		{
+			if (const FSlateBrush* Stairs = ResolveIconBrush(SkinPath(TEXT("prop_stairs"))))
+			{
+				for (const FNavObstacle& O : Graph.Obstacles)
+				{
+					const FVector2D A = WorldToLocal(FVector2D(O.X0, O.Y1));
+					const FVector2D B = WorldToLocal(FVector2D(O.X1, O.Y0));
+					FSlateDrawElement::MakeBox(OutDrawElements, ++Layer,
+						AllottedGeometry.ToPaintGeometry(B - A, FSlateLayoutTransform(A)), Stairs);
+				}
+			}
+		}
 		// 목적지 아이콘(마름모+그림)은 도면 위에 얹는다. Full·Follow 공통(§B-1·D-8).
 		PaintDestinationIcons(OutDrawElements, Layer, AllottedGeometry);
 	}
@@ -984,6 +1054,21 @@ void UNavMinimapWidget::RebuildIconBrushes()
 {
 	IconBrushCache.Reset();
 	LoadedIconTextures.Reset();
+	if (Mode == ENavMinimapMode::Full)
+	{
+		const TCHAR* Names[] = { TEXT("prop_stairs"), TEXT("dot_orange"), TEXT("dot_blue"), TEXT("dot_green"),
+			TEXT("poi_triceratops"), TEXT("poi_brachiosaurus"), TEXT("poi_trex"), TEXT("poi_toilet"), TEXT("poi_entrance") };
+		for (const TCHAR* Name : Names)
+		{
+			if (UTexture2D* Texture = LoadObject<UTexture2D>(nullptr, *SkinPath(Name)))
+			{
+				LoadedIconTextures.Add(Texture);
+				TSharedPtr<FSlateBrush> Brush = MakeShared<FSlateBrush>();
+				Brush->SetResourceObject(Texture); Brush->DrawAs = ESlateBrushDrawType::Image;
+				IconBrushCache.Add(SkinPath(Name), Brush);
+			}
+		}
+	}
 
 	// 하단 버튼과 동일한 목적지 집합(중복 entrance 제거 등)만 지도에 그린다.
 	IconNodeIds.Reset();
@@ -1057,6 +1142,43 @@ void UNavMinimapWidget::PaintDestinationIcons(FSlateWindowElementList& Out, int3
 
 		const bool bActive = !DestinationNodeId.IsEmpty() && N.NodeId == DestinationNodeId;
 		const FLinearColor Accent = FNavDestinations::AccentColor(N.NodeType);
+		if (Mode == ENavMinimapMode::Full)
+		{
+			const ENavDestKind Kind = FNavDestinations::Classify(N.NodeType);
+			const TCHAR* Dot = Kind == ENavDestKind::Facility ? TEXT("dot_blue") :
+				Kind == ENavDestKind::Entrance ? TEXT("dot_green") : TEXT("dot_orange");
+			bool bDotClear = true;
+			for (const FNavMapNode& Other : Graph.Nodes)
+			{
+				if (Other.NodeId != N.NodeId && IconNodeIds.Contains(Other.NodeId) &&
+					FVector2D::Distance(C + FVector2D(0, 95), WorldToLocal(FVector2D(Other.PosXCm, Other.PosYCm))) < 68)
+				{ bDotClear = false; break; }
+			}
+			if (const FSlateBrush* Glow = bDotClear ? ResolveIconBrush(SkinPath(Dot)) : nullptr)
+			{
+				FSlateDrawElement::MakeBox(Out, ++Layer, AllottedGeometry.ToPaintGeometry(
+					FVector2D(44, 44), FSlateLayoutTransform(C + FVector2D(-22, 73))), Glow);
+			}
+			FSlateFontInfo LabelFont = FCoreStyle::GetDefaultFontStyle("Regular", 14);
+			const FVector2D TextSize = FSlateApplication::Get().GetRenderer()->GetFontMeasureService()->Measure(N.Label, LabelFont);
+			const FVector2D LabelSize = TextSize + FVector2D(16, 8);
+			const FVector2D LabelPos(FMath::Clamp(C.X - LabelSize.X * 0.5, 4.0,
+				FMath::Max(4.0, CachedLocalSize.X - LabelSize.X - 4)), C.Y + 46);
+			FSlateDrawElement::MakeBox(Out, ++Layer, AllottedGeometry.ToPaintGeometry(
+				LabelSize, FSlateLayoutTransform(LabelPos)), FCoreStyle::Get().GetBrush("WhiteBrush"),
+				ESlateDrawEffect::None, FLinearColor(0.008f, 0.009f, 0.01f, 0.9f));
+			FSlateDrawElement::MakeText(Out, ++Layer, AllottedGeometry.ToPaintGeometry(
+				LabelSize, FSlateLayoutTransform(LabelPos + FVector2D(8, 3))), N.Label, LabelFont,
+				ESlateDrawEffect::None, FLinearColor::White);
+			const TCHAR* Poi = PoiSkin(N);
+			if (const FSlateBrush* Sprite = Poi ? ResolveIconBrush(SkinPath(Poi)) : nullptr)
+			{
+				const float Extent = bActive ? 108.f : 98.f;
+				FSlateDrawElement::MakeBox(Out, ++Layer, AllottedGeometry.ToPaintGeometry(
+					FVector2D(Extent), FSlateLayoutTransform(C - FVector2D(Extent * 0.5f))), Sprite);
+				continue;
+			}
+		}
 
 		// 마름모(중심→꼭짓점 = Half). 화면 px 고정 크기라 Follow 배율에도 안 커진다.
 		const float Half = DestDiamondHalfPx;

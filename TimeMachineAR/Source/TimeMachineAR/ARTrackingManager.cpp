@@ -9,6 +9,9 @@
 #include "Kismet/GameplayStatics.h"
 #include "AndroidPermissionFunctionLibrary.h"
 #include "AndroidPermissionCallbackProxy.h"
+#if PLATFORM_ANDROID
+#include "GoogleARCoreSessionConfig.h"
+#endif
 
 AARTrackingManager::AARTrackingManager()
 {
@@ -138,6 +141,49 @@ void AARTrackingManager::StartARSessionInternal()
 	}
 }
 
+UARSessionConfig* AARTrackingManager::BuildFrontSessionConfig() const
+{
+#if PLATFORM_ANDROID
+	// 후면 설정을 복제하지 않고 새로 만드는 이유: 전면 카메라는 평면 탐지·증강
+	// 이미지를 못 쓰고, 후보 이미지가 들어 있으면 ARCore 가 설정을 거부한다.
+	// 카메라 오버레이·트래킹만 켠 최소 설정이면 충분하다.
+	const EARLightEstimationMode Light = SessionConfig ? SessionConfig->GetLightEstimationMode() : EARLightEstimationMode::AmbientLightEstimate;
+	const EARFrameSyncMode Sync = SessionConfig ? SessionConfig->GetFrameSyncMode() : EARFrameSyncMode::SyncTickWithoutCameraImage;
+	UGoogleARCoreSessionConfig* Front = UGoogleARCoreSessionConfig::CreateARCoreSessionConfig(
+		/*bHorizontalPlaneDetection=*/false, /*bVerticalPlaneDetection=*/false, Light, Sync,
+		/*bInEnableAutoFocus=*/true, /*bInEnableAutomaticCameraOverlay=*/true, /*bInEnableAutomaticCameraTracking=*/true);
+	Front->CameraFacing = EGoogleARCoreCameraFacing::Front;
+	return Front;
+#else
+	return nullptr;
+#endif
+}
+
+void AARTrackingManager::ToggleCameraFacing()
+{
+	const bool bWantFront = !bFrontCamera;
+	if (bWantFront && !FrontSessionConfig)
+	{
+		FrontSessionConfig = BuildFrontSessionConfig();
+	}
+	UARSessionConfig* Next = bWantFront ? FrontSessionConfig.Get() : SessionConfig;
+	if (!Next)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[AR] 카메라 전환 불가 (%s 설정 없음)"), bWantFront ? TEXT("전면") : TEXT("후면"));
+		return;
+	}
+
+	// 전면 카메라는 마커를 못 보므로 붙어 있던 공룡과 스캔 상태를 먼저 정리한다.
+	StopScan();
+	ClearOverlay();
+
+	UARBlueprintLibrary::StopARSession();
+	UARBlueprintLibrary::StartARSession(Next);
+	bFrontCamera = bWantFront;
+	UE_LOG(LogTemp, Log, TEXT("[AR] 카메라 전환: %s"), bFrontCamera ? TEXT("전면") : TEXT("후면"));
+	OnCameraFacingChanged.Broadcast(bFrontCamera);
+}
+
 void AARTrackingManager::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
 	Super::EndPlay(EndPlayReason);
@@ -155,12 +201,16 @@ void AARTrackingManager::Tick(float DeltaTime)
 	{
 		CheckForTrackedImages();
 	}
+
+	UpdateScanPhase();
 }
 
 void AARTrackingManager::CheckForTrackedImages()
 {
 	// 현재 AR 시스템이 추적 중인 모든 이미지(마커)를 가져옴 (UE5 최신 API 반영)
 	TArray<UARTrackedGeometry*> TrackedGeometries = UARBlueprintLibrary::GetAllGeometriesByClass(UARTrackedImage::StaticClass());
+
+	VisibleCandidateCount = TrackedGeometries.Num();
 
 	if (GEngine)
 	{
@@ -259,4 +309,20 @@ UDinoInfoData* AARTrackingManager::ResolveSpecies(const FString& MarkerCode) con
 	// 마커가 아직 안 정해졌거나 새 마커가 대응표에 없는 동안에도 빈 화면이
 	// 나오지 않게 한다. 폴백도 비어 있으면 BP_DinoOverlay 의 기본값이 쓰인다.
 	return DinoRegistry->FallbackSpecies;
+}
+
+void AARTrackingManager::UpdateScanPhase()
+{
+	EDinoScanPhase NewPhase = EDinoScanPhase::Idle;
+
+	if (bIsAnchored)
+	{
+		NewPhase = EDinoScanPhase::Recognized;
+	}
+	else if (bIsScanning)
+	{
+		NewPhase = (VisibleCandidateCount > 0) ? EDinoScanPhase::Aiming : EDinoScanPhase::Searching;
+	}
+
+	ScanPhase = NewPhase;
 }

@@ -9,6 +9,7 @@ class UButton;
 class UDocentChatBubble;
 class UDocentQuickChip;
 class UEditableTextBox;
+class UImage;
 class UPanelWidget;
 class UScrollBox;
 class USpacer;
@@ -51,6 +52,34 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Docent|Chat")
 	void SendQuestion(const FString& Question);
+
+#if !UE_BUILD_SHIPPING
+	/**
+	 * 렌더 미리보기·자동화 테스트용. 서버 없이 말풍선을 채운다.
+	 *
+	 * SendQuestion 은 세션과 클라이언트가 있어야 해서 에디터에서 못 쓴다.
+	 * 첫 호출에 빈 상태(아바타·인사말)를 걷어 실제 대화 시작과 같은 화면을 만든다.
+	 */
+	void AddPreviewBubble(bool bInIsUser, const FString& InText);
+#endif
+
+	/**
+	 * 지금 전시물의 카드(대표 사진·이름·태그)를 대화에 끼운다.
+	 *
+	 * 첫 답변이 끝난 뒤 자동으로 한 번 붙는다(목업 2번 화면). 데이터는 DinoRegistry 에서
+	 * ExhibitKey 로 찾는다. 전시물이 없거나 이미 붙였으면 아무 일도 없다.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Docent|Chat")
+	void AddExhibitCard();
+
+	/**
+	 * 주제 선택 메뉴(목업 3번 화면)를 대화에 끼운다. 상단 ⋮ 버튼이 부른다.
+	 *
+	 * 안내 말풍선 - 주제 행 다섯 개 - 마무리 말풍선 순서로 ChatScroll 에 붙인다.
+	 * 행을 누르면 그 주제 질문을 보낸다.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Docent|Chat")
+	void AddTopicMenu();
 
 	/**
 	 * 대화 대상 전시물을 바꾸고 세션을 새로 연다.
@@ -269,6 +298,58 @@ protected:
 	void OnChatOpenChanged(bool bOpen);
 
 private:
+	UFUNCTION() void HandleReferenceCapture();
+	UFUNCTION() void HandleReferenceRescan();
+	UFUNCTION() void HandleReferenceExit();
+	UFUNCTION() void HandleCameraFlipClicked();
+	UFUNCTION() void HandleCameraFacingChanged(bool bFront);
+	void RefreshReferenceUI();
+	bool bReferenceRecognized = false;
+
+	/**
+	 * 스캔 화면의 WBP 배치를 코드로 다듬는다. WBP 는 건드리지 않는다.
+	 *
+	 * 셔터(원이 아니라 타원으로 그려지던 것), 뒤로가기(글리프가 원 아래로 처짐),
+	 * 위치 칩(두 줄 텍스트 상자)을 목업 모양으로 바꾸고 상단 두 요소의 높이를
+	 * 맞춘다. 위젯 이름이 없으면 그 항목만 건너뛴다.
+	 */
+	void ApplyScanSkin();
+
+	/**
+	 * 레퍼런스 목업대로 채팅 화면을 입힌다.
+	 *
+	 * ApplyScanSkin 과 같은 방식이다. WBP 의 이름 있는 위젯을 찾아 제자리에서 색·글꼴·
+	 * 이미지를 바꾼다. 배치는 WBP 가 이미 채팅 구조로 짜여 있어 그대로 둔다. 텍스처는
+	 * /Game/UI/Docent/Skin 에서 경로로 부르며, 쿡에는 DocentSkinCookLabel 이 묶는다.
+	 */
+	void ApplyChatSkin();
+
+	/** 위치 칩 내용. 제목·부제·점 색을 한 번에 바꾼다. */
+	void SetLocationChip(const FString& Title, const FString& Subtitle, const FLinearColor& DotColor);
+
+	/** 전면(셀카) 카메라 상태. 스캔 UI 를 접고 안내 문구를 바꾼다. */
+	bool bFrontCamera = false;
+
+	/**
+	 * 셔터로 찍은 화면을 받아 갤러리에 넣는다.
+	 *
+	 * 엔진의 스크린샷 델리게이트에 붙어 있으면 엔진은 파일을 쓰지 않고 픽셀만
+	 * 넘긴다. 앱 전용 폴더에 PNG 로 쓴 뒤 안드로이드에서는 MediaStore 로 옮긴다.
+	 * 셔터를 누른 동안만 붙여 두어 다른 스크린샷 경로(개발용 미리보기)를 막지 않는다.
+	 */
+	void HandleScreenshotCaptured(int32 Width, int32 Height, const TArray<FColor>& Pixels);
+	FDelegateHandle ScreenshotCapturedHandle;
+
+	/** 셔터 결과 안내. 만료 시각까지 힌트 말풍선에 대신 띄운다. */
+	FString CaptureToast;
+	double CaptureToastUntil = 0.0;
+
+	/** 전환 직전에 스캔 중이었으면 후면으로 돌아올 때 다시 켠다. */
+	bool bResumeScanAfterFlip = false;
+
+	// ApplyScanSkin 이 만든 위치 칩 부속. WBP 에 없는 위젯이라 여기서 들고 있는다.
+	UPROPERTY() TObjectPtr<UTextBlock> LocationSubText;
+	UPROPERTY() TObjectPtr<UImage> LocationDot;
 	// 도슨트 델리게이트는 전부 다이나믹이라 핸들러가 UFUNCTION 이어야 한다.
 	UFUNCTION() void HandleSessionReady(const FString& SessionId);
 	UFUNCTION() void HandleDelta(const FString& Text);
@@ -277,6 +358,10 @@ private:
 	UFUNCTION() void HandleSendClicked();
 	UFUNCTION() void HandleTextCommitted(const FText& Text, ETextCommit::Type CommitMethod);
 	UFUNCTION() void HandleCloseClicked();
+	UFUNCTION() void HandleMenuClicked();
+
+	/** 카드를 붙인 전시물 키. 같은 전시물에 두 번 붙이지 않는다. */
+	FString ExhibitCardShownFor;
 	UFUNCTION() void HandleOpenClicked();
 	UFUNCTION() void HandleCloseARClicked();
 	UFUNCTION() void HandleMarkerFound(UARPin* Pin, const FTransform& MarkerPose, const FString& MarkerCode);

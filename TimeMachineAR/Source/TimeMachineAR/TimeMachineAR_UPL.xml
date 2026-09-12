@@ -19,7 +19,7 @@
 <root xmlns:android="http://schemas.android.com/apk/res/android">
 
 	<init>
-		<log text="TimeMachineAR: 가상 키보드 인셋 조회 메서드를 주입한다"/>
+		<log text="TimeMachineAR: 가상 키보드 인셋 조회·갤러리 저장 메서드를 주입한다"/>
 	</init>
 
 	<!--
@@ -77,7 +77,82 @@
 		}
 		return -1;
 	}
+
+	/**
+	 * 앱 전용 폴더에 써 둔 PNG 를 갤러리의 Screenshots 앨범(DCIM/Screenshots)에 넣는다.
+	 *
+	 * UE 의 스크린샷은 앱 전용 저장소에만 떨어져 사용자가 볼 수 없다. API 29+ 의
+	 * 범위 지정 저장소에서는 MediaStore 로 넣어야 갤러리에 뜨고, 이 경로는
+	 * 별도 권한이 필요 없다. IS_PENDING 으로 쓰는 동안 반쪽짜리 파일이 노출되지
+	 * 않게 한다. 삼성 갤러리는 DCIM/Screenshots 를 "스크린샷" 앨범으로 보여 준다.
+	 */
+	public boolean AndroidThunkJava_SaveImageToGallery(String SourcePath, String DisplayName)
+	{
+		try
+		{
+			android.content.ContentValues Values = new android.content.ContentValues();
+			Values.put(android.provider.MediaStore.Images.Media.DISPLAY_NAME, DisplayName);
+			Values.put(android.provider.MediaStore.Images.Media.MIME_TYPE, "image/png");
+			Values.put(android.provider.MediaStore.Images.Media.RELATIVE_PATH,
+				android.os.Environment.DIRECTORY_DCIM + "/Screenshots");
+			Values.put(android.provider.MediaStore.Images.Media.IS_PENDING, 1);
+			android.content.ContentResolver Resolver = getContentResolver();
+			android.net.Uri Uri = Resolver.insert(android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI, Values);
+			if (Uri == null)
+			{
+				return false;
+			}
+			java.io.OutputStream Out = Resolver.openOutputStream(Uri);
+			java.io.InputStream In = new java.io.FileInputStream(SourcePath);
+			try
+			{
+				byte[] Buffer = new byte[65536];
+				int Read;
+				while ((Read = In.read(Buffer)) &gt; 0)
+				{
+					Out.write(Buffer, 0, Read);
+				}
+			}
+			finally
+			{
+				In.close();
+				Out.close();
+			}
+			Values.clear();
+			Values.put(android.provider.MediaStore.Images.Media.IS_PENDING, 0);
+			Resolver.update(Uri, Values, null, null);
+			return true;
+		}
+		catch (Exception e)
+		{
+			android.util.Log.e("UE", "SaveImageToGallery failed: " + e);
+			return false;
+		}
+	}
 		</insert>
 	</gameActivityClassAdditions>
+
+	<!--
+		런처 아이콘을 적응형 아이콘(Adaptive Icon)으로 바꾼다.
+
+		UnrealBuildTool 은 매니페스트에 android:icon="@drawable/icon" 을 하드코딩한다
+		(UEDeployAndroid.cs:2827). 엔진 res 에는 mipmap 폴더조차 없다. 그래서
+		Build/Android/res 에 적응형 아이콘을 넣어도 매니페스트가 쳐다보지 않는다.
+
+		레거시 아이콘만 두면 One UI 런처가 흰 둥근 배경 안에 그림을 축소해 넣는다.
+		아이콘을 새로 만드는 목적이 그 흰 테두리를 없애는 것이므로 참조 자체를
+		바꿔야 한다. 이미 있는 android:icon 을 지우고 다시 넣는 이유는, 그냥
+		추가하면 속성이 중복돼 aapt 가 빌드를 세우기 때문이다.
+
+		MinSDKVersion 이 32 라 적응형 아이콘(API 26+)은 항상 쓸 수 있고 레거시
+		폴백 리소스는 필요 없다.
+	-->
+	<androidManifestUpdates>
+		<loopElements tag="application">
+			<removeAttribute tag="$" name="android:icon"/>
+			<addAttribute tag="$" name="android:icon" value="@mipmap/ic_launcher"/>
+			<addAttribute tag="$" name="android:roundIcon" value="@mipmap/ic_launcher_round"/>
+		</loopElements>
+	</androidManifestUpdates>
 
 </root>

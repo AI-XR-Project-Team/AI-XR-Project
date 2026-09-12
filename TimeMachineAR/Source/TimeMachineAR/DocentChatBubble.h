@@ -53,6 +53,17 @@ protected:
 	TObjectPtr<UTextBlock> MessageText;
 
 private:
+	/**
+	 * 레퍼런스 목업대로 역할별 스킨을 입힌다. Setup 끝에서 부른다.
+	 *
+	 * WBP 의 OnRoleApplied 뒤에 돌아 이쪽이 우선한다. 시각은 목업처럼 말풍선 바깥
+	 * 아래 모서리에 붙인다 - BubbleBg 를 담은 HorizontalBox 에 형제로 끼운다.
+	 */
+	void ApplySkin();
+
+	/** ApplySkin 이 시각 텍스트를 이미 끼웠는지. Setup 이 다시 불려도 한 번만 끼운다. */
+	bool bSkinApplied = false;
+
 	/** 화면 갱신은 MessageText 를 거치지만, 이어 붙이기의 기준은 이 값이다. */
 	FString Body;
 

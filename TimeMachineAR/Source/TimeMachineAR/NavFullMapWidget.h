@@ -76,6 +76,7 @@ public:
 	UNavMinimapWidget* GetMapView() const { return MapView; }
 
 protected:
+	virtual void NativeConstruct() override;
 	virtual FReply NativeOnMouseButtonDown(const FGeometry& InGeometry,
 		const FPointerEvent& InMouseEvent) override;
 
@@ -99,6 +100,9 @@ protected:
 	TObjectPtr<UPanelWidget> DestButtonHost;
 
 private:
+	void BuildSkinLayout();
+	UPROPERTY(Transient)
+	TObjectPtr<UPanelWidget> SkinButtonHost;
 	/** 그래프의 목적지 6종으로 하단 버튼을 C++ 로 동적 생성한다(§B-2). */
 	void BuildDestinationButtons(const FNavGraph& InGraph);
 

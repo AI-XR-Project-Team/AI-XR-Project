@@ -8,6 +8,7 @@
 #include "Blueprint/WidgetLayoutLibrary.h"
 #include "Components/PanelWidget.h"
 #include "Components/ScrollBox.h"
+#include "Components/ScrollBoxSlot.h"
 #include "Components/Spacer.h"
 #include "Components/TextBlock.h"
 #include "Engine/GameInstance.h"
@@ -15,10 +16,35 @@
 #include "Framework/Application/SlateApplication.h"
 #include "GenericPlatform/GenericApplication.h"
 #include "TimerManager.h"
+#include "Components/Image.h"
+#include "Components/Border.h"
+#include "DinoRegistry.h"
+#include "DinoInfoData.h"
+#include "Misc/Paths.h"
+#include "UnrealClient.h"
+#include "Misc/CommandLine.h"
+#include "Misc/Parse.h"
+#include "Blueprint/WidgetTree.h"
+#include "Components/ButtonSlot.h"
+#include "Components/HorizontalBox.h"
+#include "Components/HorizontalBoxSlot.h"
+#include "Components/OverlaySlot.h"
+#include "Components/SizeBox.h"
+#include "Components/SizeBoxSlot.h"
+#include "Components/VerticalBox.h"
+#include "Components/VerticalBoxSlot.h"
+#include "Engine/Texture2D.h"
+#include "Brushes/SlateRoundedBoxBrush.h"
+#include "Engine/GameViewportClient.h"
+#include "ImageUtils.h"
+#include "Misc/DateTime.h"
+#include "Misc/FileHelper.h"
+#include "HAL/FileManager.h"
 
 #if PLATFORM_ANDROID
 #include "Android/AndroidApplication.h"
 #include "Android/AndroidJNI.h"
+#include "Android/AndroidJavaEnv.h"
 #endif
 
 DEFINE_LOG_CATEGORY_STATIC(LogDocentChat, Log, All);
@@ -53,12 +79,49 @@ float QueryImeInsetRatio()
 	const int32 Permyriad = FJavaWrapper::CallIntMethod(Env, FJavaWrapper::GameActivityThis, Method);
 	return (Permyriad < 0) ? -1.0f : (Permyriad / 10000.0f);
 }
+
+/** 앱 전용 폴더의 PNG 를 갤러리 Screenshots 앨범에 넣는다. UPL 이 심은 메서드를 부른다. */
+bool SaveImageToGallery(const FString& SourcePath, const FString& DisplayName)
+{
+	JNIEnv* Env = FAndroidApplication::GetJavaEnv();
+	if (Env == nullptr)
+	{
+		return false;
+	}
+	static jmethodID Method = FJavaWrapper::FindMethod(
+		Env, FJavaWrapper::GameActivityClassID,
+		"AndroidThunkJava_SaveImageToGallery", "(Ljava/lang/String;Ljava/lang/String;)Z", /*bIsOptional=*/true);
+	if (Method == nullptr)
+	{
+		return false;
+	}
+	auto JPath = FJavaHelper::ToJavaString(Env, SourcePath);
+	auto JName = FJavaHelper::ToJavaString(Env, DisplayName);
+	return FJavaWrapper::CallBooleanMethod(Env, FJavaWrapper::GameActivityThis, Method, *JPath, *JName);
+}
 #endif
 }
 
 void UDocentChatWidget::NativeConstruct()
 {
 	Super::NativeConstruct();
+#if !UE_BUILD_SHIPPING
+	if (FParse::Param(FCommandLine::Get(), TEXT("ReferenceUIPreview")))
+	{
+		FTimerHandle PreviewTimer;
+		GetWorld()->GetTimerManager().SetTimer(PreviewTimer, FTimerDelegate::CreateWeakLambda(this, [this]()
+		{
+			FScreenshotRequest::RequestScreenshot(FPaths::ProjectSavedDir() / TEXT("Screenshots/ReferenceUIPreview.png"), true, false);
+		}), 8.f, false);
+	}
+#endif
+	ApplyScanSkin();
+	ApplyChatSkin();
+	if (UButton* B = Cast<UButton>(GetWidgetFromName(TEXT("RefCaptureButton")))) B->OnClicked.AddUniqueDynamic(this, &UDocentChatWidget::HandleReferenceCapture);
+	// 목업의 ↻ 는 카메라 전환이다. 다시 스캔은 셔터(스캔 중이 아닐 때)와 탭바가 맡는다.
+	if (UButton* B = Cast<UButton>(GetWidgetFromName(TEXT("RefRescanButton")))) B->OnClicked.AddUniqueDynamic(this, &UDocentChatWidget::HandleCameraFlipClicked);
+	for (const FName N : {FName(TEXT("ScanCloseButton")), FName(TEXT("NabButton"))})
+		if (UButton* B = Cast<UButton>(GetWidgetFromName(N))) B->OnClicked.AddUniqueDynamic(this, &UDocentChatWidget::HandleReferenceExit);
 
 	if (DocentNameText != nullptr)
 	{
@@ -79,6 +142,10 @@ void UDocentChatWidget::NativeConstruct()
 	{
 		CloseButton->OnClicked.AddUniqueDynamic(this, &UDocentChatWidget::HandleCloseClicked);
 	}
+	if (UButton* Menu = Cast<UButton>(GetWidgetFromName(TEXT("MenuButton"))))
+	{
+		Menu->OnClicked.AddUniqueDynamic(this, &UDocentChatWidget::HandleMenuClicked);
+	}
 	if (OpenButton != nullptr)
 	{
 		OpenButton->OnClicked.AddUniqueDynamic(this, &UDocentChatWidget::HandleOpenClicked);
@@ -94,6 +161,8 @@ void UDocentChatWidget::NativeConstruct()
 	{
 		TrackingMgr->OnMarkerFound.AddUniqueDynamic(this, &UDocentChatWidget::HandleMarkerFound);
 		TrackingMgr->OnScanStateChanged.AddUniqueDynamic(this, &UDocentChatWidget::HandleScanStateChanged);
+		TrackingMgr->OnCameraFacingChanged.AddUniqueDynamic(this, &UDocentChatWidget::HandleCameraFacingChanged);
+		bFrontCamera = TrackingMgr->IsFrontCamera();
 	}
 
 	// 안드로이드 가상 키보드. Slate 는 이 이벤트를 아무도 받지 않아서, 받아 두지
@@ -201,6 +270,15 @@ void UDocentChatWidget::NativeConstruct()
 
 void UDocentChatWidget::NativeDestruct()
 {
+	if (UButton* B = Cast<UButton>(GetWidgetFromName(TEXT("RefCaptureButton")))) B->OnClicked.RemoveDynamic(this, &UDocentChatWidget::HandleReferenceCapture);
+	if (UButton* B = Cast<UButton>(GetWidgetFromName(TEXT("RefRescanButton")))) B->OnClicked.RemoveDynamic(this, &UDocentChatWidget::HandleCameraFlipClicked);
+	if (ScreenshotCapturedHandle.IsValid())
+	{
+		UGameViewportClient::OnScreenshotCaptured().Remove(ScreenshotCapturedHandle);
+		ScreenshotCapturedHandle.Reset();
+	}
+	for (const FName N : {FName(TEXT("ScanCloseButton")), FName(TEXT("NabButton"))})
+		if (UButton* B = Cast<UButton>(GetWidgetFromName(N))) B->OnClicked.RemoveDynamic(this, &UDocentChatWidget::HandleReferenceExit);
 	// 서브시스템은 위젯보다 오래 산다. 언바인드하지 않으면 죽은 위젯으로
 	// 브로드캐스트가 계속 날아간다.
 	if (Client != nullptr)
@@ -223,6 +301,10 @@ void UDocentChatWidget::NativeDestruct()
 	{
 		CloseButton->OnClicked.RemoveDynamic(this, &UDocentChatWidget::HandleCloseClicked);
 	}
+	if (UButton* Menu = Cast<UButton>(GetWidgetFromName(TEXT("MenuButton"))))
+	{
+		Menu->OnClicked.RemoveDynamic(this, &UDocentChatWidget::HandleMenuClicked);
+	}
 	if (OpenButton != nullptr)
 	{
 		OpenButton->OnClicked.RemoveDynamic(this, &UDocentChatWidget::HandleOpenClicked);
@@ -236,6 +318,7 @@ void UDocentChatWidget::NativeDestruct()
 	{
 		TrackingMgr->OnMarkerFound.RemoveDynamic(this, &UDocentChatWidget::HandleMarkerFound);
 		TrackingMgr->OnScanStateChanged.RemoveDynamic(this, &UDocentChatWidget::HandleScanStateChanged);
+		TrackingMgr->OnCameraFacingChanged.RemoveDynamic(this, &UDocentChatWidget::HandleCameraFacingChanged);
 	}
 
 	if (FSlateApplication::IsInitialized())
@@ -403,6 +486,7 @@ void UDocentChatWidget::ApplyOpenState(bool bOpen)
 
 void UDocentChatWidget::PollInputFocus()
 {
+	RefreshReferenceUI();
 #if PLATFORM_ANDROID || PLATFORM_IOS
 	if (InputBox == nullptr || KeyboardSpacer == nullptr)
 	{
@@ -492,6 +576,7 @@ void UDocentChatWidget::HandleOpenClicked()
 
 void UDocentChatWidget::HandleCloseARClicked()
 {
+	bReferenceRecognized = false;
 	if (AARTrackingManager* TrackingManager = AARTrackingManager::GetARTrackingManager(this))
 	{
 		TrackingManager->ClearOverlay();
@@ -504,6 +589,21 @@ void UDocentChatWidget::HandleCloseARClicked()
 
 void UDocentChatWidget::HandleMarkerFound(UARPin* Pin, const FTransform& MarkerPose, const FString& MarkerCode)
 {
+	bReferenceRecognized = true;
+	if (AARTrackingManager* M = AARTrackingManager::GetARTrackingManager(this))
+		if (M->DinoRegistry)
+			if (UDinoInfoData* Info = M->DinoRegistry->FindByMarker(MarkerCode))
+				SetLocationChip(Info->NameKo.ToString() + TEXT(" 전시존"), TEXT("현재 위치"), FLinearColor(0.23f, 0.9f, 0.44f, 1.f));
+	// Existing Blueprint delegates hide the scan panel on recognition. Restore only
+	// its nonblocking presentation after that broadcast has finished.
+	if (UWorld* World = GetWorld())
+		World->GetTimerManager().SetTimerForNextTick(FTimerDelegate::CreateWeakLambda(this, [this]()
+		{
+			UWidget* Nav = GetWidgetFromName(TEXT("NavPanel"));
+			if (bReferenceRecognized && !bIsOpen && (!Nav || Nav->GetVisibility() == ESlateVisibility::Collapsed))
+				if (UWidget* Scan = GetWidgetFromName(TEXT("ScanPanel"))) Scan->SetVisibility(ESlateVisibility::SelfHitTestInvisible);
+			RefreshReferenceUI();
+		}));
 	if (Btn_CloseAR != nullptr)
 	{
 		Btn_CloseAR->SetVisibility(ESlateVisibility::Visible);
@@ -512,6 +612,8 @@ void UDocentChatWidget::HandleMarkerFound(UARPin* Pin, const FTransform& MarkerP
 
 void UDocentChatWidget::HandleScanStateChanged(bool bIsScanning)
 {
+	if (bIsScanning) bReferenceRecognized = false;
+	RefreshReferenceUI();
 	if (Btn_CloseAR != nullptr && bIsScanning)
 	{
 		Btn_CloseAR->SetVisibility(ESlateVisibility::Hidden);
@@ -540,6 +642,8 @@ void UDocentChatWidget::HandleDelta(const FString& Text)
 void UDocentChatWidget::HandleCompleted(const FDocentChatResult& Result)
 {
 	StreamingBubble = nullptr;
+	// 목업처럼 첫 답변 아래에 전시물 카드가 따라온다. AddExhibitCard 가 중복을 거른다.
+	AddExhibitCard();
 	SetInputEnabled(true);
 	OnStreamingChanged(false);
 	ScrollToLatest();
@@ -699,3 +803,725 @@ void UDocentChatWidget::ScrollToLatest()
 		ChatScroll->ScrollToEnd();
 	}
 }
+
+
+void UDocentChatWidget::HandleReferenceRescan()
+{
+	bReferenceRecognized = false;
+	if (!bFrontCamera)
+	{
+		SetLocationChip(TEXT("전시존 탐색 중"), TEXT("현재 위치 확인 중"), FLinearColor(0.6f, 0.6f, 0.65f, 1.f));
+	}
+	HideChat();
+	if (UWidget* Nav = GetWidgetFromName(TEXT("NavPanel"))) Nav->SetVisibility(ESlateVisibility::Collapsed);
+	if (UWidget* Scan = GetWidgetFromName(TEXT("ScanPanel"))) Scan->SetVisibility(ESlateVisibility::SelfHitTestInvisible);
+	if (AARTrackingManager* Manager = AARTrackingManager::GetARTrackingManager(this)) Manager->StartScan();
+	RefreshReferenceUI();
+}
+
+void UDocentChatWidget::HandleReferenceCapture()
+{
+	AARTrackingManager* Manager = AARTrackingManager::GetARTrackingManager(this);
+	// 셀카 모드에서는 마커를 볼 수 없으므로 셔터는 늘 촬영이다.
+	if (Manager && !Manager->IsScanning() && !bReferenceRecognized && !bFrontCamera)
+	{
+		HandleReferenceRescan();
+		return;
+	}
+	if (!ScreenshotCapturedHandle.IsValid())
+	{
+		ScreenshotCapturedHandle = UGameViewportClient::OnScreenshotCaptured().AddUObject(this, &UDocentChatWidget::HandleScreenshotCaptured);
+	}
+	// UI 없이 장면(카메라 영상 + 공룡)만 담는다. 카메라 앱의 사진처럼 쓰려는 것이고,
+	// 안드로이드 GL 에서 Slate 경로(bShowUI)는 백버퍼를 못 읽어 배경이 검게 나온다.
+	FScreenshotRequest::RequestScreenshot(FPaths::ProjectSavedDir() / TEXT("Screenshots/ARCapture.png"), /*bInShowUI=*/false, /*bAddFilenameSuffix=*/true);
+}
+
+void UDocentChatWidget::HandleScreenshotCaptured(int32 Width, int32 Height, const TArray<FColor>& Pixels)
+{
+	UGameViewportClient::OnScreenshotCaptured().Remove(ScreenshotCapturedHandle);
+	ScreenshotCapturedHandle.Reset();
+
+	const FString Name = FString::Printf(TEXT("TimeMachineAR_%s.png"), *FDateTime::Now().ToString(TEXT("%Y%m%d_%H%M%S")));
+	const FString Path = FPaths::ProjectSavedDir() / TEXT("Screenshots") / Name;
+	TArray64<uint8> Png;
+	FImageUtils::PNGCompressImageArray(Width, Height, Pixels, Png);
+	bool bSaved = FFileHelper::SaveArrayToFile(Png, *Path);
+#if PLATFORM_ANDROID
+	// 엔진 경로는 "../../../" 로 시작하는 상대 경로라 자바가 열 수 없다. 실제 저장소 경로로 푼다.
+	bSaved = bSaved && SaveImageToGallery(IFileManager::Get().ConvertToAbsolutePathForExternalAppForRead(*Path), Name);
+#endif
+	UE_LOG(LogDocentChat, Log, TEXT("[셔터] %s (%dx%d) -> %s"), bSaved ? TEXT("저장") : TEXT("저장 실패"), Width, Height, *Path);
+	CaptureToast = bSaved
+		? TEXT("사진을 저장했어요!\n갤러리의 Screenshots 앨범에서 볼 수 있어요.")
+		: TEXT("사진을 저장하지 못했어요.\n저장 공간을 확인해 주세요.");
+	CaptureToastUntil = FPlatformTime::Seconds() + 2.5;
+	RefreshReferenceUI();
+}
+
+void UDocentChatWidget::HandleCameraFlipClicked()
+{
+	AARTrackingManager* Manager = AARTrackingManager::GetARTrackingManager(this);
+	if (Manager == nullptr)
+	{
+		return;
+	}
+	// 후면으로 돌아왔을 때 사용자가 다시 스캔 버튼을 찾지 않아도 되게, 전환 전
+	// 스캔 상태를 기억해 둔다. ToggleCameraFacing 이 스캔을 끄기 전에 읽어야 한다.
+	bResumeScanAfterFlip = !Manager->IsFrontCamera() && Manager->IsScanning();
+	bReferenceRecognized = false;
+	Manager->ToggleCameraFacing();
+}
+
+void UDocentChatWidget::HandleCameraFacingChanged(bool bFront)
+{
+	bFrontCamera = bFront;
+	if (!bFront && bResumeScanAfterFlip)
+	{
+		if (AARTrackingManager* Manager = AARTrackingManager::GetARTrackingManager(this))
+		{
+			Manager->StartScan();
+		}
+	}
+	bResumeScanAfterFlip = false;
+	if (bFront)
+	{
+		SetLocationChip(TEXT("셀카 모드"), TEXT("전면 카메라"), FLinearColor(0.55f, 0.5f, 1.f, 1.f));
+	}
+	else
+	{
+		SetLocationChip(TEXT("전시존 탐색 중"), TEXT("현재 위치 확인 중"), FLinearColor(0.6f, 0.6f, 0.65f, 1.f));
+	}
+	RefreshReferenceUI();
+}
+
+void UDocentChatWidget::HandleReferenceExit()
+{
+	bReferenceRecognized = false;
+}
+
+void UDocentChatWidget::RefreshReferenceUI()
+{
+	const AARTrackingManager* Manager = AARTrackingManager::GetARTrackingManager(this);
+	const bool bScanning = Manager && Manager->IsScanning();
+	const FLinearColor Accent = bFrontCamera ? FLinearColor(0.55f, 0.5f, 1.f, 1.f) :
+		bReferenceRecognized ? FLinearColor(0.23f,0.9f,0.44f,1.f) :
+		(bScanning ? FLinearColor(0.08f,0.43f,1.f,1.f) : FLinearColor::White);
+	if (UImage* Frame = Cast<UImage>(GetWidgetFromName(TEXT("ScanFramImage"))))
+	{
+		Frame->SetColorAndOpacity(Accent);
+		// 전면 카메라는 마커를 못 보므로 조준 틀을 걷는다. 인식된 뒤에는 조준원만 거둔다.
+		Frame->SetVisibility(bFrontCamera ? ESlateVisibility::Collapsed : ESlateVisibility::HitTestInvisible);
+	}
+	if (UImage* Reticle = Cast<UImage>(GetWidgetFromName(TEXT("RefReticleImage"))))
+	{
+		Reticle->SetVisibility((bFrontCamera || bReferenceRecognized) ? ESlateVisibility::Collapsed : ESlateVisibility::HitTestInvisible);
+	}
+	if (UImage* Flip = Cast<UImage>(GetWidgetFromName(TEXT("RefRefreshIcon"))))
+	{
+		Flip->SetColorAndOpacity(bFrontCamera ? Accent : FLinearColor::White);
+	}
+	if (UTextBlock* Hint = Cast<UTextBlock>(GetWidgetFromName(TEXT("ScanHintText"))))
+	{
+		const FText Message = FText::FromString(
+			(FPlatformTime::Seconds() < CaptureToastUntil) ? *CaptureToast :
+			bFrontCamera ?
+			TEXT("셀카 모드예요!\n전환 버튼을 다시 누르면 후면 카메라로 돌아가요.") :
+			bReferenceRecognized ?
+			TEXT("대상을 인식했어요!\n공룡을 터치하면 정보를 볼 수 있어요.") :
+			(bScanning ? TEXT("공룡 마커를 화면 중앙에 맞춰주세요\n더 선명하게 인식할 수 있어요!") :
+			TEXT("AR 스캔을 눌러 시작해주세요\n전시물의 마커를 비춰주세요.")));
+		if (!Hint->GetText().EqualTo(Message)) Hint->SetText(Message);
+	}
+	if (UBorder* Hint = Cast<UBorder>(GetWidgetFromName(TEXT("ScanHintBG"))))
+	{
+		FSlateBrush Brush = Hint->Background;
+		Brush.OutlineSettings.Color = FSlateColor(Accent.CopyWithNewOpacity(0.6f));
+		Hint->SetBrush(Brush);
+	}
+	UWidget* Scan = GetWidgetFromName(TEXT("ScanPanel"));
+	const bool bScanVisible = !bIsOpen && Scan && Scan->GetVisibility() != ESlateVisibility::Collapsed;
+	if (UImage* Icon = Cast<UImage>(GetWidgetFromName(TEXT("ScanIcon"))))
+		Icon->SetColorAndOpacity(bScanVisible ? (bReferenceRecognized ? Accent : FLinearColor(0.08f,0.43f,1.f,1.f)) : FLinearColor::White);
+	if (UTextBlock* Label = Cast<UTextBlock>(GetWidgetFromName(TEXT("ScanLabel"))))
+		Label->SetColorAndOpacity(FSlateColor(bScanVisible ? (bReferenceRecognized ? Accent : FLinearColor(0.08f,0.43f,1.f,1.f)) : FLinearColor::White));
+}
+
+void UDocentChatWidget::ApplyScanSkin()
+{
+	if (WidgetTree == nullptr)
+	{
+		return;
+	}
+	// UMG 단위. 실기기(1440 폭)는 DPI 1.333 배로 그려진다.
+	constexpr float TopInset = 48.f;
+	constexpr float TopHeight = 116.f;
+	const FLinearColor Panel = FLinearColor::FromSRGBColor(FColor(18, 22, 30, 215));
+	const FLinearColor PanelOutline = FLinearColor(1.f, 1.f, 1.f, 0.14f);
+
+	// 뒤로가기: 텍스트 글리프는 베이스라인 때문에 원 아래로 처진다. 아이콘으로 바꾼다.
+	if (UButton* Back = Cast<UButton>(GetWidgetFromName(TEXT("ScanCloseButton"))))
+	{
+		FButtonStyle Style = Back->GetStyle();
+		Style.SetNormal(FSlateRoundedBoxBrush(FLinearColor::FromSRGBColor(FColor(20, 22, 28, 180)), TopHeight * 0.5f));
+		Style.SetHovered(FSlateRoundedBoxBrush(FLinearColor::FromSRGBColor(FColor(40, 44, 54, 200)), TopHeight * 0.5f));
+		Style.SetPressed(FSlateRoundedBoxBrush(FLinearColor::FromSRGBColor(FColor(40, 44, 54, 200)), TopHeight * 0.5f));
+		Style.SetNormalPadding(FMargin(0.f));
+		Style.SetPressedPadding(FMargin(0.f));
+		Back->SetStyle(Style);
+		if (UTexture2D* Arrow = LoadObject<UTexture2D>(nullptr, TEXT("/Game/UI/Docent/arrow_back.arrow_back")))
+		{
+			UImage* Icon = WidgetTree->ConstructWidget<UImage>();
+			{
+				// 새로 만든 위젯은 아직 Slate 가 없어 SetDesiredSizeOverride 가 무시된다.
+				// 브러시 ImageSize 로 크기를 박아야 한다.
+				FSlateBrush B;
+				B.SetResourceObject(Arrow);
+				B.ImageSize = FVector2D(56.f, 56.f);
+				Icon->SetBrush(B);
+			}
+			Icon->SetColorAndOpacity(FLinearColor::White);
+			Icon->SetVisibility(ESlateVisibility::HitTestInvisible);
+			Back->SetContent(Icon);
+			if (UButtonSlot* IconSlot = Cast<UButtonSlot>(Icon->Slot))
+			{
+				IconSlot->SetPadding(FMargin(0.f));
+				IconSlot->SetHorizontalAlignment(HAlign_Center);
+				IconSlot->SetVerticalAlignment(VAlign_Center);
+			}
+		}
+	}
+	if (USizeBox* BackSize = Cast<USizeBox>(GetWidgetFromName(TEXT("RefBackSize"))))
+	{
+		BackSize->SetWidthOverride(TopHeight);
+		BackSize->SetHeightOverride(TopHeight);
+		if (UOverlaySlot* S = Cast<UOverlaySlot>(BackSize->Slot))
+		{
+			S->SetPadding(FMargin(38.f, TopInset, 0.f, 0.f));
+		}
+	}
+
+	// 위치 칩: 두 줄 텍스트 상자 → 제목 + "현재 위치 ●" 캡슐. 뒤로가기와 같은 높이로 맞춘다.
+	UTextBlock* Title = Cast<UTextBlock>(GetWidgetFromName(TEXT("RefLocationText")));
+	UBorder* Chip = Cast<UBorder>(GetWidgetFromName(TEXT("RefLocationPanel")));
+	if (Title != nullptr && Chip != nullptr)
+	{
+		if (USizeBox* ChipSize = Cast<USizeBox>(GetWidgetFromName(TEXT("RefLocationSize"))))
+		{
+			ChipSize->ClearWidthOverride();
+			ChipSize->SetMinDesiredWidth(360.f);
+			ChipSize->SetHeightOverride(TopHeight);
+			if (UOverlaySlot* S = Cast<UOverlaySlot>(ChipSize->Slot))
+			{
+				S->SetPadding(FMargin(38.f + TopHeight + 16.f, TopInset, 0.f, 0.f));
+			}
+		}
+		Chip->SetBrush(FSlateRoundedBoxBrush(Panel, TopHeight * 0.5f, PanelOutline, 1.5f));
+		Chip->SetBrushColor(FLinearColor::White);
+		Chip->SetPadding(FMargin(32.f, 0.f, 36.f, 0.f));
+		Chip->SetVerticalAlignment(VAlign_Center);
+		Chip->SetHorizontalAlignment(HAlign_Left);
+
+		UVerticalBox* Column = WidgetTree->ConstructWidget<UVerticalBox>();
+		Title->RemoveFromParent();
+		FSlateFontInfo TitleFont = Title->GetFont();
+		TitleFont.Size = 30;
+		Title->SetFont(TitleFont);
+		Title->SetColorAndOpacity(FSlateColor(FLinearColor::White));
+		Title->SetAutoWrapText(false);
+		if (UVerticalBoxSlot* S = Column->AddChildToVerticalBox(Title))
+		{
+			S->SetPadding(FMargin(0.f, 0.f, 0.f, 4.f));
+		}
+
+		UHorizontalBox* Row = WidgetTree->ConstructWidget<UHorizontalBox>();
+		LocationSubText = WidgetTree->ConstructWidget<UTextBlock>();
+		FSlateFontInfo SubFont = TitleFont;
+		SubFont.Size = 23;
+		LocationSubText->SetFont(SubFont);
+		LocationSubText->SetColorAndOpacity(FSlateColor(FLinearColor(0.72f, 0.76f, 0.84f, 1.f)));
+		if (UHorizontalBoxSlot* S = Row->AddChildToHorizontalBox(LocationSubText))
+		{
+			S->SetVerticalAlignment(VAlign_Center);
+		}
+		LocationDot = WidgetTree->ConstructWidget<UImage>();
+		LocationDot->SetBrush(FSlateRoundedBoxBrush(FLinearColor::White, 8.f));
+		LocationDot->SetDesiredSizeOverride(FVector2D(16.f, 16.f));
+		if (UHorizontalBoxSlot* S = Row->AddChildToHorizontalBox(LocationDot))
+		{
+			S->SetPadding(FMargin(10.f, 0.f, 0.f, 0.f));
+			S->SetVerticalAlignment(VAlign_Center);
+		}
+		Column->AddChildToVerticalBox(Row);
+		Chip->SetContent(Column);
+
+		// WBP 기본 문구가 두 줄이라 제목·부제로 나눈다.
+		SetLocationChip(TEXT("전시존 탐색 중"), TEXT("현재 위치 확인 중"), FLinearColor(0.6f, 0.6f, 0.65f, 1.f));
+	}
+
+	// 셔터: 버튼 여백이 [12,2,12,2] 라 안쪽 원이 146x166 타원으로 그려졌다.
+	// 목업은 흰 링 + 틈 + 흰 원이다. 링은 버튼 외곽선, 원은 안쪽 이미지로 그린다.
+	if (UButton* Shutter = Cast<UButton>(GetWidgetFromName(TEXT("RefCaptureButton"))))
+	{
+		constexpr float Size = 170.f;
+		constexpr float Gap = 14.f;
+		FButtonStyle Style = Shutter->GetStyle();
+		Style.SetNormal(FSlateRoundedBoxBrush(FLinearColor(0.f, 0.f, 0.f, 0.25f), Size * 0.5f, FLinearColor::White, 4.f));
+		Style.SetHovered(FSlateRoundedBoxBrush(FLinearColor(0.f, 0.f, 0.f, 0.25f), Size * 0.5f, FLinearColor::White, 4.f));
+		Style.SetPressed(FSlateRoundedBoxBrush(FLinearColor(1.f, 1.f, 1.f, 0.35f), Size * 0.5f, FLinearColor::White, 4.f));
+		Style.SetNormalPadding(FMargin(Gap));
+		Style.SetPressedPadding(FMargin(Gap));
+		Shutter->SetStyle(Style);
+		if (UImage* Inner = Cast<UImage>(GetWidgetFromName(TEXT("RefShutterInner"))))
+		{
+			Inner->SetBrush(FSlateRoundedBoxBrush(FLinearColor::White, (Size - Gap * 2.f) * 0.5f));
+			Inner->SetColorAndOpacity(FLinearColor::White);
+			if (UButtonSlot* S = Cast<UButtonSlot>(Inner->Slot))
+			{
+				S->SetPadding(FMargin(0.f));
+				S->SetHorizontalAlignment(HAlign_Fill);
+				S->SetVerticalAlignment(VAlign_Fill);
+			}
+		}
+	}
+
+	// 전환 버튼: 아이콘이 정중앙에 오도록 비대칭 여백을 없앤다.
+	if (UButton* Flip = Cast<UButton>(GetWidgetFromName(TEXT("RefRescanButton"))))
+	{
+		FButtonStyle Style = Flip->GetStyle();
+		Style.SetNormalPadding(FMargin(0.f));
+		Style.SetPressedPadding(FMargin(0.f));
+		Flip->SetStyle(Style);
+		if (UImage* Icon = Cast<UImage>(GetWidgetFromName(TEXT("RefRefreshIcon"))))
+		{
+			if (UButtonSlot* S = Cast<UButtonSlot>(Icon->Slot))
+			{
+				S->SetHorizontalAlignment(HAlign_Center);
+				S->SetVerticalAlignment(VAlign_Center);
+			}
+		}
+	}
+}
+
+void UDocentChatWidget::SetLocationChip(const FString& Title, const FString& Subtitle, const FLinearColor& DotColor)
+{
+	if (UTextBlock* TitleText = Cast<UTextBlock>(GetWidgetFromName(TEXT("RefLocationText"))))
+	{
+		// 칩을 못 꾸민 구성(부제 위젯 없음)에서는 예전처럼 두 줄로 넣는다.
+		TitleText->SetText(FText::FromString(LocationSubText ? Title : Title + TEXT("\n") + Subtitle));
+	}
+	if (LocationSubText != nullptr)
+	{
+		LocationSubText->SetText(FText::FromString(Subtitle));
+	}
+	if (LocationDot != nullptr)
+	{
+		LocationDot->SetColorAndOpacity(DotColor);
+	}
+}
+
+// ------------------------------------------------------------------ 채팅 스킨
+
+namespace
+{
+	/** /Game/UI/Docent/Skin 의 텍스처. 없으면 nullptr — 호출부가 그냥 건너뛴다. */
+	UTexture2D* DocentSkinTexture(const TCHAR* Name)
+	{
+		return LoadObject<UTexture2D>(nullptr,
+			*FString::Printf(TEXT("/Game/UI/Docent/Skin/%s.%s"), Name, Name));
+	}
+
+	/**
+	 * 둥근 유리 원 + 흰 아이콘 버튼. ApplyScanSkin 의 뒤로가기와 같은 만듦새다.
+	 *
+	 * 시트의 원형 버튼 스프라이트는 거의 검정이라 어두운 배경에서 안 보인다.
+	 * 원은 브러시로 그리고 아이콘은 프로젝트의 흰 Material 아이콘을 쓴다.
+	 */
+	void MakeRoundIconButton(UButton* Button, const TCHAR* IconPath, float Diameter, float IconSize)
+	{
+		if (Button == nullptr)
+		{
+			return;
+		}
+		const FLinearColor Glass   = FLinearColor::FromSRGBColor(FColor(22, 27, 36, 215));
+		const FLinearColor GlassHi = FLinearColor::FromSRGBColor(FColor(38, 45, 58, 235));
+		const FLinearColor Outline = FLinearColor(1.f, 1.f, 1.f, 0.10f);
+
+		FButtonStyle Style = Button->GetStyle();
+		Style.SetNormal (FSlateRoundedBoxBrush(Glass,   Diameter * 0.5f, Outline, 2.f));
+		Style.SetHovered(FSlateRoundedBoxBrush(GlassHi, Diameter * 0.5f, Outline, 2.f));
+		Style.SetPressed(FSlateRoundedBoxBrush(GlassHi, Diameter * 0.5f, Outline, 2.f));
+		Style.SetNormalPadding(FMargin(0.f));
+		Style.SetPressedPadding(FMargin(0.f));
+		Button->SetStyle(Style);
+
+		UWidgetTree* Tree = Cast<UWidgetTree>(Button->GetOuter());
+		UTexture2D* Tex = LoadObject<UTexture2D>(nullptr, IconPath);
+		if (Tree == nullptr || Tex == nullptr)
+		{
+			return;
+		}
+		USizeBox* Box = Tree->ConstructWidget<USizeBox>();
+		Box->SetWidthOverride(Diameter);
+		Box->SetHeightOverride(Diameter);
+		UImage* Icon = Tree->ConstructWidget<UImage>();
+		{
+			// 새로 만든 위젯은 아직 Slate 가 없어 SetDesiredSizeOverride 가 무시된다.
+			// 브러시 ImageSize 로 크기를 박아야 한다.
+			FSlateBrush B;
+			B.SetResourceObject(Tex);
+			B.ImageSize = FVector2D(IconSize, IconSize);
+			Icon->SetBrush(B);
+		}
+		Icon->SetColorAndOpacity(FLinearColor::White);
+		Icon->SetVisibility(ESlateVisibility::HitTestInvisible);
+		Box->SetContent(Icon);
+		if (USizeBoxSlot* IS = Cast<USizeBoxSlot>(Icon->Slot))
+		{
+			IS->SetHorizontalAlignment(HAlign_Center);
+			IS->SetVerticalAlignment(VAlign_Center);
+		}
+		Button->SetContent(Box);
+	}
+}
+
+void UDocentChatWidget::ApplyChatSkin()
+{
+	if (WidgetTree == nullptr)
+	{
+		return;
+	}
+
+	// 레퍼런스 목업은 패널 폭 512px 이다. UMG 단위(실기기 1440 폭이 DPI 1.333 으로
+	// 1080)로 옮기면 약 2.1 배다. 아래 수치는 그 비율로 잰 값이다.
+	const FLinearColor Glass    = FLinearColor::FromSRGBColor(FColor(22, 27, 36, 215));
+	const FLinearColor GlassHi  = FLinearColor::FromSRGBColor(FColor(38, 45, 58, 235));
+	const FLinearColor Outline  = FLinearColor(1.f, 1.f, 1.f, 0.10f);
+	const FLinearColor TextMain = FLinearColor::FromSRGBColor(FColor(240, 244, 250));
+	const FLinearColor TextDim  = FLinearColor::FromSRGBColor(FColor(160, 170, 185));
+
+	// ---- 배경: 사진 위 어두운 반투명 막. 목업의 유리 느낌은 이 한 겹이 만든다.
+	if (UImage* Backdrop = Cast<UImage>(ChatBackdrop))
+	{
+		Backdrop->SetColorAndOpacity(FLinearColor::FromSRGBColor(FColor(10, 13, 20, 200)));
+	}
+
+	// ---- 상단 바: 원형 뒤로가기 / 제목 / 원형 더보기
+	// 실기기에서 92px 은 손가락보다 작아 보였다 - 1.7 배(156).
+	MakeRoundIconButton(CloseButton, TEXT("/Game/UI/Docent/arrow_back.arrow_back"), 156.f, 82.f);
+	MakeRoundIconButton(Cast<UButton>(GetWidgetFromName(TEXT("MenuButton"))),
+		TEXT("/Game/UI/Docent/more_vert.more_vert"), 156.f, 82.f);
+	if (DocentNameText != nullptr)
+	{
+		FSlateFontInfo Font = DocentNameText->GetFont();
+		Font.Size = 40;
+		DocentNameText->SetFont(Font);
+		DocentNameText->SetColorAndOpacity(FSlateColor(TextMain));
+		DocentNameText->SetJustification(ETextJustify::Center);
+	}
+
+	// ---- 시작 화면: 링 안의 렉시 + 인사말
+	if (UImage* Hero = Cast<UImage>(GetWidgetFromName(TEXT("Avatar"))))
+	{
+		if (UTexture2D* Halo = DocentSkinTexture(TEXT("lexi_halo")))
+		{
+			Hero->SetBrushFromTexture(Halo);
+			Hero->SetDesiredSizeOverride(FVector2D(420.f, 450.f));
+			Hero->SetVisibility(ESlateVisibility::HitTestInvisible);
+		}
+	}
+	// 시작 화면 덩어리(렉시 + 인사말)를 추천 질문 바로 위에 붙인다. 가운데 정렬로 두면
+	// 남는 공간이 인사말과 추천 질문 사이에 끼어 목업과 달리 둘이 멀어진다.
+	if (EmptyStateBox != nullptr)
+	{
+		if (UOverlaySlot* S = Cast<UOverlaySlot>(EmptyStateBox->Slot))
+		{
+			S->SetVerticalAlignment(VAlign_Bottom);
+			S->SetHorizontalAlignment(HAlign_Fill);
+			S->SetPadding(FMargin(0.f, 0.f, 0.f, 36.f));
+		}
+	}
+	if (GreetingLabel != nullptr)
+	{
+		FSlateFontInfo Font = GreetingLabel->GetFont();
+		Font.Size = 32;
+		GreetingLabel->SetFont(Font);
+		GreetingLabel->SetColorAndOpacity(FSlateColor(TextMain));
+		GreetingLabel->SetJustification(ETextJustify::Center);
+		GreetingLabel->SetLineHeightPercentage(1.35f);
+	}
+
+	// ---- 입력창: 유리 캡슐 + 원형 보내기
+	if (InputBox != nullptr)
+	{
+		FEditableTextBoxStyle Style = InputBox->WidgetStyle;
+		// 바깥 입력 바가 이미 유리 캡슐이라 텍스트 상자 자체는 테두리 없이 투명하게.
+		// 캡슐 안에 캡슐이 겹쳐 보이던 것을 없앤다(목업은 한 겹).
+		Style.SetBackgroundImageNormal (FSlateRoundedBoxBrush(FLinearColor::Transparent, 28.f));
+		Style.SetBackgroundImageHovered(FSlateRoundedBoxBrush(FLinearColor::Transparent, 28.f));
+		Style.SetBackgroundImageFocused(FSlateRoundedBoxBrush(FLinearColor(1.f, 1.f, 1.f, 0.04f), 28.f));
+		Style.SetPadding(FMargin(34.f, 26.f));
+		Style.SetForegroundColor(FSlateColor(TextMain));
+		FSlateFontInfo Font = Style.TextStyle.Font;
+		Font.Size = 30;
+		Style.TextStyle.SetFont(Font);
+		InputBox->WidgetStyle = Style;
+		InputBox->SetHintText(FText::FromString(TEXT("메시지를 입력하세요...")));
+		InputBox->SynchronizeProperties();
+	}
+	// 보내기: 상단 버튼과 같은 원형 글래스. 시트의 icon_send 는 어두워서 프로젝트의
+	// 흰 send 아이콘을 쓴다. SendIcon 은 버튼 내용이 통째로 바뀌면서 떨어져 나간다.
+	MakeRoundIconButton(SendButton, TEXT("/Game/UI/Docent/send.send"), 132.f, 72.f);
+}
+
+
+void UDocentChatWidget::HandleMenuClicked()
+{
+	AddTopicMenu();
+}
+
+namespace
+{
+	/**
+	 * 말풍선 열과 같은 왼쪽 선(아바타 폭 + 간격)에 맞춘 스크롤 항목 여백.
+	 * ChatScroll 자체가 좌우 36 을 더 안으로 들이므로, 그만큼 뺀 값이다.
+	 */
+	const FMargin ChatInsertMargin(82.f, 10.f, 14.f, 10.f);
+	/** 위 여백을 뺀 항목 폭. 1080 - 36*2 - 82 - 14. */
+	const float ChatInsertWidth = 912.f;
+
+	/** 유리 캡슐 태그 하나. 카드 아래 "육식 / 백악기 후기" 줄에 쓴다. */
+	UWidget* MakeTagPill(UWidgetTree* Tree, const FText& Label)
+	{
+		const FLinearColor Glass    = FLinearColor::FromSRGBColor(FColor(22, 27, 36, 215));
+		const FLinearColor Outline  = FLinearColor(1.f, 1.f, 1.f, 0.14f);
+		const FLinearColor TextMain = FLinearColor::FromSRGBColor(FColor(240, 244, 250));
+
+		UTextBlock* Text = Tree->ConstructWidget<UTextBlock>();
+		Text->SetText(Label);
+		FSlateFontInfo Font = Text->GetFont();
+		Font.Size = 24;
+		Text->SetFont(Font);
+		Text->SetColorAndOpacity(FSlateColor(TextMain));
+
+		UBorder* Pill = Tree->ConstructWidget<UBorder>();
+		Pill->SetBrush(FSlateRoundedBoxBrush(Glass, 22.f, Outline, 2.f));
+		Pill->SetPadding(FMargin(24.f, 10.f, 24.f, 10.f));
+		Pill->SetContent(Text);
+		return Pill;
+	}
+}
+
+void UDocentChatWidget::AddExhibitCard()
+{
+	if (WidgetTree == nullptr || ChatScroll == nullptr || !HasExhibitContext())
+	{
+		return;
+	}
+	if (ExhibitCardShownFor == ExhibitKey)
+	{
+		return;
+	}
+
+	// 카드에 담을 공룡. 레지스트리의 ExhibitKey 와 대화 키가 같은 종을 찾는다.
+	UDinoInfoData* Info = nullptr;
+	if (UDinoRegistry* Registry = Cast<UDinoRegistry>(StaticLoadObject(
+		UDinoRegistry::StaticClass(), nullptr, TEXT("/Game/UI/DinoCard/DA_DinoRegistry.DA_DinoRegistry"))))
+	{
+		for (UDinoInfoData* Species : Registry->Species)
+		{
+			if (Species != nullptr && Species->ExhibitKey.Equals(ExhibitKey, ESearchCase::IgnoreCase))
+			{
+				Info = Species;
+				break;
+			}
+		}
+	}
+	if (Info == nullptr || Info->HeroImage == nullptr)
+	{
+		UE_LOG(LogDocentChat, Verbose, TEXT("전시물 카드 생략: %s 에 맞는 종 데이터가 없습니다."), *ExhibitKey);
+		return;
+	}
+	ExhibitCardShownFor = ExhibitKey;
+
+	const FLinearColor Glass    = FLinearColor::FromSRGBColor(FColor(22, 27, 36, 225));
+	const FLinearColor Outline  = FLinearColor(1.f, 1.f, 1.f, 0.10f);
+	const FLinearColor TextMain = FLinearColor::FromSRGBColor(FColor(240, 244, 250));
+	const FLinearColor TextDim  = FLinearColor::FromSRGBColor(FColor(160, 170, 185));
+	const float CardWidth = ChatInsertWidth;
+	const float Radius = 28.f;
+
+	UVerticalBox* Card = WidgetTree->ConstructWidget<UVerticalBox>();
+
+	// 대표 사진. 위 두 모서리만 둥글게 - 카드 테두리와 맞물린다.
+	{
+		UImage* Hero = WidgetTree->ConstructWidget<UImage>();
+		FSlateBrush Brush;
+		Brush.SetResourceObject(Info->HeroImage);
+		Brush.DrawAs = ESlateBrushDrawType::RoundedBox;
+		Brush.OutlineSettings.RoundingType = ESlateBrushRoundingType::FixedRadius;
+		Brush.OutlineSettings.CornerRadii = FVector4(Radius, Radius, 0.f, 0.f);
+		Brush.TintColor = FSlateColor(FLinearColor::White);
+		const float Aspect = FMath::Clamp(
+			static_cast<float>(Info->HeroImage->GetSizeY()) / FMath::Max(1.f, static_cast<float>(Info->HeroImage->GetSizeX())),
+			0.5f, 0.72f);
+		Brush.ImageSize = FVector2D(CardWidth, FMath::RoundToFloat(CardWidth * Aspect));
+		Hero->SetBrush(Brush);
+		Hero->SetVisibility(ESlateVisibility::HitTestInvisible);
+		Card->AddChild(Hero);
+	}
+
+	// 이름 줄: 한글 이름 / 학명, 오른쪽에 펼치기 아이콘.
+	{
+		UHorizontalBox* NameRow = WidgetTree->ConstructWidget<UHorizontalBox>();
+		UVerticalBox* Names = WidgetTree->ConstructWidget<UVerticalBox>();
+
+		UTextBlock* Ko = WidgetTree->ConstructWidget<UTextBlock>();
+		Ko->SetText(Info->NameKo);
+		FSlateFontInfo KoFont = Ko->GetFont();
+		KoFont.Size = 30;
+		Ko->SetFont(KoFont);
+		Ko->SetColorAndOpacity(FSlateColor(TextMain));
+		Names->AddChild(Ko);
+
+		UTextBlock* Sci = WidgetTree->ConstructWidget<UTextBlock>();
+		Sci->SetText(Info->NameSci);
+		FSlateFontInfo SciFont = Sci->GetFont();
+		SciFont.Size = 24;
+		Sci->SetFont(SciFont);
+		Sci->SetColorAndOpacity(FSlateColor(TextDim));
+		if (UVerticalBoxSlot* S = Cast<UVerticalBoxSlot>(Names->AddChild(Sci)))
+		{
+			S->SetPadding(FMargin(0.f, 6.f, 0.f, 0.f));
+		}
+		if (UHorizontalBoxSlot* S = Cast<UHorizontalBoxSlot>(NameRow->AddChild(Names)))
+		{
+			S->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
+			S->SetVerticalAlignment(VAlign_Center);
+		}
+
+		if (UTexture2D* Expand = LoadObject<UTexture2D>(nullptr, TEXT("/Game/UI/DinoCard/Icons/fullscreen.fullscreen")))
+		{
+			UImage* Icon = WidgetTree->ConstructWidget<UImage>();
+			{
+				// 새로 만든 위젯은 아직 Slate 가 없어 SetDesiredSizeOverride 가 무시된다.
+				// 브러시 ImageSize 로 크기를 박아야 한다.
+				FSlateBrush B;
+				B.SetResourceObject(Expand);
+				B.ImageSize = FVector2D(40.f, 40.f);
+				Icon->SetBrush(B);
+			}
+			Icon->SetColorAndOpacity(FLinearColor(1.f, 1.f, 1.f, 0.75f));
+			if (UHorizontalBoxSlot* S = Cast<UHorizontalBoxSlot>(NameRow->AddChild(Icon)))
+			{
+				S->SetVerticalAlignment(VAlign_Center);
+			}
+		}
+
+		if (UVerticalBoxSlot* S = Cast<UVerticalBoxSlot>(Card->AddChild(NameRow)))
+		{
+			S->SetPadding(FMargin(26.f, 20.f, 26.f, 22.f));
+		}
+	}
+
+	UBorder* Frame = WidgetTree->ConstructWidget<UBorder>();
+	Frame->SetBrush(FSlateRoundedBoxBrush(Glass, Radius, Outline, 2.f));
+	Frame->SetPadding(FMargin(0.f));
+	Frame->SetContent(Card);
+
+	// 카드 + 태그 줄을 한 항목으로 묶어 스크롤에 넣는다.
+	UVerticalBox* Item = WidgetTree->ConstructWidget<UVerticalBox>();
+	Item->AddChild(Frame);
+
+	UHorizontalBox* Tags = WidgetTree->ConstructWidget<UHorizontalBox>();
+	for (const FText& Tag : {Info->DietTag, Info->PeriodTag})
+	{
+		if (Tag.IsEmpty())
+		{
+			continue;
+		}
+		if (UHorizontalBoxSlot* S = Cast<UHorizontalBoxSlot>(Tags->AddChild(MakeTagPill(WidgetTree, Tag))))
+		{
+			S->SetPadding(FMargin(0.f, 0.f, 14.f, 0.f));
+		}
+	}
+	if (Tags->GetChildrenCount() > 0)
+	{
+		if (UVerticalBoxSlot* S = Cast<UVerticalBoxSlot>(Item->AddChild(Tags)))
+		{
+			S->SetPadding(FMargin(0.f, 14.f, 0.f, 0.f));
+		}
+	}
+
+	ChatScroll->AddChild(Item);
+	if (UScrollBoxSlot* S = Cast<UScrollBoxSlot>(Item->Slot))
+	{
+		S->SetPadding(ChatInsertMargin);
+	}
+}
+
+void UDocentChatWidget::AddTopicMenu()
+{
+	if (WidgetTree == nullptr || ChatScroll == nullptr || ChipClass == nullptr)
+	{
+		return;
+	}
+
+	// 메뉴는 대화의 일부라, 시작 화면 위에 띄우지 않고 시작 화면을 걷은 뒤 붙인다.
+	if (!bHasAskedOnce)
+	{
+		bHasAskedOnce = true;
+		if (EmptyStateBox != nullptr)
+		{
+			EmptyStateBox->SetVisibility(ESlateVisibility::Collapsed);
+		}
+		ApplyQuickQuestionVisibility();
+	}
+
+	AddBubble(/*bIsUser=*/false, TEXT("어떤 부분이 더 궁금하신가요?\n아래 주제 중에서 선택하거나,\n직접 질문해도 좋아요!"));
+
+	// 전시물이 정해졌으면 "이 공룡", 아니면 공룡 일반으로 묻는다.
+	const TCHAR* Subject = HasExhibitContext() ? TEXT("이 공룡") : TEXT("공룡");
+	struct FTopic { const TCHAR* Title; const TCHAR* Subtitle; FName Icon; FString Question; };
+	const FTopic Topics[] = {
+		{ TEXT("기본 정보"),     TEXT("시대, 크기, 특징"),           TEXT("menu_book"),      FString::Printf(TEXT("%s의 시대, 크기, 특징을 알려줘"), Subject) },
+		{ TEXT("식성"),          TEXT("무엇을 먹었을까?"),            TEXT("eco"),            FString::Printf(TEXT("%s은 무엇을 먹었을까?"), Subject) },
+		{ TEXT("서식지"),        TEXT("어디에 살았을까?"),            TEXT("public"),         FString::Printf(TEXT("%s은 어디에 살았을까?"), Subject) },
+		{ TEXT("발견과 연구"),   TEXT("언제, 어떻게 발견되었을까?"),  TEXT("history"),        FString::Printf(TEXT("%s은 언제, 어떻게 발견되었을까?"), Subject) },
+		{ TEXT("재미있는 사실"), TEXT("더 놀라운 이야기"),            TEXT("travel_explore"), FString::Printf(TEXT("%s에 대한 재미있는 사실을 알려줘"), Subject) },
+	};
+	for (const FTopic& T : Topics)
+	{
+		UDocentQuickChip* Row = CreateWidget<UDocentQuickChip>(this, ChipClass);
+		if (Row == nullptr)
+		{
+			continue;
+		}
+		Row->SetTopic(T.Question, T.Title, T.Subtitle, T.Icon, ChatInsertWidth);
+		Row->OnClicked.BindUObject(this, &UDocentChatWidget::HandleQuickChipClicked);
+		ChatScroll->AddChild(Row);
+		if (UScrollBoxSlot* S = Cast<UScrollBoxSlot>(Row->Slot))
+		{
+			S->SetPadding(FMargin(ChatInsertMargin.Left, 6.f, ChatInsertMargin.Right, 6.f));
+		}
+	}
+
+	AddBubble(/*bIsUser=*/false, TEXT("궁금한 것을 선택해보세요!\n언제든지 다른 질문도 할 수 있어요."));
+	ScrollToLatest();
+}
+
+#if !UE_BUILD_SHIPPING
+void UDocentChatWidget::AddPreviewBubble(bool bInIsUser, const FString& InText)
+{
+	AddBubble(bInIsUser, InText);
+	if (!bHasAskedOnce)
+	{
+		bHasAskedOnce = true;
+		if (EmptyStateBox != nullptr)
+		{
+			EmptyStateBox->SetVisibility(ESlateVisibility::Collapsed);
+		}
+		ApplyQuickQuestionVisibility();
+	}
+}
+#endif
