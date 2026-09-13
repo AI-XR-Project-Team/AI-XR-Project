@@ -1,0 +1,803 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AR Transform Viewer — TimeMachineAR</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Segoe UI', -apple-system, sans-serif;
+    background: #1a1a2e;
+    color: #e0e0e0;
+    overflow: hidden;
+    height: 100vh;
+    display: flex;
+  }
+
+  /* ── 3D 뷰포트 ── */
+  #viewport {
+    flex: 1;
+    position: relative;
+    cursor: grab;
+  }
+  #viewport:active { cursor: grabbing; }
+  #viewport canvas { display: block; }
+
+  #drop-overlay {
+    display: none;
+    position: absolute;
+    inset: 0;
+    background: rgba(76, 175, 80, 0.15);
+    border: 3px dashed #4caf50;
+    border-radius: 12px;
+    margin: 20px;
+    z-index: 10;
+    justify-content: center;
+    align-items: center;
+    font-size: 1.4rem;
+    color: #4caf50;
+    pointer-events: none;
+  }
+  #drop-overlay.active { display: flex; }
+
+  #viewport-hint {
+    position: absolute;
+    bottom: 16px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0,0,0,0.6);
+    padding: 8px 20px;
+    border-radius: 20px;
+    font-size: 0.8rem;
+    color: #aaa;
+    pointer-events: none;
+  }
+
+  /* ── 사이드 패널 ── */
+  #panel {
+    width: 340px;
+    background: #16213e;
+    border-left: 1px solid #2a2a4a;
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+  }
+
+  .panel-header {
+    padding: 16px 20px;
+    background: #0f3460;
+    border-bottom: 1px solid #2a2a4a;
+  }
+  .panel-header h1 {
+    font-size: 1rem;
+    font-weight: 600;
+    color: #fff;
+  }
+  .panel-header p {
+    font-size: 0.75rem;
+    color: #8899aa;
+    margin-top: 4px;
+  }
+
+  .section {
+    padding: 16px 20px;
+    border-bottom: 1px solid #2a2a4a;
+  }
+  .section h2 {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: #e94560;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 12px;
+  }
+
+  /* 슬라이더 그룹 */
+  .slider-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+  .slider-label {
+    width: 16px;
+    font-size: 0.85rem;
+    font-weight: 700;
+    text-align: center;
+  }
+  .slider-label.x { color: #ff4444; }
+  .slider-label.y { color: #44ff44; }
+  .slider-label.z { color: #4488ff; }
+  .slider-label.u { color: #ffaa44; }
+
+  .slider-row input[type="range"] {
+    flex: 1;
+    height: 6px;
+    -webkit-appearance: none;
+    appearance: none;
+    background: #2a2a4a;
+    border-radius: 3px;
+    outline: none;
+  }
+  .slider-row input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 16px; height: 16px;
+    border-radius: 50%;
+    background: #e94560;
+    cursor: pointer;
+  }
+
+  .slider-value {
+    width: 64px;
+    background: #0d1b36;
+    border: 1px solid #2a2a4a;
+    border-radius: 4px;
+    color: #fff;
+    text-align: center;
+    padding: 4px;
+    font-size: 0.8rem;
+    font-family: 'Consolas', monospace;
+  }
+
+  /* 버튼 */
+  .btn {
+    display: block;
+    width: 100%;
+    padding: 12px;
+    border: none;
+    border-radius: 8px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+    margin-top: 8px;
+    transition: all 0.15s;
+  }
+  .btn:active { transform: scale(0.97); }
+
+  .btn-primary {
+    background: #e94560;
+    color: #fff;
+  }
+  .btn-primary:hover { background: #ff5a75; }
+
+  .btn-secondary {
+    background: #2a2a4a;
+    color: #ccc;
+  }
+  .btn-secondary:hover { background: #3a3a5a; }
+
+  .btn-success {
+    background: #4caf50;
+    color: #fff;
+  }
+  .btn-success:hover { background: #66bb6a; }
+
+  /* 출력 박스 */
+  #output-box {
+    background: #0d1b36;
+    border: 1px solid #2a2a4a;
+    border-radius: 6px;
+    padding: 12px;
+    font-family: 'Consolas', 'Courier New', monospace;
+    font-size: 0.75rem;
+    line-height: 1.6;
+    color: #aaffaa;
+    white-space: pre;
+    margin-top: 8px;
+    user-select: all;
+  }
+
+  #python-box {
+    background: #1a0d36;
+    border: 1px solid #4a2a6a;
+    border-radius: 6px;
+    padding: 12px;
+    font-family: 'Consolas', 'Courier New', monospace;
+    font-size: 0.7rem;
+    line-height: 1.5;
+    color: #ccaaff;
+    white-space: pre-wrap;
+    margin-top: 8px;
+    user-select: all;
+    word-break: break-all;
+  }
+
+  /* 파일 드롭 영역 */
+  .drop-zone {
+    border: 2px dashed #3a3a5a;
+    border-radius: 8px;
+    padding: 20px;
+    text-align: center;
+    color: #666;
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .drop-zone:hover, .drop-zone.dragover {
+    border-color: #4caf50;
+    background: rgba(76,175,80,0.05);
+    color: #4caf50;
+  }
+  .drop-zone input { display: none; }
+
+  /* 프리셋 버튼 */
+  .preset-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+    margin-top: 8px;
+  }
+  .preset-btn {
+    padding: 8px;
+    background: #2a2a4a;
+    border: 1px solid #3a3a5a;
+    border-radius: 6px;
+    color: #ccc;
+    font-size: 0.75rem;
+    cursor: pointer;
+    text-align: center;
+  }
+  .preset-btn:hover { background: #3a3a5a; border-color: #e94560; }
+
+  .toast {
+    position: fixed;
+    bottom: 30px;
+    left: 50%;
+    transform: translateX(-50%) translateY(100px);
+    background: #4caf50;
+    color: #fff;
+    padding: 12px 24px;
+    border-radius: 8px;
+    font-size: 0.9rem;
+    transition: transform 0.3s;
+    z-index: 100;
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+
+<!-- 3D 뷰포트 -->
+<div id="viewport">
+  <div id="drop-overlay">📦 모델 파일을 여기에 드롭하세요 (OBJ / GLB / FBX)</div>
+  <div id="viewport-hint">🖱 좌클릭: 회전 · 우클릭: 이동 · 휠: 줌 · 모델 드래그&드롭</div>
+</div>
+
+<!-- 사이드 패널 -->
+<div id="panel">
+  <div class="panel-header">
+    <h1>🦕 AR Transform Viewer</h1>
+    <p>TimeMachineAR — 에셋 변환 도구</p>
+  </div>
+
+  <!-- 파일 로드 -->
+  <div class="section">
+    <h2>📁 모델 로드</h2>
+    <div class="drop-zone" id="file-drop">
+      <div>🗂 OBJ / GLB 파일을 드래그하거나 클릭</div>
+      <div style="font-size:0.7rem; margin-top:6px; color:#555">
+        UE에서 에셋 우클릭 → Asset Actions → Export
+      </div>
+      <input type="file" id="file-input" accept=".obj,.glb,.gltf,.fbx">
+    </div>
+    <div style="font-size:0.7rem; color:#555; margin-top:8px" id="file-info"></div>
+  </div>
+
+  <!-- 회전 -->
+  <div class="section">
+    <h2>🔄 회전 (Rotation)</h2>
+    <div class="slider-row">
+      <span class="slider-label x">P</span>
+      <input type="range" id="rot-pitch" min="-180" max="180" step="0.5" value="0">
+      <input type="number" class="slider-value" id="rot-pitch-val" value="0" step="0.5">
+    </div>
+    <div class="slider-row">
+      <span class="slider-label y">Y</span>
+      <input type="range" id="rot-yaw" min="-180" max="180" step="0.5" value="0">
+      <input type="number" class="slider-value" id="rot-yaw-val" value="0" step="0.5">
+    </div>
+    <div class="slider-row">
+      <span class="slider-label z">R</span>
+      <input type="range" id="rot-roll" min="-180" max="180" step="0.5" value="0">
+      <input type="number" class="slider-value" id="rot-roll-val" value="0" step="0.5">
+    </div>
+    <div class="preset-grid">
+      <div class="preset-btn" onclick="setRotation(0,0,0)">초기화</div>
+      <div class="preset-btn" onclick="setRotation(0,180,0)">Y +180°</div>
+      <div class="preset-btn" onclick="setRotation(0,90,0)">Y +90°</div>
+      <div class="preset-btn" onclick="setRotation(0,-90,0)">Y -90°</div>
+    </div>
+  </div>
+
+  <!-- 위치 -->
+  <div class="section">
+    <h2>📍 위치 (Location, cm)</h2>
+    <div class="slider-row">
+      <span class="slider-label x">X</span>
+      <input type="range" id="loc-x" min="-500" max="500" step="1" value="0">
+      <input type="number" class="slider-value" id="loc-x-val" value="0" step="1">
+    </div>
+    <div class="slider-row">
+      <span class="slider-label y">Y</span>
+      <input type="range" id="loc-y" min="-500" max="500" step="1" value="0">
+      <input type="number" class="slider-value" id="loc-y-val" value="0" step="1">
+    </div>
+    <div class="slider-row">
+      <span class="slider-label z">Z</span>
+      <input type="range" id="loc-z" min="-500" max="500" step="1" value="0">
+      <input type="number" class="slider-value" id="loc-z-val" value="0" step="1">
+    </div>
+    <button class="btn btn-secondary" onclick="setLocation(0,0,0)">위치 초기화</button>
+  </div>
+
+  <!-- 스케일 -->
+  <div class="section">
+    <h2>📏 스케일 (Scale)</h2>
+    <div class="slider-row">
+      <span class="slider-label u">U</span>
+      <input type="range" id="scale-uniform" min="0.01" max="5" step="0.01" value="1">
+      <input type="number" class="slider-value" id="scale-uniform-val" value="1" step="0.01">
+    </div>
+    <div style="font-size:0.7rem; color:#555; margin-top:4px">균일 스케일 (X=Y=Z)</div>
+  </div>
+
+  <!-- 출력 -->
+  <div class="section">
+    <h2>📋 UE 변환값</h2>
+    <div id="output-box">값을 조절하면 여기에 표시됩니다</div>
+    <button class="btn btn-primary" onclick="copyValues()">📋 값 복사</button>
+  </div>
+
+  <!-- Python 명령 -->
+  <div class="section">
+    <h2>🐍 UE Python 명령</h2>
+    <div id="python-box">슬라이더를 조절하면 자동 생성됩니다</div>
+    <button class="btn btn-success" onclick="copyPython()">📋 Python 복사</button>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast">✅ 클립보드에 복사됨!</div>
+
+<!-- Three.js (CDN) -->
+<script src="https://unpkg.com/three@0.160.0/build/three.module.js" type="module"></script>
+<script type="module">
+import * as THREE from 'https://unpkg.com/three@0.160.0/build/three.module.js';
+import { OrbitControls } from 'https://unpkg.com/three@0.160.0/examples/jsm/controls/OrbitControls.js';
+import { OBJLoader } from 'https://unpkg.com/three@0.160.0/examples/jsm/loaders/OBJLoader.js';
+import { GLTFLoader } from 'https://unpkg.com/three@0.160.0/examples/jsm/loaders/GLTFLoader.js';
+
+// ── 씬 셋업 ──
+const viewport = document.getElementById('viewport');
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(window.devicePixelRatio);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.2;
+viewport.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x1a1a2e);
+
+// 카메라
+const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 10000);
+camera.position.set(200, 250, 350);
+camera.lookAt(0, 0, 0);
+
+// 컨트롤
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.08;
+controls.target.set(0, 50, 0);
+
+// ── 조명 ──
+const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+scene.add(ambientLight);
+
+const dirLight = new THREE.DirectionalLight(0xffffff, 1.5);
+dirLight.position.set(200, 400, 300);
+dirLight.castShadow = true;
+dirLight.shadow.mapSize.set(2048, 2048);
+dirLight.shadow.camera.near = 1;
+dirLight.shadow.camera.far = 1500;
+dirLight.shadow.camera.left = -500;
+dirLight.shadow.camera.right = 500;
+dirLight.shadow.camera.top = 500;
+dirLight.shadow.camera.bottom = -500;
+scene.add(dirLight);
+
+const fillLight = new THREE.DirectionalLight(0x4488ff, 0.4);
+fillLight.position.set(-200, 100, -200);
+scene.add(fillLight);
+
+// ── 바닥 (AR 마커 표현) ──
+const groundGeo = new THREE.PlaneGeometry(800, 800);
+const groundMat = new THREE.MeshStandardMaterial({
+  color: 0x2a2a4a,
+  roughness: 0.8,
+  metalness: 0.1,
+});
+const ground = new THREE.Mesh(groundGeo, groundMat);
+ground.rotation.x = -Math.PI / 2;
+ground.receiveShadow = true;
+scene.add(ground);
+
+// 마커 테두리 (AR 느낌)
+const markerGeo = new THREE.PlaneGeometry(200, 200);
+const markerMat = new THREE.MeshBasicMaterial({
+  color: 0x4caf50,
+  transparent: true,
+  opacity: 0.15,
+});
+const marker = new THREE.Mesh(markerGeo, markerMat);
+marker.rotation.x = -Math.PI / 2;
+marker.position.y = 0.5;
+scene.add(marker);
+
+// 마커 테두리 라인
+const borderPts = [
+  new THREE.Vector3(-100, 0.6, -100),
+  new THREE.Vector3(100, 0.6, -100),
+  new THREE.Vector3(100, 0.6, 100),
+  new THREE.Vector3(-100, 0.6, 100),
+  new THREE.Vector3(-100, 0.6, -100),
+];
+const borderGeo = new THREE.BufferGeometry().setFromPoints(borderPts);
+const borderLine = new THREE.Line(borderGeo, new THREE.LineBasicMaterial({ color: 0x4caf50, linewidth: 2 }));
+scene.add(borderLine);
+
+// 축 표시
+const axesHelper = new THREE.AxesHelper(120);
+axesHelper.position.y = 1;
+scene.add(axesHelper);
+
+// X, Y, Z 라벨 (스프라이트)
+function makeLabel(text, color, pos) {
+  const canvas = document.createElement('canvas');
+  canvas.width = 64; canvas.height = 32;
+  const ctx = canvas.getContext('2d');
+  ctx.font = 'bold 24px Arial';
+  ctx.fillStyle = color;
+  ctx.textAlign = 'center';
+  ctx.fillText(text, 32, 24);
+  const tex = new THREE.CanvasTexture(canvas);
+  const mat = new THREE.SpriteMaterial({ map: tex, depthTest: false });
+  const sprite = new THREE.Sprite(mat);
+  sprite.position.copy(pos);
+  sprite.scale.set(30, 15, 1);
+  scene.add(sprite);
+}
+makeLabel('X', '#ff4444', new THREE.Vector3(140, 5, 0));
+makeLabel('Y', '#44ff44', new THREE.Vector3(0, 140, 0));
+makeLabel('Z', '#4488ff', new THREE.Vector3(0, 5, 140));
+
+// 그리드
+const gridHelper = new THREE.GridHelper(800, 40, 0x333355, 0x222244);
+gridHelper.position.y = 0.2;
+scene.add(gridHelper);
+
+// ── 모델 그룹 ──
+const modelGroup = new THREE.Group();
+scene.add(modelGroup);
+
+// 기본 거북이 형태 (플레이스홀더)
+function createPlaceholder() {
+  const group = new THREE.Group();
+
+  // 등딱지
+  const shellGeo = new THREE.SphereGeometry(60, 32, 16, 0, Math.PI * 2, 0, Math.PI / 2);
+  const shellMat = new THREE.MeshStandardMaterial({ color: 0x5d4e37, roughness: 0.7 });
+  const shell = new THREE.Mesh(shellGeo, shellMat);
+  shell.scale.set(1, 0.5, 1.2);
+  shell.position.y = 10;
+  shell.castShadow = true;
+  group.add(shell);
+
+  // 배
+  const bellyGeo = new THREE.SphereGeometry(58, 32, 8, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2);
+  const bellyMat = new THREE.MeshStandardMaterial({ color: 0x8b7d6b, roughness: 0.8 });
+  const belly = new THREE.Mesh(bellyGeo, bellyMat);
+  belly.scale.set(1, 0.2, 1.2);
+  belly.position.y = 10;
+  group.add(belly);
+
+  // 머리
+  const headGeo = new THREE.SphereGeometry(15, 16, 16);
+  const headMat = new THREE.MeshStandardMaterial({ color: 0x6b5d4e, roughness: 0.6 });
+  const head = new THREE.Mesh(headGeo, headMat);
+  head.position.set(0, 20, 80);
+  head.scale.set(1, 0.8, 1.3);
+  head.castShadow = true;
+  group.add(head);
+
+  // 앞지느러미
+  for (const side of [-1, 1]) {
+    const flipperGeo = new THREE.BoxGeometry(80, 5, 25);
+    const flipperMat = new THREE.MeshStandardMaterial({ color: 0x6b5d4e, roughness: 0.7 });
+    const flipper = new THREE.Mesh(flipperGeo, flipperMat);
+    flipper.position.set(side * 70, 15, 30);
+    flipper.rotation.z = side * 0.3;
+    flipper.rotation.y = side * -0.2;
+    flipper.castShadow = true;
+    group.add(flipper);
+  }
+
+  // 뒷지느러미
+  for (const side of [-1, 1]) {
+    const flipperGeo = new THREE.BoxGeometry(50, 4, 20);
+    const flipperMat = new THREE.MeshStandardMaterial({ color: 0x6b5d4e, roughness: 0.7 });
+    const flipper = new THREE.Mesh(flipperGeo, flipperMat);
+    flipper.position.set(side * 55, 12, -50);
+    flipper.rotation.z = side * 0.4;
+    flipper.castShadow = true;
+    group.add(flipper);
+  }
+
+  // 정면 표시 화살표
+  const arrowGeo = new THREE.ConeGeometry(8, 25, 8);
+  const arrowMat = new THREE.MeshBasicMaterial({ color: 0x4caf50 });
+  const arrow = new THREE.Mesh(arrowGeo, arrowMat);
+  arrow.position.set(0, 25, 110);
+  arrow.rotation.x = Math.PI / 2;
+  group.add(arrow);
+
+  return group;
+}
+
+let currentModel = createPlaceholder();
+modelGroup.add(currentModel);
+
+// ── 모델 로드 ──
+function loadModel(file) {
+  const name = file.name.toLowerCase();
+  const reader = new FileReader();
+
+  reader.onload = (e) => {
+    const buffer = e.target.result;
+
+    // 기존 모델 제거
+    while (modelGroup.children.length > 0) {
+      modelGroup.remove(modelGroup.children[0]);
+    }
+
+    if (name.endsWith('.obj')) {
+      const loader = new OBJLoader();
+      const text = new TextDecoder().decode(buffer);
+      const obj = loader.parse(text);
+      normalizeModel(obj);
+      modelGroup.add(obj);
+      currentModel = obj;
+    } else if (name.endsWith('.glb') || name.endsWith('.gltf')) {
+      const loader = new GLTFLoader();
+      loader.parse(buffer, '', (gltf) => {
+        const model = gltf.scene;
+        normalizeModel(model);
+        modelGroup.add(model);
+        currentModel = model;
+      });
+    } else {
+      alert('지원하지 않는 형식입니다. OBJ 또는 GLB 파일을 사용하세요.');
+      modelGroup.add(createPlaceholder());
+      return;
+    }
+
+    document.getElementById('file-info').textContent = `✅ ${file.name} (${(file.size / 1024 / 1024).toFixed(1)} MB)`;
+  };
+
+  reader.readAsArrayBuffer(file);
+}
+
+function normalizeModel(model) {
+  // 바운딩 박스 계산 후 적절한 크기로 정규화
+  const box = new THREE.Box3().setFromObject(model);
+  const size = box.getSize(new THREE.Vector3());
+  const center = box.getCenter(new THREE.Vector3());
+
+  const maxDim = Math.max(size.x, size.y, size.z);
+  const targetSize = 150;
+  const scale = targetSize / maxDim;
+
+  model.scale.multiplyScalar(scale);
+  model.position.sub(center.multiplyScalar(scale));
+  model.position.y += (size.y * scale) / 2;
+
+  model.traverse((child) => {
+    if (child.isMesh) {
+      child.castShadow = true;
+      child.receiveShadow = true;
+      if (!child.material.map) {
+        child.material = new THREE.MeshStandardMaterial({
+          color: 0x8b7d6b,
+          roughness: 0.6,
+          metalness: 0.1,
+        });
+      }
+    }
+  });
+}
+
+// ── 파일 드롭 처리 ──
+const fileDrop = document.getElementById('file-drop');
+const fileInput = document.getElementById('file-input');
+const dropOverlay = document.getElementById('drop-overlay');
+
+fileDrop.addEventListener('click', () => fileInput.click());
+fileInput.addEventListener('change', (e) => {
+  if (e.target.files[0]) loadModel(e.target.files[0]);
+});
+
+// 뷰포트 전체에 드롭 가능
+let dragCounter = 0;
+viewport.addEventListener('dragenter', (e) => {
+  e.preventDefault();
+  dragCounter++;
+  dropOverlay.classList.add('active');
+});
+viewport.addEventListener('dragleave', (e) => {
+  e.preventDefault();
+  dragCounter--;
+  if (dragCounter === 0) dropOverlay.classList.remove('active');
+});
+viewport.addEventListener('dragover', (e) => e.preventDefault());
+viewport.addEventListener('drop', (e) => {
+  e.preventDefault();
+  dragCounter = 0;
+  dropOverlay.classList.remove('active');
+  const file = e.dataTransfer.files[0];
+  if (file) loadModel(file);
+});
+
+// 사이드 패널에도 드롭
+fileDrop.addEventListener('dragover', (e) => {
+  e.preventDefault();
+  fileDrop.classList.add('dragover');
+});
+fileDrop.addEventListener('dragleave', () => fileDrop.classList.remove('dragover'));
+fileDrop.addEventListener('drop', (e) => {
+  e.preventDefault();
+  fileDrop.classList.remove('dragover');
+  const file = e.dataTransfer.files[0];
+  if (file) loadModel(file);
+});
+
+// ── 슬라이더 연결 ──
+const sliders = {
+  'rot-pitch': { range: 'rot-pitch', value: 'rot-pitch-val' },
+  'rot-yaw':   { range: 'rot-yaw',   value: 'rot-yaw-val' },
+  'rot-roll':  { range: 'rot-roll',  value: 'rot-roll-val' },
+  'loc-x':     { range: 'loc-x',     value: 'loc-x-val' },
+  'loc-y':     { range: 'loc-y',     value: 'loc-y-val' },
+  'loc-z':     { range: 'loc-z',     value: 'loc-z-val' },
+  'scale-uniform': { range: 'scale-uniform', value: 'scale-uniform-val' },
+};
+
+for (const [key, ids] of Object.entries(sliders)) {
+  const range = document.getElementById(ids.range);
+  const value = document.getElementById(ids.value);
+
+  range.addEventListener('input', () => {
+    value.value = range.value;
+    updateTransform();
+  });
+  value.addEventListener('input', () => {
+    range.value = value.value;
+    updateTransform();
+  });
+}
+
+function updateTransform() {
+  const pitch = parseFloat(document.getElementById('rot-pitch-val').value) || 0;
+  const yaw   = parseFloat(document.getElementById('rot-yaw-val').value) || 0;
+  const roll  = parseFloat(document.getElementById('rot-roll-val').value) || 0;
+  const locX  = parseFloat(document.getElementById('loc-x-val').value) || 0;
+  const locY  = parseFloat(document.getElementById('loc-y-val').value) || 0;
+  const locZ  = parseFloat(document.getElementById('loc-z-val').value) || 0;
+  const scale = parseFloat(document.getElementById('scale-uniform-val').value) || 1;
+
+  // UE 좌표계 변환 (UE: X=전방, Y=오른쪽, Z=위)
+  // Three.js: X=오른쪽, Y=위, Z=뒤쪽(카메라 쪽)
+  // Pitch(Y축 회전) → Three.js X축 회전
+  // Yaw(Z축 회전) → Three.js Y축 회전
+  // Roll(X축 회전) → Three.js Z축 회전
+
+  const euler = new THREE.Euler(
+    THREE.MathUtils.degToRad(pitch),   // Pitch → X
+    THREE.MathUtils.degToRad(yaw),     // Yaw → Y
+    THREE.MathUtils.degToRad(roll),    // Roll → Z
+    'YXZ'
+  );
+
+  modelGroup.rotation.copy(euler);
+  modelGroup.position.set(locX, locZ, -locY);  // UE→Three 좌표 변환
+  modelGroup.scale.set(scale, scale, scale);
+
+  updateOutput(pitch, yaw, roll, locX, locY, locZ, scale);
+}
+
+function updateOutput(pitch, yaw, roll, locX, locY, locZ, scale) {
+  // UE 형식 출력
+  const output = document.getElementById('output-box');
+  output.textContent =
+    `Location  X=${locX.toFixed(1)}  Y=${locY.toFixed(1)}  Z=${locZ.toFixed(1)}\n` +
+    `Rotation  Pitch=${pitch.toFixed(1)}  Yaw=${yaw.toFixed(1)}  Roll=${roll.toFixed(1)}\n` +
+    `Scale     ${scale.toFixed(3)}`;
+
+  // Python 명령 생성
+  const python = document.getElementById('python-box');
+  python.textContent =
+    `import unreal\n` +
+    `da = unreal.EditorAssetLibrary.load_asset("/Game/UI/DinoCard/DA_Dino_Archelon")\n` +
+    `t = unreal.Transform(location=unreal.Vector(${locX}, ${locY}, ${locZ}), rotation=unreal.Rotator(${pitch}, ${yaw}, ${roll}), scale=unreal.Vector(${scale}, ${scale}, ${scale}))\n` +
+    `da.set_editor_property("MeshTransform", t)\n` +
+    `unreal.EditorAssetLibrary.save_asset("/Game/UI/DinoCard/DA_Dino_Archelon")\n` +
+    `unreal.log("[done] Archelon MeshTransform 저장 완료")`;
+}
+
+// ── 프리셋 함수 ──
+window.setRotation = (p, y, r) => {
+  document.getElementById('rot-pitch-val').value = p;
+  document.getElementById('rot-yaw-val').value = y;
+  document.getElementById('rot-roll-val').value = r;
+  document.getElementById('rot-pitch').value = p;
+  document.getElementById('rot-yaw').value = y;
+  document.getElementById('rot-roll').value = r;
+  updateTransform();
+};
+
+window.setLocation = (x, y, z) => {
+  document.getElementById('loc-x-val').value = x;
+  document.getElementById('loc-y-val').value = y;
+  document.getElementById('loc-z-val').value = z;
+  document.getElementById('loc-x').value = x;
+  document.getElementById('loc-y').value = y;
+  document.getElementById('loc-z').value = z;
+  updateTransform();
+};
+
+// ── 복사 함수 ──
+function showToast(msg) {
+  const toast = document.getElementById('toast');
+  toast.textContent = msg || '✅ 클립보드에 복사됨!';
+  toast.classList.add('show');
+  setTimeout(() => toast.classList.remove('show'), 2000);
+}
+
+window.copyValues = () => {
+  const text = document.getElementById('output-box').textContent;
+  navigator.clipboard.writeText(text).then(() => showToast());
+};
+
+window.copyPython = () => {
+  const text = document.getElementById('python-box').textContent;
+  navigator.clipboard.writeText(text).then(() => showToast('✅ Python 명령 복사됨!'));
+};
+
+// ── 리사이즈 ──
+function onResize() {
+  const w = viewport.clientWidth;
+  const h = viewport.clientHeight;
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+  renderer.setSize(w, h);
+}
+window.addEventListener('resize', onResize);
+onResize();
+
+// ── 렌더 루프 ──
+function animate() {
+  requestAnimationFrame(animate);
+  controls.update();
+  renderer.render(scene, camera);
+}
+animate();
+
+// 초기 출력
+updateTransform();
+</script>
+
+</body>
+</html>
