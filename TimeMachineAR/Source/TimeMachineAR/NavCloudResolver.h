@@ -45,6 +45,13 @@ struct FNavCloudResolveEntry
 	UPROPERTY() FString CloudId;
 	UPROPERTY() TObjectPtr<UARPin> Pin = nullptr;
 
+	// 이 앵커가 맵의 어디에 있는가(서버 cloud_anchors 행). 측위 기준점으로 그대로 쓴다.
+	UPROPERTY() float PosXCm = 0.f;
+	UPROPERTY() float PosYCm = 0.f;
+	UPROPERTY() float PosZCm = 0.f;
+	/** 맵 +X 축 기준 CCW(도). 12단계는 계획값 90° — 실측 보정은 13단계(D18). */
+	UPROPERTY() float HeadingDeg = 90.f;
+
 	/** 이번 시도의 요청 시각(월드초). 토스트에 쓰는 지연은 이 값 기준이다. */
 	UPROPERTY() double AttemptStart = 0.0;
 	/** 최초 요청 시각(월드초) — 앱 시작부터 걸린 전체 시간(로그용). */
@@ -52,6 +59,14 @@ struct FNavCloudResolveEntry
 	UPROPERTY() int32 Attempts = 0;
 	/** 인식 확정되어 토스트를 띄웠나(같은 앵커 재표시 억제). */
 	UPROPERTY() bool bRecognized = false;
+	/** 이 핀이 마지막으로 Tracking 이던 월드 시각. 재관측(gap) 판정에 쓴다. */
+	UPROPERTY() double LastTrackedTime = 0.0;
+	/** 재보정(재래치) 횟수 — 로그·보고용. */
+	UPROPERTY() int32 Relatches = 0;
+	/** 재시도를 다 써서 포기했나(더 폴링하지 않는다). */
+	UPROPERTY() bool bGaveUp = false;
+	/** 이 앵커로 측위를 세운 적이 있나(로그·토스트 문구 구분용). */
+	UPROPERTY() bool bLocalizeApplied = false;
 };
 
 /**
@@ -91,6 +106,33 @@ private:
 	void PollResolves();
 	/** 토스트 HUD 를 만든다(런타임 생성, WBP 없음). */
 	void EnsureHud();
+	/**
+	 * 인식된 앵커로 **측위를 세운다**(QR 마커 대체 — 사용자 요청). 이미 측위돼 있으면
+	 * 건드리지 않는다(마커가 더 정확하므로 QR 측위를 덮지 않는다).
+	 *
+	 * 네비 버튼이 `StartLocalizing` → `ResetLocalization` 으로 측위를 비우는 경로가 있어
+	 * **매 틱 다시 확인**한다. 그래야 순서에 상관없이(앵커 먼저 / 네비 먼저) 지도가 뜬다.
+	 *
+	 * @return 이 호출로 새로 측위가 성립했으면 true.
+	 */
+	bool TryLocalizeWithAnchor(FNavCloudResolveEntry& Entry);
+
+	/**
+	 * 이미 인식된 앵커를 **계속 지켜본다**(마커의 상시 재탐색과 같은 자리).
+	 *
+	 * 마커 측위의 `bRelatchOnReacquire` 규칙을 그대로 옮겼다 — 매 틱 다시 세우면 추적
+	 * 노이즈가 그대로 실려 지도가 떨리므로, **핀을 한동안 놓쳤다가 다시 잡은 순간**에만
+	 * 변환을 다시 세운다. 그 순간은 새 관측이 들어온 시점이라 요동 없이 드리프트만 씻긴다.
+	 *
+	 * 핀이 죽었거나(오류 상태) 사라졌으면 **리졸브를 다시 걸어** 항상 잡을 준비를 유지한다.
+	 */
+	void WatchRecognizedAnchor(FNavCloudResolveEntry& Entry, double Now);
+
+	/** 서버 목록을 주기적으로 다시 받아 **새로 등록된 앵커·바뀐 좌표**를 반영한다. */
+	void RefreshAnchorsIfDue(double Now);
+
+	/** 카메라의 현재 맵 좌표(측위 전이면 ZeroVector). 재보정 드리프트 측정용. */
+	FVector GetCameraMapLocation() const;
 
 	bool bCloudConfigured = false;
 	bool bConfigResolved = false;
@@ -98,6 +140,8 @@ private:
 	bool bAnchorsLoaded = false;
 	/** 다음 목록 조회를 시도할 월드 시각(실패 시 백오프). */
 	double NextFetchTime = 0.0;
+	/** 목록을 주기적으로 다시 받을 월드 시각(등록이 늘거나 heading 이 바뀔 수 있다). */
+	double NextRefreshTime = 0.0;
 
 	FString ServerBaseUrl;
 	FString MapId;

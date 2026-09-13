@@ -27,6 +27,9 @@ public:
 	/** 인식 토스트를 큐에 넣는다. 이미 같은 문구가 떠 있으면 무시하고, 여러 건은 순차로 보여 준다. */
 	void ShowRecognized(int32 PointNo, float Seconds);
 
+	/** 인식 + **측위까지 성립**했을 때(QR 마커 대체). 지도가 떴다는 뜻이라 문구를 나눈다. */
+	void ShowLocalized(int32 PointNo, float Seconds);
+
 	/** 임의 문구 토스트(실패·안내용). */
 	void ShowMessage(const FString& Message);
 

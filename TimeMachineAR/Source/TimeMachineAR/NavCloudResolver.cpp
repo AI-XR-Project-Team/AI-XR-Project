@@ -11,6 +11,8 @@
 #if NAV_CLOUD_RESOLVE
 #include "NavCloudResolveHud.h"
 #include "NavClient.h"                                   // ServerBaseUrl
+#include "NavLocalizer.h"                                // 앵커로 측위 세우기
+#include "NavTypes.h"                                    // FNavMarker
 #include "ARBlueprintLibrary.h"
 #include "ARPin.h"
 #include "ARTypes.h"
@@ -24,6 +26,8 @@
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
 #include "Misc/ConfigCacheIni.h"
+#include "Camera/PlayerCameraManager.h"
+#include "Kismet/GameplayStatics.h"
 #endif
 
 DEFINE_LOG_CATEGORY_STATIC(LogNavCloudResolve, Log, All);
@@ -37,6 +41,48 @@ namespace
 	constexpr double kFetchRetrySeconds = 10.0;
 	/** 한 앵커에 허용할 최대 시도 횟수. 12초×60 ≈ 12분 — 현장 실측 한 세션을 덮는다. */
 	constexpr int32 kMaxAttempts = 60;
+	/**
+	 * 핀을 이만큼(초) 놓쳤다가 다시 잡으면 "재관측" 으로 보고 변환을 다시 세운다.
+	 * 마커 측위의 `UNavLocalizer::ReacquireGapSeconds` 기본값과 맞췄다 — 짧게 잡으면
+	 * 화면 가장자리에서 깜빡일 때마다 재래치가 걸려 결국 매 틱 재계산이 된다.
+	 */
+	constexpr double kReacquireGapSeconds = 1.5;
+	/** 이만큼(cm) 이상 밀려 있던 것을 씻어냈을 때만 재보정 토스트를 띄운다(잔소리 방지). */
+	constexpr float kRelatchToastCm = 30.f;
+	/** 서버 목록 재조회 주기(초). 새로 등록된 앵커·바뀐 heading 을 앱 재시작 없이 받는다. */
+	constexpr double kRefreshSeconds = 60.0;
+
+	/**
+	 * 서버는 Decimal 필드를 **문자열**로 직렬화한다(`"pos_x_cm": "2280.00"`). 숫자로 와도
+	 * 받도록 둘 다 처리한다 — 여기서 0 으로 떨어지면 측위가 원점으로 튄다.
+	 */
+	float ReadNumberField(const TSharedPtr<FJsonObject>& Obj, const FString& Field, float Default)
+	{
+		double Number = 0.0;
+		if (Obj->TryGetNumberField(Field, Number))
+		{
+			return static_cast<float>(Number);
+		}
+		FString Text;
+		if (Obj->TryGetStringField(Field, Text) && !Text.IsEmpty())
+		{
+			return FCString::Atof(*Text);
+		}
+		return Default;
+	}
+
+	/** 서버가 아는 이 앵커의 맵 좌표를 측위 기준점(FNavMarker) 형태로 만든다. */
+	FNavMarker MakeAnchorPose(const FNavCloudResolveEntry& E)
+	{
+		FNavMarker Pose;
+		Pose.Code = FString::Printf(TEXT("CA%d"), E.PointNo);
+		Pose.MarkerType = TEXT("cloud_anchor");
+		Pose.PosXCm = E.PosXCm;
+		Pose.PosYCm = E.PosYCm;
+		Pose.PosZCm = E.PosZCm;
+		Pose.HeadingDeg = E.HeadingDeg;
+		return Pose;
+	}
 
 	FString CloudStateName(ECloudARPinCloudState State) { return UEnum::GetValueAsString(State); }
 	FString TaskResultName(EARPinCloudTaskResult Result) { return UEnum::GetValueAsString(Result); }
@@ -142,6 +188,7 @@ void UNavCloudResolverSubsystem::Tick(float DeltaTime)
 		return;
 	}
 
+	RefreshAnchorsIfDue(GetWorld() ? GetWorld()->GetTimeSeconds() : 0.0);
 	PollResolves();
 #endif
 }
@@ -248,7 +295,9 @@ void UNavCloudResolverSubsystem::ApplyAnchorsJson(const FString& Body)
 		return;
 	}
 
-	Entries.Reset();
+	// 기존 엔트리를 버리지 않는다 — 진행 중인 리졸브 핀과 추적 이력을 살린 채,
+	// 새로 등록된 앵커만 추가하고 좌표·heading 은 서버 값으로 갱신한다.
+	TSet<int32> SeenPoints;
 	for (const TSharedPtr<FJsonValue>& V : Arr)
 	{
 		const TSharedPtr<FJsonObject>* Obj;
@@ -261,10 +310,46 @@ void UNavCloudResolverSubsystem::ApplyAnchorsJson(const FString& Body)
 		{
 			continue; // state=bound 라 없을 리 없지만 방어.
 		}
-		FNavCloudResolveEntry E;
-		E.PointNo = static_cast<int32>((*Obj)->GetIntegerField(TEXT("point_no")));
+		const int32 PointNo = static_cast<int32>((*Obj)->GetIntegerField(TEXT("point_no")));
+		SeenPoints.Add(PointNo);
+
+		FNavCloudResolveEntry* Existing = Entries.FindByPredicate(
+			[PointNo](const FNavCloudResolveEntry& X) { return X.PointNo == PointNo; });
+
+		FNavCloudResolveEntry& E = Existing != nullptr ? *Existing : Entries.AddDefaulted_GetRef();
+		const bool bIsNew = (Existing == nullptr);
+		const bool bReHosted = !bIsNew && !E.CloudId.Equals(CloudId);
+
+		E.PointNo = PointNo;
 		E.CloudId = CloudId;
-		Entries.Add(E);
+		// 좌표·heading 은 **매번 서버 값으로 덮는다** — 방향 보정을 서버에서 고치면
+		// 앱을 다시 굽지 않아도 다음 재보정부터 그 값이 쓰인다.
+		E.PosXCm = ReadNumberField(*Obj, TEXT("pos_x_cm"), 0.f);
+		E.PosYCm = ReadNumberField(*Obj, TEXT("pos_y_cm"), 0.f);
+		E.PosZCm = ReadNumberField(*Obj, TEXT("pos_z_cm"), 0.f);
+		E.HeadingDeg = ReadNumberField(*Obj, TEXT("heading_deg"), 90.f);
+
+		if (bReHosted)
+		{
+			// 다른 앵커로 재등록됐다 — 들고 있던 핀은 무효다. 처음부터 다시 잡는다.
+			if (UCloudARPin* OldPin = Cast<UCloudARPin>(E.Pin))
+			{
+				UGoogleARCoreServicesFunctionLibrary::RemoveCloudARPin(OldPin);
+			}
+			E.Pin = nullptr;
+			E.bRecognized = false;
+			E.bGaveUp = false;
+			E.Attempts = 0;
+			E.FirstRequest = 0.0;
+		}
+
+		if (bIsNew || bReHosted)
+		{
+			UE_LOG(LogNavCloudResolve, Log,
+				TEXT("[NavCloudResolve] #%d 맵(%.0f, %.0f, %.0f) heading=%.1f° cloud_id=%s%s"),
+				E.PointNo, E.PosXCm, E.PosYCm, E.PosZCm, E.HeadingDeg, *E.CloudId,
+				bReHosted ? TEXT(" (재등록)") : TEXT(""));
+		}
 	}
 	Entries.Sort([](const FNavCloudResolveEntry& A, const FNavCloudResolveEntry& B)
 		{ return A.PointNo < B.PointNo; });
@@ -277,11 +362,19 @@ void UNavCloudResolverSubsystem::ApplyAnchorsJson(const FString& Body)
 		return;
 	}
 
+	const bool bFirstLoad = !bAnchorsLoaded;
 	bAnchorsLoaded = true;
-	UE_LOG(LogNavCloudResolve, Log, TEXT("[NavCloudResolve] bound 앵커 %d개 로드"), Entries.Num());
+	if (bFirstLoad)
+	{
+		UE_LOG(LogNavCloudResolve, Log, TEXT("[NavCloudResolve] bound 앵커 %d개 로드"), Entries.Num());
+	}
+	// 아직 핀이 없는 앵커(새로 등록됐거나 재등록된 것)만 리졸브를 건다.
 	for (FNavCloudResolveEntry& E : Entries)
 	{
-		StartResolve(E);
+		if (E.Pin == nullptr && !E.bRecognized && E.Attempts == 0)
+		{
+			StartResolve(E);
+		}
 	}
 }
 
@@ -324,12 +417,18 @@ void UNavCloudResolverSubsystem::PollResolves()
 
 	for (FNavCloudResolveEntry& E : Entries)
 	{
+		UCloudARPin* Pin = Cast<UCloudARPin>(E.Pin);
+
+		if (E.bGaveUp)
+		{
+			continue;
+		}
 		if (E.bRecognized)
 		{
-			continue; // 이 단계의 산출물은 "인식됨 + 지연" 뿐이다(D18) — 잡은 뒤엔 손대지 않는다.
+			// 마커가 늘 재탐색되던 것처럼, 잡은 뒤에도 이 앵커를 **계속 지켜본다**.
+			WatchRecognizedAnchor(E, Now);
+			continue;
 		}
-
-		UCloudARPin* Pin = Cast<UCloudARPin>(E.Pin);
 		if (Pin == nullptr)
 		{
 			// 시작 자체가 실패했던 건 — 타임아웃 간격을 지켜 다시 요청한다.
@@ -349,10 +448,19 @@ void UNavCloudResolverSubsystem::PollResolves()
 			E.bRecognized = true;
 			const float AttemptLatency = static_cast<float>(Now - E.AttemptStart);
 			const float TotalLatency = static_cast<float>(Now - E.FirstRequest);
+			// 인식된 앵커로 **지도를 띄운다**(QR 마커 대체). 실패해도 인식 실측엔 영향 없다.
+			const bool bLocalizedNow = TryLocalizeWithAnchor(E);
 			EnsureHud();
 			if (Hud != nullptr)
 			{
-				Hud->ShowRecognized(E.PointNo, AttemptLatency);
+				if (bLocalizedNow)
+				{
+					Hud->ShowLocalized(E.PointNo, AttemptLatency);
+				}
+				else
+				{
+					Hud->ShowRecognized(E.PointNo, AttemptLatency);
+				}
 			}
 			// 실측표에 그대로 옮길 수 있게 두 값을 같이 남긴다. 토스트의 지연은 **이번 시도**
 			// 기준이고(요청→확정), 전체는 앱 시작부터 걸린 시간이다(그 사이 걸어왔을 수 있다).
@@ -380,12 +488,158 @@ void UNavCloudResolverSubsystem::PollResolves()
 			}
 			else
 			{
-				E.bRecognized = true; // 더 시도하지 않는다(포기) — 로그로 남기고 조용히 끝낸다.
+				E.bGaveUp = true; // 더 시도하지 않는다 — 로그로 남기고 조용히 끝낸다.
 				UE_LOG(LogNavCloudResolve, Error,
 					TEXT("[NavCloudResolve] #%d 포기 — %d회 시도 실패"), E.PointNo, E.Attempts);
 			}
 		}
 	}
+}
+
+bool UNavCloudResolverSubsystem::TryLocalizeWithAnchor(FNavCloudResolveEntry& Entry)
+{
+	UWorld* World = GetWorld();
+	UNavLocalizer* Localizer = World ? World->GetSubsystem<UNavLocalizer>() : nullptr;
+	UCloudARPin* Pin = Cast<UCloudARPin>(Entry.Pin);
+	if (Localizer == nullptr || Pin == nullptr)
+	{
+		return false;
+	}
+	if (Localizer->IsLocalized())
+	{
+		// 이미 서 있는 측위(대개 QR 마커)를 덮지 않는다. 마커가 더 정확하다.
+		return false;
+	}
+
+	// 서버가 아는 이 앵커의 맵 좌표를 기준점으로 넘긴다. 마커 측위와 같은 식이다.
+	const FNavMarker AnchorPose = MakeAnchorPose(Entry);
+
+	const FTransform AnchorWorld = Pin->GetLocalToWorldTransform();
+	const bool bNewlyLocalized =
+		Localizer->LocalizeFromCloudAnchor(AnchorPose.Code, AnchorWorld, AnchorPose);
+	Entry.bLocalizeApplied = true;
+
+	UE_LOG(LogNavCloudResolve, Log,
+		TEXT("[NavCloudResolve] #%d 로 측위 %s — 앵커 월드 yaw=%.1f° / 서버 heading=%.1f°"
+			 " (heading 이 실측값이 아니면 지도 회전이 그만큼 틀어진다 — 13단계 보정)"),
+		Entry.PointNo, bNewlyLocalized ? TEXT("성립") : TEXT("재적용"),
+		AnchorWorld.Rotator().Yaw, Entry.HeadingDeg);
+	return bNewlyLocalized;
+}
+
+void UNavCloudResolverSubsystem::WatchRecognizedAnchor(FNavCloudResolveEntry& Entry, double Now)
+{
+	UCloudARPin* Pin = Cast<UCloudARPin>(Entry.Pin);
+
+	// ① 핀이 사라졌거나 오류로 죽었으면 **처음부터 다시 잡는다** — 마커가 늘 재탐색
+	//    상태였던 것처럼, 앵커도 언제나 다시 잡을 준비를 유지한다.
+	if (Pin == nullptr || IsCloudError(Pin->GetARPinCloudState()))
+	{
+		UE_LOG(LogNavCloudResolve, Warning,
+			TEXT("[NavCloudResolve] #%d 핀 무효 (%s) — 리졸브를 다시 건다"),
+			Entry.PointNo,
+			Pin != nullptr ? *CloudStateName(Pin->GetARPinCloudState()) : TEXT("null"));
+		if (Pin != nullptr)
+		{
+			UGoogleARCoreServicesFunctionLibrary::RemoveCloudARPin(Pin);
+		}
+		Entry.Pin = nullptr;
+		Entry.bRecognized = false;
+		Entry.Attempts = 0;
+		Entry.FirstRequest = 0.0;
+		Entry.LastTrackedTime = 0.0;
+		StartResolve(Entry);
+		return;
+	}
+
+	// ② 지금 안 보이면 아무것도 하지 않는다. LastTrackedTime 을 그대로 둬 gap 이 쌓이게 한다.
+	if (Pin->GetTrackingState() != EARTrackingState::Tracking)
+	{
+		return;
+	}
+
+	const double Gap = (Entry.LastTrackedTime > 0.0) ? (Now - Entry.LastTrackedTime) : 0.0;
+	Entry.LastTrackedTime = Now;
+
+	UWorld* World = GetWorld();
+	UNavLocalizer* Localizer = World ? World->GetSubsystem<UNavLocalizer>() : nullptr;
+	if (Localizer == nullptr)
+	{
+		return;
+	}
+
+	// ③ 측위가 비어 있으면(네비 버튼의 ResetLocalization 등) 이 앵커로 다시 세운다.
+	if (!Localizer->IsLocalized())
+	{
+		TryLocalizeWithAnchor(Entry);
+		return;
+	}
+
+	// ④ 마커로 잡힌 측위는 덮지 않는다 — 마커가 더 정확하다(7단계 앵커 전환이 우선).
+	if (!Localizer->IsAnchoredToCloudAnchor())
+	{
+		return;
+	}
+
+	// ⑤ **재관측일 때만** 변환을 다시 세운다(마커의 bRelatchOnReacquire 와 같은 규칙).
+	//    매 틱 재계산하면 추적 노이즈가 실려 지도가 떨린다.
+	if (Gap < kReacquireGapSeconds)
+	{
+		return;
+	}
+
+	const FVector BeforeMap = GetCameraMapLocation();
+	Localizer->LocalizeFromCloudAnchor(
+		FString::Printf(TEXT("CA%d"), Entry.PointNo),
+		Pin->GetLocalToWorldTransform(),
+		MakeAnchorPose(Entry));
+	const FVector AfterMap = GetCameraMapLocation();
+
+	const float DriftCm = FVector2D::Distance(
+		FVector2D(BeforeMap.X, BeforeMap.Y), FVector2D(AfterMap.X, AfterMap.Y));
+	++Entry.Relatches;
+	UE_LOG(LogNavCloudResolve, Log,
+		TEXT("[NavCloudResolve] #%d 재보정 %d회째 — %.1f초 만에 재관측, 드리프트 %.0fcm 보정"),
+		Entry.PointNo, Entry.Relatches, Gap, DriftCm);
+
+	// 눈에 띄게 밀렸던 것을 씻어냈을 때만 알린다(토스트 잔소리 방지).
+	if (DriftCm >= kRelatchToastCm)
+	{
+		EnsureHud();
+		if (Hud != nullptr)
+		{
+			Hud->ShowMessage(FString::Printf(
+				TEXT("%d번 앵커 재보정 (%.0fcm)"), Entry.PointNo, DriftCm));
+		}
+	}
+}
+
+void UNavCloudResolverSubsystem::RefreshAnchorsIfDue(double Now)
+{
+	if (NextRefreshTime <= 0.0)
+	{
+		NextRefreshTime = Now + kRefreshSeconds;   // 첫 로드 직후엔 다시 부르지 않는다.
+		return;
+	}
+	if (Now < NextRefreshTime)
+	{
+		return;
+	}
+	NextRefreshTime = Now + kRefreshSeconds;
+	NextFetchTime = 0.0;      // 실패 백오프를 무시하고 지금 조회한다.
+	FetchBoundAnchors();
+}
+
+FVector UNavCloudResolverSubsystem::GetCameraMapLocation() const
+{
+	const UWorld* World = GetWorld();
+	UNavLocalizer* Localizer = World ? World->GetSubsystem<UNavLocalizer>() : nullptr;
+	APlayerCameraManager* Cam = UGameplayStatics::GetPlayerCameraManager(this, 0);
+	if (Localizer == nullptr || Cam == nullptr)
+	{
+		return FVector::ZeroVector;
+	}
+	return Localizer->WorldToMap(Cam->GetCameraLocation());
 }
 
 void UNavCloudResolverSubsystem::EnsureHud()
@@ -415,5 +669,9 @@ void UNavCloudResolverSubsystem::ApplyAnchorsJson(const FString& /*Body*/) {}
 void UNavCloudResolverSubsystem::StartResolve(FNavCloudResolveEntry& /*Entry*/) {}
 void UNavCloudResolverSubsystem::PollResolves() {}
 void UNavCloudResolverSubsystem::EnsureHud() {}
+bool UNavCloudResolverSubsystem::TryLocalizeWithAnchor(FNavCloudResolveEntry& /*Entry*/) { return false; }
+void UNavCloudResolverSubsystem::WatchRecognizedAnchor(FNavCloudResolveEntry& /*Entry*/, double /*Now*/) {}
+void UNavCloudResolverSubsystem::RefreshAnchorsIfDue(double /*Now*/) {}
+FVector UNavCloudResolverSubsystem::GetCameraMapLocation() const { return FVector::ZeroVector; }
 
 #endif

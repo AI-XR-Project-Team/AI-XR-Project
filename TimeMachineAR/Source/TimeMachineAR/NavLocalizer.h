@@ -120,6 +120,31 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Nav|Localizer")
 	void RescanFromUser();
 
+	/**
+	 * **Cloud Anchor 로 측위를 세운다**(12단계 — QR 마커 대체 경로).
+	 *
+	 * 마커 측위와 원리가 같다. 마커 대신 리졸브된 클라우드 핀이 기준점이 될 뿐이라
+	 * 같은 `SolveTransform` 을 쓴다 — 기준물의 월드 트랜스폼 + 그 기준물의 맵 좌표·방향
+	 * 한 쌍이면 변환이 하나로 정해진다.
+	 *
+	 * 성립하면 `OnLocalized` 가 방송돼 미니맵·안내 로그가 마커로 잡았을 때와 똑같이 뜬다.
+	 * 이미 측위된 상태에서 부르면 기준점만 이 앵커로 옮기고 `OnAnchorChanged` 를 쏜다.
+	 *
+	 * ⚠️ 방향(heading)은 `AnchorMapPose.HeadingDeg` 를 그대로 믿는다. 앵커의 yaw 는
+	 * 호스팅 때 바닥을 탭한 자세라 맵 방위와 무관하므로, 서버 heading 이 실측값이 아니면
+	 * **위치는 맞고 지도 회전이 틀어진다**(12단계 D18 — 실측 보정은 13단계).
+	 * 고칠 때 앱을 다시 굽지 않아도 되도록, 이 값은 **서버에서 매번 읽어 온다.**
+	 *
+	 * BP 에 노출하지 않는다(C++ 전용) — 기존 블루프린트 표면을 건드리지 않기 위해서다.
+	 *
+	 * @param SourceCode     기준점 식별자. 앵커는 "CA1" 처럼 포인트 번호를 붙여 준다.
+	 * @param AnchorWorld    리졸브된 앵커 핀의 월드 트랜스폼.
+	 * @param AnchorMapPose  그 앵커의 맵 좌표·heading(서버 cloud_anchors 행).
+	 * @return 이 호출로 **새로** 측위가 성립했으면 true(이미 측위돼 있었으면 false).
+	 */
+	bool LocalizeFromCloudAnchor(const FString& SourceCode, const FTransform& AnchorWorld,
+		const FNavMarker& AnchorMapPose);
+
 	// ------------------------------------------------------------------ 상태
 
 	UFUNCTION(BlueprintPure, Category = "Nav|Localizer")
@@ -131,6 +156,12 @@ public:
 	/** 측위에 쓴 마커 code. 아직이면 빈 문자열. */
 	UFUNCTION(BlueprintPure, Category = "Nav|Localizer")
 	FString GetAnchorMarkerCode() const { return AnchorMarkerCode; }
+
+	/**
+	 * 지금 기준점이 **Cloud Anchor** 인가(마커가 아니라). 앵커 쪽 재보정 로직이
+	 * "마커로 잡힌 측위는 건드리지 않는다"를 판단하는 데 쓴다. BP 노출 없음.
+	 */
+	bool IsAnchoredToCloudAnchor() const { return bAnchorFromCloud; }
 
 	/** 현재 위치(맵 좌표). 측위 전이면 bHasHeading=false 인 0 pose. */
 	UFUNCTION(BlueprintPure, Category = "Nav|Localizer")
@@ -363,6 +394,13 @@ private:
 
 	FString AnchorMarkerCode;
 	FNavMarker AnchorMarker;
+
+	/**
+	 * 지금 기준점이 **클라우드 앵커**인가(마커가 아니라). true 면 `SolveTransform` 이
+	 * `MarkerHeadingOffsetDeg` 를 적용하지 않는다 — 그 값은 QR 인쇄물의 축이 어긋난 만큼을
+	 * 메우는 보정각이라 앵커엔 해당이 없다.
+	 */
+	bool bAnchorFromCloud = false;
 
 	/** 맵 → UE 월드. yaw 회전 + 평행이동, 스케일 1. */
 	FTransform MapToWorldXf = FTransform::Identity;

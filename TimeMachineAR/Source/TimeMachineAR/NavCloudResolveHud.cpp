@@ -75,6 +75,11 @@ void UNavCloudResolveHud::ShowRecognized(int32 PointNo, float Seconds)
 	ShowMessage(FString::Printf(TEXT("%d번 앵커 인식 (%.1f초)"), PointNo, Seconds));
 }
 
+void UNavCloudResolveHud::ShowLocalized(int32 PointNo, float Seconds)
+{
+	ShowMessage(FString::Printf(TEXT("%d번 앵커로 측위 (%.1f초) — 지도 준비됨"), PointNo, Seconds));
+}
+
 void UNavCloudResolveHud::ShowMessage(const FString& Message)
 {
 	// 같은 문구가 이미 큐에 있으면 중복으로 쌓지 않는다.

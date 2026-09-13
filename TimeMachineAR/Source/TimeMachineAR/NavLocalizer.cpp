@@ -146,6 +146,42 @@ void UNavLocalizer::StartLocalizing(const FString& MapId)
 		PendingMapId.IsEmpty() ? TEXT("<default>") : *PendingMapId);
 }
 
+bool UNavLocalizer::LocalizeFromCloudAnchor(const FString& SourceCode, const FTransform& AnchorWorld,
+	const FNavMarker& AnchorMapPose)
+{
+	// 기준점을 클라우드 핀으로 바꾼다. 추적 이미지는 없으므로 AnchorImage 를 비운다 —
+	// Tick 의 재래치 블록은 AnchorImage 가 null 이면 건너뛰고(latch 유지), LostAfterSeconds
+	// 가 0(기본)이라 "마커를 못 봤다" 로 측위를 잃지도 않는다.
+	AnchorImage = nullptr;
+	bAnchorFromCloud = true;
+	AnchorMarkerCode = SourceCode;
+	AnchorMarker = AnchorMapPose;
+	SolveTransform(AnchorWorld);
+
+	const bool bWasLocalized = bLocalized;
+	bLocalized = true;
+	bLostReported = false;
+	SecondsSinceMarkerSeen = 0.f;
+	UpdateCurrentPose();
+
+	UE_LOG(LogNav, Log,
+		TEXT("[Localizer] Cloud Anchor 측위 %s. 기준=%s 맵(%.0f, %.0f) heading=%.1f° → 현재 위치 (%.0f, %.0f)"),
+		bWasLocalized ? TEXT("기준점 전환") : TEXT("성립"), *SourceCode,
+		AnchorMapPose.PosXCm, AnchorMapPose.PosYCm, AnchorMapPose.HeadingDeg,
+		CurrentPose.PosXCm, CurrentPose.PosYCm);
+
+	if (bWasLocalized)
+	{
+		OnAnchorChanged.Broadcast(SourceCode);
+		return false;
+	}
+
+	FieldLogEvent(TEXT("LOCALIZE"), FString(), SourceCode,
+		CurrentPose.PosXCm, CurrentPose.PosYCm, CurrentPose.HeadingDeg, TEXT("src=cloud_anchor"));
+	OnLocalized.Broadcast(SourceCode);
+	return true;
+}
+
 void UNavLocalizer::StopScanning()
 {
 	bScanning = false;
@@ -160,6 +196,7 @@ void UNavLocalizer::ResetLocalization()
 	AnchorImage = nullptr;
 	AnchorMarkerCode.Reset();
 	AnchorMarker = FNavMarker();
+	bAnchorFromCloud = false;
 	MapToWorldXf = FTransform::Identity;
 	CurrentPose = FNavMapPose();
 	// 품질 감지 상태도 함께 리셋한다. 재탐색 중에는 경고를 띄우지 않는다.
@@ -367,6 +404,7 @@ bool UNavLocalizer::TryLocalizeFromTrackedImages()
 		AnchorImage = Image;
 		AnchorMarkerCode = Code;
 		AnchorMarker = *Found;
+		bAnchorFromCloud = false;   // 기준점은 마커다(앵커 측위로 서 있었더라도 마커가 이긴다).
 		SolveTransform(Image->GetLocalToWorldTransform());
 		return true;
 	}
@@ -380,7 +418,9 @@ void UNavLocalizer::SolveTransform(const FTransform& MarkerWorld)
 	// 둘은 거울상이라 순수 회전만으로는 못 맞춘다 — 좌우(측면)가 뒤집힌다.
 	// 그래서 맵 Y 축을 반전해 왼손 프레임(맵')으로 바꾼 뒤 회전+평행이동한다.
 	// Y 를 뒤집으면 회전 방향도 반대가 되므로 heading 부호도 반전한다.
-	const float MapHeadingDeg = -(AnchorMarker.HeadingDeg + MarkerHeadingOffsetDeg);
+	// 인쇄물 축 보정각은 QR 마커에만 해당한다(앵커는 인쇄물이 아니다).
+	const float HeadingOffsetDeg = bAnchorFromCloud ? 0.f : MarkerHeadingOffsetDeg;
+	const float MapHeadingDeg = -(AnchorMarker.HeadingDeg + HeadingOffsetDeg);
 	const float YawOffsetDeg = FRotator::NormalizeAxis(MarkerWorld.Rotator().Yaw - MapHeadingDeg);
 
 	const FRotator Rot(0.f, YawOffsetDeg, 0.f);
@@ -651,6 +691,7 @@ bool UNavLocalizer::TryTransitionAnchor()
 	AnchorImage = NewImage;
 	AnchorMarkerCode = Switch;
 	AnchorMarker = *Found;
+	bAnchorFromCloud = false;   // 마커로 옮겨 왔다.
 	SolveTransform(NewImage->GetLocalToWorldTransform());
 	SecondsSinceMarkerSeen = 0.f;
 	bLostReported = false;
