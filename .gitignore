@@ -2,8 +2,18 @@
 # 언리얼 엔진 기본 무시 파일
 # =========================
 Binaries/
-Build/
 DerivedDataCache/
+
+# Build/ 는 통째로 무시하면 안 된다. Build/Android 는 생성물이 아니라
+# 플랫폼 소스 설정(앱 아이콘 res, UPL, 매니페스트)이 들어가는 곳이고
+# 팀원 모두가 같은 값을 써야 한다. 패키징 산출물만 무시한다.
+Build/
+!TimeMachineAR/Build/
+TimeMachineAR/Build/*
+!TimeMachineAR/Build/Android/
+TimeMachineAR/Build/Android/*
+!TimeMachineAR/Build/Android/res/
+!TimeMachineAR/Build/Android/*.xml
 Intermediate/
 Saved/
 

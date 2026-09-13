@@ -29,6 +29,18 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnScanStateChanged, bool, bIsScanni
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(FOnMarkerFound,
 	UARPin*, Pin, const FTransform&, MarkerPose, const FString&, MarkerCode);
 
+/** 전면/후면 카메라가 바뀌었을 때. 스캔 화면이 전환 버튼 상태를 맞추는 데 쓴다. */
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnCameraFacingChanged, bool, bFrontCamera);
+
+UENUM(BlueprintType)
+enum class EDinoScanPhase : uint8
+{
+	Idle       UMETA(DisplayName = "대기"),
+	Searching  UMETA(DisplayName = "탐색 중"),
+	Aiming     UMETA(DisplayName = "조준"),
+	Recognized UMETA(DisplayName = "인식됨")
+};
+
 UCLASS()
 class TIMEMACHINEAR_API AARTrackingManager : public AActor
 {
@@ -82,6 +94,23 @@ public:
 	UPROPERTY(BlueprintAssignable, Category = "AR Tracking")
 	FOnMarkerFound OnMarkerFound;
 
+	UPROPERTY(BlueprintAssignable, Category = "AR Tracking")
+	FOnCameraFacingChanged OnCameraFacingChanged;
+
+	/**
+	 * 전면(셀카) ↔ 후면 카메라를 바꾼다. 스캔 화면의 전환 버튼이 부른다.
+	 *
+	 * ARCore 는 세션 하나가 카메라 하나를 잡으므로 세션을 내렸다가 다른 설정으로
+	 * 다시 올린다. 전면 카메라는 마커(증강 이미지) 추적을 지원하지 않아 스캔과
+	 * 오버레이를 먼저 걷어낸다. 후면으로 돌아오면 원래 설정으로 복귀한다.
+	 * 안드로이드 외 플랫폼에서는 아무 일도 하지 않는다.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "AR Tracking")
+	void ToggleCameraFacing();
+
+	UFUNCTION(BlueprintPure, Category = "AR Tracking")
+	bool IsFrontCamera() const { return bFrontCamera; }
+
 	/**
 	 * 마커 탐색을 시작한다. 이미 붙여 둔 오버레이가 있으면 지우고 처음부터 다시 찾는다.
 	 * 하단 바의 "AR 스캔" 버튼이 부른다.
@@ -100,6 +129,9 @@ public:
 	UFUNCTION(BlueprintPure, Category = "AR Tracking")
 	bool IsScanning() const { return bIsScanning; }
 
+	UFUNCTION(BlueprintPure, Category = "AR Tracking|Scan UI")
+	EDinoScanPhase GetScanPhase() const { return ScanPhase; }
+
 	/**
 	 * 레벨에 놓인 매니저를 찾아 준다. 위젯에서 참조를 들고 다니지 않아도 되도록.
 	 * 레벨에 하나만 놓는 것을 전제로 한다.
@@ -117,6 +149,17 @@ private:
 	// 스캔 중일 때만 마커를 찾는다.
 	bool bIsScanning = false;
 
+	bool bFrontCamera = false;
+
+	/** 전면 카메라용 세션 설정. 처음 전환할 때 SessionConfig 를 바탕으로 만든다. */
+	UPROPERTY()
+	TObjectPtr<UARSessionConfig> FrontSessionConfig;
+
+	UARSessionConfig* BuildFrontSessionConfig() const;
+
+	EDinoScanPhase ScanPhase = EDinoScanPhase::Idle;
+	int32 VisibleCandidateCount = 0;
+
 	// 생성된 공룡 오버레이 참조
 	UPROPERTY()
 	ADinoOverlayActor* SpawnedOverlay;
@@ -126,6 +169,8 @@ private:
 	UARPin* OverlayPin;
 
 	void CheckForTrackedImages();
+
+	void UpdateScanPhase();
 
 	/** 마커 이름으로 띄울 공룡을 고른다. 못 찾으면 폴백, 그것도 없으면 nullptr. */
 	UDinoInfoData* ResolveSpecies(const FString& MarkerCode) const;

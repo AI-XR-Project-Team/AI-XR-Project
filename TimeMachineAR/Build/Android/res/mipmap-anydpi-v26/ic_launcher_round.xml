@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+	적응형 아이콘. 런처가 배경/전경을 따로 받아 기기별 마스크(원, 스퀘어클,
+	물방울 등)를 씌우고 시차 애니메이션을 준다.
+
+	전경은 108dp 캔버스이고 바깥 18dp 는 마스크에 잘린다. 그림은 가운데
+	72dp 안에 들어와야 한다. generate_android_icons.ps1 이 그 여백을 만든다.
+-->
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@color/ic_launcher_background"/>
+    <foreground android:drawable="@mipmap/ic_launcher_foreground"/>
+</adaptive-icon>
