@@ -1,4 +1,5 @@
 #include "ARTrackingManager.h"
+#include "TimeRevealComponent.h"
 #include "ARSessionConfig.h"
 #include "ARTrackable.h"
 #include "ARTypes.h"
@@ -307,6 +308,10 @@ void AARTrackingManager::CheckForTrackedImages()
 
 		OverlayPin = UARBlueprintLibrary::PinComponent(
 			AnchorProxy, ImageTransform, TrackedImage, FName("DinoImageAnchor"));
+
+		// Only a directly mapped exhibit can opt into the sequence, never a navigation fallback.
+		if (Species && DinoRegistry && DinoRegistry->FindByMarker(MarkerCode) == Species)
+			UTimeRevealComponent::AttachTo(SpawnedOverlay, Species->TimeRevealProfile, OverlayPin);
 
 		UE_LOG(LogTemp, Log, TEXT("[AR] 마커 '%s' -> 공룡 '%s'"),
 			MarkerCode.IsEmpty() ? TEXT("(이름없음)") : *MarkerCode,

@@ -265,4 +265,8 @@ public:
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Dino|오버레이")
 	FTransform MeshTransform;
+
+	/** Optional entrance sequence. Null preserves the existing species behavior. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Dino|Reveal")
+	TObjectPtr<class UTimeRevealProfile> TimeRevealProfile;
 };

@@ -13,7 +13,9 @@ public class TimeMachineAR : ModuleRules
 		// 거치지 않고 UE5 가 백엔드에 직접 HTTP 로 붙는다.
 		// UMG / Slate : 도슨트 챗봇 위젯. 로직은 C++ 에 두고 WBP 는 배치·스타일만 맡는다.
 		// ApplicationCore : 안드로이드 가상 키보드 표시/숨김 이벤트(FPlatformRect).
-		PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "InputCore", "EnhancedInput", "AugmentedReality", "AndroidPermission", "HTTP", "Json", "JsonUtilities", "UMG", "Slate", "SlateCore", "ApplicationCore" });
+		PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "InputCore", "EnhancedInput", "AugmentedReality", "AndroidPermission", "HTTP", "Json", "JsonUtilities", "UMG", "Slate", "SlateCore", "ApplicationCore",
+			// Niagara : 회중시계 투척 → 시간의 문 연출(NS_WatchOrbit / NS_TimePortal 스폰·User 파라미터).
+			"Niagara" });
 
 		if (Target.bBuildEditor)
 		{
