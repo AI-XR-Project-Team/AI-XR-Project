@@ -129,6 +129,130 @@ bool FNavFloorGuideTest::RunTest(const FString& Parameters)
 		}
 	}
 
+	// (5b) 코너 정점 위 발(누적 500 = k5)은 두 세그먼트 사이 현 방향(45°)이고 가로 오프셋이 0 으로 준다.
+	//      직선 위 발(k3, k8)은 오프셋 배율 1.
+	{
+		const TArray<FVector2D> Route = { FVector2D(0, 0), FVector2D(500, 0), FVector2D(500, 500) };
+		FNavFloorGuide::BuildPlacements(Route, FVector2D(0, 0), 100.f, 1000.f, Out);
+		const FNavFloorPlacement* Corner = Out.FindByPredicate([](const FNavFloorPlacement& P) { return P.StepIndex == 5; });
+		const FNavFloorPlacement* Before = Out.FindByPredicate([](const FNavFloorPlacement& P) { return P.StepIndex == 3; });
+		const FNavFloorPlacement* After = Out.FindByPredicate([](const FNavFloorPlacement& P) { return P.StepIndex == 8; });
+		TestNotNull(TEXT("코너 k5 존재"), Corner);
+		if (Corner != nullptr)
+		{
+			TestTrue(TEXT("코너 발 yaw≈45(현 방향)"), FMath::IsNearlyEqual(Corner->YawDeg, 45.f, 1.f));
+			TestTrue(TEXT("코너 발은 경로 정점에 고정(500,0)"), Corner->MapPos.Equals(FVector2D(500, 0), 0.5f));
+			TestTrue(TEXT("90° 회전이면 가로 오프셋 0"), Corner->LateralScale <= 0.01f);
+		}
+		if (Before != nullptr) { TestTrue(TEXT("직선 발 오프셋 배율 1"), Before->LateralScale >= 0.99f); }
+		if (After != nullptr) { TestTrue(TEXT("코너 뒤 직선 발 오프셋 배율 1"), After->LateralScale >= 0.99f); }
+	}
+
+	// (5c) 좌우 교대는 StepIndex 로 — 사용자가 걸어 창이 밀려도 같은 자리는 같은 발.
+	{
+		const TArray<FVector2D> Route = { FVector2D(0, 0), FVector2D(1000, 0) };
+		TArray<FNavFloorPlacement> A, B;
+		FNavFloorGuide::BuildPlacements(Route, FVector2D(0, 0), 100.f, 600.f, A);     // k=1..6
+		FNavFloorGuide::BuildPlacements(Route, FVector2D(120, 0), 100.f, 600.f, B);   // k=2..7
+		TestEqual(TEXT("A 첫 k=1"), A.Num() > 0 ? A[0].StepIndex : -1, 1);
+		TestEqual(TEXT("B 첫 k=2"), B.Num() > 0 ? B[0].StepIndex : -1, 2);
+		bool bSameSide = A.Num() >= 2 && B.Num() >= 1;
+		for (const FNavFloorPlacement& PA : A)
+		{
+			const FNavFloorPlacement* PB = B.FindByPredicate([&](const FNavFloorPlacement& P) { return P.StepIndex == PA.StepIndex; });
+			if (PB != nullptr && (PB->IsLeft() != PA.IsLeft() || !PB->MapPos.Equals(PA.MapPos, 0.5f)))
+			{
+				bSameSide = false;
+			}
+		}
+		TestTrue(TEXT("걸어도 같은 k 는 같은 발·같은 자리"), bSameSide);
+		if (A.Num() >= 2)
+		{
+			TestTrue(TEXT("이웃 k 는 좌우가 다르다"), A[0].IsLeft() != A[1].IsLeft());
+		}
+	}
+
+	// (5d) 직선 네 방향 yaw: +X 0, +Y 90, -X 180, -Y -90 (맵 기준. 월드 방향은 액터가 두 점 변환으로 뽑는다).
+	{
+		struct FCase { FVector2D End; float Yaw; const TCHAR* Name; };
+		const FCase Cases[] = {
+			{ FVector2D(1000, 0), 0.f, TEXT("+X yaw 0") },
+			{ FVector2D(0, 1000), 90.f, TEXT("+Y yaw 90") },
+			{ FVector2D(-1000, 0), 180.f, TEXT("-X yaw 180") },
+			{ FVector2D(0, -1000), -90.f, TEXT("-Y yaw -90") },
+		};
+		for (const FCase& C : Cases)
+		{
+			const TArray<FVector2D> Route = { FVector2D(0, 0), C.End };
+			FNavFloorGuide::BuildPlacements(Route, FVector2D(0, 0), 100.f, 600.f, Out);
+			TestEqual(TEXT("직선 6개"), Out.Num(), 6);
+			if (Out.Num() > 0)
+			{
+				TestTrue(C.Name, FMath::IsNearlyEqual(FRotator::NormalizeAxis(Out[0].YawDeg - C.Yaw), 0.f, 0.5f));
+			}
+		}
+	}
+
+	// (5e) 짧은 경로(120cm): k=1 하나만. 아주 짧은 경로(40cm): 발밑 여유(50) 안이라 0개.
+	{
+		const TArray<FVector2D> Short = { FVector2D(0, 0), FVector2D(120, 0) };
+		FNavFloorGuide::BuildPlacements(Short, FVector2D(0, 0), 100.f, 600.f, Out);
+		TestEqual(TEXT("짧은 경로 1개"), Out.Num(), 1);
+		const TArray<FVector2D> Tiny = { FVector2D(0, 0), FVector2D(40, 0) };
+		FNavFloorGuide::BuildPlacements(Tiny, FVector2D(0, 0), 100.f, 600.f, Out);
+		TestEqual(TEXT("40cm 경로 0개"), Out.Num(), 0);
+	}
+
+	// (5f) 중복 점(길이 0 세그먼트)이 끼어도 자리·방향이 깨지지 않는다.
+	{
+		const TArray<FVector2D> Dup = { FVector2D(0, 0), FVector2D(300, 0), FVector2D(300, 0), FVector2D(300, 0), FVector2D(300, 700) };
+		FNavFloorGuide::BuildPlacements(Dup, FVector2D(0, 0), 100.f, 1000.f, Out);
+		TestEqual(TEXT("중복점 경로: 10개(k1..10)"), Out.Num(), 10);
+		bool bFinite = true;
+		for (const FNavFloorPlacement& P : Out)
+		{
+			if (!FMath::IsFinite(P.YawDeg) || !FMath::IsFinite(P.MapPos.X) || !FMath::IsFinite(P.MapPos.Y)) { bFinite = false; }
+		}
+		TestTrue(TEXT("중복점: 값 전부 유한"), bFinite);
+		const FNavFloorPlacement* K3 = Out.FindByPredicate([](const FNavFloorPlacement& P) { return P.StepIndex == 3; });
+		const FNavFloorPlacement* K6 = Out.FindByPredicate([](const FNavFloorPlacement& P) { return P.StepIndex == 6; });
+		if (K3 != nullptr) { TestTrue(TEXT("중복점 위 발 자리 (300,0)"), K3->MapPos.Equals(FVector2D(300, 0), 0.5f)); }
+		if (K6 != nullptr) { TestTrue(TEXT("중복점 뒤 yaw≈90"), FMath::IsNearlyEqual(K6->YawDeg, 90.f, 1.f)); }
+
+		const TArray<FVector2D> AllDup = { FVector2D(5, 5), FVector2D(5, 5) };
+		FNavFloorGuide::BuildPlacements(AllDup, FVector2D(0, 0), 100.f, 600.f, Out);
+		TestEqual(TEXT("길이 0 경로 → 없음"), Out.Num(), 0);
+		const TArray<FVector2D> Empty;
+		FNavFloorGuide::BuildPlacements(Empty, FVector2D(0, 0), 100.f, 600.f, Out);
+		TestEqual(TEXT("빈 경로 → 없음"), Out.Num(), 0);
+	}
+
+	// (5g) 월드 가로 오프셋: 진행 +X 에서 왼발은 -Y(왼쪽), 오른발은 +Y(오른쪽, UE 왼손). 배율 0 이면 중심.
+	{
+		const FVector C(100, 200, 0);
+		const FVector L = FNavFloorGuide::OffsetForStep(C, FVector(1, 0, 0), true, 10.f, 1.f);
+		const FVector R = FNavFloorGuide::OffsetForStep(C, FVector(1, 0, 0), false, 10.f, 1.f);
+		TestTrue(TEXT("왼발 = 중심 -Y 10"), L.Equals(FVector(100, 190, 0), 0.01f));
+		TestTrue(TEXT("오른발 = 중심 +Y 10"), R.Equals(FVector(100, 210, 0), 0.01f));
+		const FVector Z = FNavFloorGuide::OffsetForStep(C, FVector(1, 0, 0), false, 10.f, 0.f);
+		TestTrue(TEXT("배율 0 → 중심"), Z.Equals(C, 0.01f));
+		const FVector Y = FNavFloorGuide::OffsetForStep(C, FVector(0, 1, 0), true, 10.f, 1.f);
+		TestTrue(TEXT("+Y 진행 왼발 = +X 쪽"), Y.Equals(FVector(110, 200, 0), 0.01f));
+	}
+
+	// (5h) 바닥 스타일 — 전시물은 황금 좌우 쌍 + 교대, 시설은 기존 화살표 한 장, junction 은 무효.
+	{
+		const FNavDestinations::FFloorStyle Ex = FNavDestinations::FloorStyle(TEXT("exhibit"), TEXT("티라노사우르스 렉스"));
+		TestTrue(TEXT("전시물: 왼발 텍스처"), Ex.LeftTexturePath.Contains(TEXT("/Game/UI/Nav/Floor/Golden/T_Footprint_Left")));
+		TestTrue(TEXT("전시물: 오른발 텍스처"), Ex.RightTexturePath.Contains(TEXT("T_Footprint_Right")));
+		TestTrue(TEXT("전시물: 교대"), Ex.bAlternate);
+		TestTrue(TEXT("링 텍스처"), Ex.ArrivalRingTexturePath.Contains(TEXT("T_NavArrivalRing")));
+		const FNavDestinations::FFloorStyle Fa = FNavDestinations::FloorStyle(TEXT("facility"), TEXT("화장실"));
+		TestTrue(TEXT("시설: 화살표(좌=우)"), Fa.LeftTexturePath == Fa.RightTexturePath && Fa.LeftTexturePath.Contains(TEXT("T_Floor_Arrow_Facility")));
+		TestFalse(TEXT("시설: 교대 없음"), Fa.bAlternate);
+		TestFalse(TEXT("junction: 무효"), FNavDestinations::FloorStyle(TEXT("junction"), TEXT("")).IsValid());
+	}
+
 	// (6) 바닥 텍스처 경로 — node_type·공룡별 분기.
 	{
 		const FString Tri = FNavDestinations::FloorTextureObjectPath(TEXT("exhibit"), TEXT("트리케라톱스"));

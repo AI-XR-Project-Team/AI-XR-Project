@@ -67,6 +67,31 @@ struct TIMEMACHINEAR_API FNavDestinations
 	 */
 	static FString FloorTextureObjectPath(const FString& NodeType, const FString& Label);
 
+	/**
+	 * 바닥 안내 스타일(황금 발자국). 액터가 목적지가 바뀔 때 한 번 조회한다.
+	 *
+	 *  - exhibit : `/Game/UI/Nav/Floor/Golden/T_Footprint_Left`·`_Right` 한 쌍을 좌우 교대로 깐다.
+	 *              시안(02 시트)이 발자국 한 종만 주므로 공룡 4종이 같은 황금 발자국을 쓴다 —
+	 *              공룡별 텍스처 분기(`FloorTextureObjectPath`)는 남겨 두었고 공룡별 황금 쌍이
+	 *              생기면 여기서만 갈라 주면 된다.
+	 *  - facility·entrance : 기존 공용 화살표(`FloorTextureObjectPath`) 한 장을 좌우 없이 경로 위에.
+	 *  - 목적지 아님 : 텍스처 경로 비움(액터는 숨긴다).
+	 * 도착 링은 종류에 관계없이 `T_NavArrivalRing`.
+	 */
+	struct FFloorStyle
+	{
+		FString LeftTexturePath;
+		FString RightTexturePath;
+		FString ArrivalRingTexturePath;
+		/** true 면 StepIndex 짝/홀로 좌우 텍스처를 번갈아 쓰고 가로 오프셋을 건다. */
+		bool bAlternate = false;
+		bool IsValid() const { return !LeftTexturePath.IsEmpty() && !RightTexturePath.IsEmpty(); }
+	};
+	static FFloorStyle FloorStyle(const FString& NodeType, const FString& Label);
+
+	/** HUD 전방 셰브론(거리 배지 옆) 텍스처 오브젝트 경로. */
+	static FString ForwardChevronObjectPath();
+
 	// ---- 안내 로그 문구(final §D 표). 안내 수단이 node_type 으로 갈린다 ----
 
 	/** 안내 중 문구. exhibit → 발자국, facility·entrance → 화살표. */

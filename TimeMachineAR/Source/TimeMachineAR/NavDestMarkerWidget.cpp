@@ -27,6 +27,25 @@ void UNavDestMarkerWidget::NativeConstruct()
 	Super::NativeConstruct();
 	// AR 탭·미니맵 터치를 가리지 않는다(그림만 얹는 오버레이).
 	SetVisibility(ESlateVisibility::HitTestInvisible);
+	LoadChevron();
+}
+
+void UNavDestMarkerWidget::LoadChevron()
+{
+	bHasChevron = false;
+	ChevronBrush = FSlateBrush();
+	const FString Path = FNavDestinations::ForwardChevronObjectPath();
+	if (UTexture2D* Tex = LoadObject<UTexture2D>(nullptr, *Path))
+	{
+		ChevronBrush.SetResourceObject(Tex);
+		ChevronBrush.DrawAs = ESlateBrushDrawType::Image;
+		ChevronBrush.ImageSize = FVector2D(ChevronSizePx, ChevronSizePx);
+		bHasChevron = true;
+	}
+	else
+	{
+		UE_LOG(LogNav, Warning, TEXT("[destmarker] 전방 셰브론 로드 실패(거리 배지만 그림): %s"), *Path);
+	}
 }
 
 void UNavDestMarkerWidget::SetDestination(const FVector2D& MapXY, const FString& InNodeType, const FString& InLabel)
@@ -68,6 +87,11 @@ void UNavDestMarkerWidget::LoadIcon()
 
 FString UNavDestMarkerWidget::DistanceText() const
 {
+	// 도착 판정은 NavRouteProgress 하나(히스테리시스 포함). 여기서 거리로 다시 판정하지 않는다.
+	if (bArrived)
+	{
+		return TEXT("도착");
+	}
 	return FString::Printf(TEXT("%.0f m"), FMath::Max(0.f, RemainingCm) / 100.f);
 }
 
@@ -96,7 +120,20 @@ int32 UNavDestMarkerWidget::NativePaint(const FPaintArgs& Args, const FGeometry&
 
 	const FVector2D Size = AllottedGeometry.GetLocalSize();
 	const FVector2D Center = Size * 0.5f;
-	const int32 Layer = Base + 1;
+	int32 Layer = Base + 1;
+
+	// 전방 셰브론 + 거리 배지: 가장 먼 보이는 바닥 발자국 위(황금 발자국 시안 상태 1·2).
+	// 카메라 뒤·화면 밖이면 그리지 않는다(가장자리 표시는 아래 마름모 몫). 도착이면 링 위 마름모가 대신한다.
+	if (bHasGuideHead && !bArrived)
+	{
+		FVector2D HeadVP;
+		if (UWidgetLayoutLibrary::ProjectWorldLocationToWidgetPosition(PC, GuideHeadWorld, HeadVP, false)
+			&& HeadVP.X >= 0.f && HeadVP.X <= Size.X && HeadVP.Y >= 0.f && HeadVP.Y <= Size.Y)
+		{
+			DrawGuideHead(OutDrawElements, Layer, AllottedGeometry, HeadVP);
+			Layer += 3;
+		}
+	}
 
 	// 화면 투영. DPI 보정된 위젯 로컬 좌표를 그대로 돌려준다(전체화면 오버레이라 로컬=뷰포트).
 	FVector2D VP;
@@ -177,25 +214,55 @@ void UNavDestMarkerWidget::DrawMarker(FSlateWindowElementList& Out, int32 Layer,
 			ESlateDrawEffect::None, FLinearColor::White);
 	}
 
-	// 남은 거리 pill(마름모 위).
-	const FString Text = DistanceText();
-	const FSlateFontInfo Font = FCoreStyle::GetDefaultFontStyle("Bold", 18);
-	const float PillW = FMath::Max(48.f, Text.Len() * 12.f + 20.f);
-	const float PillH = 30.f;
-	const FVector2D PillPos = At + FVector2D(-PillW * 0.5f, -Half - PillH - 8.f);
+	// 남은 거리 pill(마름모 위). 도착이면 "도착".
+	DrawPill(Out, Layer + 1, Geom, At + FVector2D(0.f, -Half - 23.f), DistanceText(), 18);
+}
+
+int32 UNavDestMarkerWidget::DrawPill(FSlateWindowElementList& Out, int32 Layer, const FGeometry& Geom,
+	const FVector2D& Center, const FString& Text, int32 FontSize) const
+{
+	const FSlateFontInfo Font = FCoreStyle::GetDefaultFontStyle("Bold", FontSize);
+	const float PillW = FMath::Max(48.f, Text.Len() * FontSize * 0.67f + 20.f);
+	const float PillH = FontSize + 12.f;
+	const FVector2D PillPos = Center - FVector2D(PillW, PillH) * 0.5f;
 
 	FSlateBrush Pill;
 	Pill.DrawAs = ESlateBrushDrawType::RoundedBox;   // 텍스처 없이 솔리드 둥근 사각형.
 	Pill.OutlineSettings.RoundingType = ESlateBrushRoundingType::HalfHeightRadius;
 	const FPaintGeometry PillGeom = Geom.ToPaintGeometry(
 		FVector2D(PillW, PillH), FSlateLayoutTransform(PillPos));
-	FSlateDrawElement::MakeBox(Out, Layer + 1, PillGeom, &Pill,
+	FSlateDrawElement::MakeBox(Out, Layer, PillGeom, &Pill,
 		ESlateDrawEffect::None, FLinearColor(0.f, 0.f, 0.f, 0.7f));
 
 	const FPaintGeometry TextGeom = Geom.ToPaintGeometry(
 		FVector2D(PillW, PillH), FSlateLayoutTransform(PillPos + FVector2D(10.f, 4.f)));
-	FSlateDrawElement::MakeText(Out, Layer + 2, TextGeom, Text, Font,
+	FSlateDrawElement::MakeText(Out, Layer + 1, TextGeom, Text, Font,
 		ESlateDrawEffect::None, FLinearColor::White);
+	return Layer + 2;
+}
+
+void UNavDestMarkerWidget::DrawGuideHead(FSlateWindowElementList& Out, int32 Layer,
+	const FGeometry& Geom, const FVector2D& At) const
+{
+	// 셰브론(황금 시트 04 "전방 화살표") 중심을 At 에, 거리 텍스트를 그 위에.
+	float Top = At.Y;
+	if (bHasChevron)
+	{
+		const FVector2D Sz(ChevronSizePx, ChevronSizePx);
+		const FPaintGeometry ChevGeom = Geom.ToPaintGeometry(Sz, FSlateLayoutTransform(At - Sz * 0.5f));
+		FSlateDrawElement::MakeBox(Out, Layer, ChevGeom, &ChevronBrush,
+			ESlateDrawEffect::None, FLinearColor::White);
+		Top = At.Y - ChevronSizePx * 0.5f;
+	}
+	// 거리 숫자: 시안처럼 검은 pill 없이 크게, 가독성용 그림자만. 값은 Progress.RemainingCm/100.
+	const FString Text = DistanceText();
+	const FSlateFontInfo Font = FCoreStyle::GetDefaultFontStyle("Bold", 26);
+	const float W = Text.Len() * 18.f + 20.f;
+	const FVector2D TextPos(At.X - W * 0.5f + 10.f, Top - 40.f);
+	const FPaintGeometry Shadow = Geom.ToPaintGeometry(FVector2D(W, 34.f), FSlateLayoutTransform(TextPos + FVector2D(1.5f, 1.5f)));
+	FSlateDrawElement::MakeText(Out, Layer + 1, Shadow, Text, Font, ESlateDrawEffect::None, FLinearColor(0.f, 0.f, 0.f, 0.75f));
+	const FPaintGeometry TextGeom = Geom.ToPaintGeometry(FVector2D(W, 34.f), FSlateLayoutTransform(TextPos));
+	FSlateDrawElement::MakeText(Out, Layer + 2, TextGeom, Text, Font, ESlateDrawEffect::None, FLinearColor::White);
 }
 
 void UNavDestMarkerWidget::DrawEdgeArrow(FSlateWindowElementList& Out, int32 Layer,

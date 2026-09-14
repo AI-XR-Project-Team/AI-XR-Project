@@ -165,7 +165,10 @@ FNavProgress UNavRouteProgress::UpdatePose(const FVector2D& CurrentXY)
 	Out.RemainingCm = FMath::Max(0.f, Total - Travelled);
 	Out.LateralOffsetCm = BestLateral;
 	Out.bOffRoute = BestLateral > OffRouteThresholdCm;
-	Out.bArrived = Out.RemainingCm <= ArriveThresholdCm;
+	// 도착은 문턱 아래로 들어오면 서고, 한 번 서면 문턱+히스테리시스를 넘어야 풀린다(경계 떨림 방지).
+	const float ExitCm = ArriveThresholdCm + ArriveExitHysteresisCm;
+	Out.bArrived = (Out.RemainingCm <= ArriveThresholdCm)
+		|| (LastProgress.bValid && LastProgress.bArrived && Out.RemainingCm <= ExitCm);
 
 	LastProgress = Out;
 	return Out;
