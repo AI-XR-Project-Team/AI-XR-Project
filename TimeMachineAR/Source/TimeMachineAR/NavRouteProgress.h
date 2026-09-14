@@ -114,6 +114,15 @@ public:
 		meta = (ClampMin = "1.0"))
 	float ArriveThresholdCm = 80.f;
 
+	/**
+	 * 도착 해제 히스테리시스(cm). 한 번 도착이 서면 남은 거리가 ArriveThresholdCm + 이 값을
+	 * 넘어야 풀린다 — 목적지 앞에서 측위가 떨려 도착 링/문구가 깜빡이는 것을 막는다.
+	 * 경로를 새로 세우면(SetRoutePoints) 상태는 초기화된다.
+	 */
+	UPROPERTY(Config, EditAnywhere, BlueprintReadWrite, Category = "Nav|Progress",
+		meta = (ClampMin = "0.0"))
+	float ArriveExitHysteresisCm = 40.f;
+
 	// --------------------------------------------------------------- 자동 reroute 게이트(5-B3)
 	//
 	// 실제 판단·호출은 미니맵 위젯이 하지만(NavMinimapWidget), 임계값은 진행률 튜닝과

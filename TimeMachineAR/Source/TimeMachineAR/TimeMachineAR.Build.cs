@@ -50,6 +50,12 @@ public class TimeMachineAR : ModuleRules
 		PublicDefinitions.Add("NAV_ADMIN_MODE="
 			+ ((bNavAdminMode && bCloudPlugin) ? "1" : "0"));
 
+		if (Target.bBuildEditor)
+		{
+			// RenderCore : 에디터 오프스크린 프리뷰 테스트(Nav.FloorGuidePreview)의 FlushRenderingCommands.
+			PrivateDependencyModuleNames.AddRange(new string[] { "RenderCore", "RHI" });
+		}
+
 		if (Target.Platform == UnrealTargetPlatform.Android)
 		{
 			// Launch : FJavaWrapper. GameActivity 에 심어 둔 메서드를 JNI 로 부른다.

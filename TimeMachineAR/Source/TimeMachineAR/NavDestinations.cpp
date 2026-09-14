@@ -8,6 +8,9 @@ namespace
 	/** 바닥 발자국·화살표 폴더(final §2 H-3). Content/UI/Nav/Floor → /Game/UI/Nav/Floor. */
 	const TCHAR* FloorDir = TEXT("/Game/UI/Nav/Floor/");
 
+	/** 황금 발자국 시트에서 뽑은 텍스처 폴더(Scripts/import_nav_footprints.py 가 만든다). */
+	const TCHAR* GoldenDir = TEXT("/Game/UI/Nav/Floor/Golden/");
+
 	/** `/Game/.../T_Name` → `/Game/.../T_Name.T_Name` (텍스처 오브젝트 경로). */
 	FString AssetObjectPath(const FString& Dir, const FString& Name)
 	{
@@ -87,6 +90,33 @@ FString FNavDestinations::FloorTextureObjectPath(const FString& NodeType, const 
 	}
 	default: return FString();
 	}
+}
+
+FNavDestinations::FFloorStyle FNavDestinations::FloorStyle(const FString& NodeType, const FString& Label)
+{
+	FFloorStyle S;
+	S.ArrivalRingTexturePath = AssetObjectPath(GoldenDir, TEXT("T_NavArrivalRing"));
+	switch (Classify(NodeType))
+	{
+	case ENavDestKind::Exhibit:
+		S.LeftTexturePath = AssetObjectPath(GoldenDir, TEXT("T_Footprint_Left"));
+		S.RightTexturePath = AssetObjectPath(GoldenDir, TEXT("T_Footprint_Right"));
+		S.bAlternate = true;
+		break;
+	case ENavDestKind::Facility:
+	case ENavDestKind::Entrance:
+		S.LeftTexturePath = S.RightTexturePath = FloorTextureObjectPath(NodeType, Label);
+		S.bAlternate = false;
+		break;
+	default:
+		break;
+	}
+	return S;
+}
+
+FString FNavDestinations::ForwardChevronObjectPath()
+{
+	return AssetObjectPath(GoldenDir, TEXT("T_NavForwardChevron"));
 }
 
 FString FNavDestinations::GuidingText(const FString& NodeType)
