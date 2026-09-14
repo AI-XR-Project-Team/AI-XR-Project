@@ -119,21 +119,109 @@ FString FNavDestinations::ForwardChevronObjectPath()
 	return AssetObjectPath(GoldenDir, TEXT("T_NavForwardChevron"));
 }
 
-FString FNavDestinations::GuidingText(const FString& NodeType)
+FString FNavDestinations::ToParticle(const FString& Word)
 {
-	return (Classify(NodeType) == ENavDestKind::Exhibit)
-		? FString(TEXT("공룡발자국을 따라가주세요"))
-		: FString(TEXT("안내화살표를 따라가주세요"));
+	if (Word.IsEmpty()) { return TEXT("(으)로"); }
+	const TCHAR C = Word[Word.Len() - 1];
+	if (C < 0xAC00 || C > 0xD7A3) { return TEXT("(으)로"); }
+	// 종성 인덱스 0=받침 없음, 8=ㄹ. 둘 다 "로", 그 밖 받침은 "으로"(국어 조사 규칙).
+	const int32 BatchimIndex = (C - 0xAC00) % 28;
+	return (BatchimIndex == 0 || BatchimIndex == 8) ? TEXT("로") : TEXT("으로");
 }
 
-FString FNavDestinations::ArrivalText(const FString& NodeType, const FString& Label)
+FString FNavDestinations::SubjectParticle(const FString& Word)
 {
-	if (Classify(NodeType) == ENavDestKind::Exhibit)
+	if (Word.IsEmpty()) { return TEXT("이(가)"); }
+	const TCHAR C = Word[Word.Len() - 1];
+	if (C < 0xAC00 || C > 0xD7A3) { return TEXT("이(가)"); }
+	return ((C - 0xAC00) % 28 == 0) ? TEXT("가") : TEXT("이");
+}
+
+namespace
+{
+	/** Label 이 비었을 때의 기본 이름(final §2: exhibit 은 "전시물", 그 밖은 "목적지"). */
+	FString ResolveDestName(const FString& NodeType, const FString& Label)
 	{
-		const FString Name = Label.IsEmpty() ? FString(TEXT("전시물")) : Label;
-		return FString::Printf(TEXT("%s 앞에 도착했습니다. 앞에 공룡 발자국을 인식시켜주세요"), *Name);
+		if (!Label.IsEmpty()) { return Label; }
+		return (FNavDestinations::Classify(NodeType) == ENavDestKind::Exhibit)
+			? FString(TEXT("전시물")) : FString(TEXT("목적지"));
 	}
-	return TEXT("목적지에 도착하였습니다");
+}
+
+FString FNavDestinations::LexiNavOnText()
+{
+	return TEXT("바닥의 마커를 비춰주세요!\n제가 지금 위치를 찾아볼게요.");
+}
+
+FString FNavDestinations::LexiLocalizedText()
+{
+	return TEXT("위치를 찾았어요!\n오른쪽 미니맵을 눌러 목적지를 골라주세요.");
+}
+
+FString FNavDestinations::LexiGuidingText(const FString& NodeType, const FString& Label, const FNavGuidance& Guidance)
+{
+	const FString Name = ResolveDestName(NodeType, Label);
+
+	// 1줄: 거의 다 왔으면(bValid 인 유효한 값일 때만) 재촉 문구로 갈아탄다.
+	FString Line1;
+	if (Guidance.bValid && Guidance.RemainingCm <= 500.f)
+	{
+		Line1 = TEXT("조금만 더 가면 도착해요!");
+	}
+	else
+	{
+		Line1 = FString::Printf(TEXT("%s%s 안내할게요!"), *Name, *ToParticle(Name));
+	}
+
+	// 2줄: 서버가 준 턴바이턴 원문이 있으면 그대로, 없으면(경로 시작 직후 등) 안내 수단으로 대체.
+	FString Line2;
+	if (Guidance.bValid && !Guidance.Instruction.IsEmpty())
+	{
+		Line2 = Guidance.Instruction;
+	}
+	else if (Classify(NodeType) == ENavDestKind::Exhibit)
+	{
+		Line2 = TEXT("바닥의 발자국을 따라오세요.");
+	}
+	else
+	{
+		Line2 = TEXT("바닥의 화살표를 따라오세요.");
+	}
+
+	return Line1 + TEXT("\n") + Line2;
+}
+
+FString FNavDestinations::LexiOffRouteText()
+{
+	return TEXT("경로에서 조금 벗어났어요.\n발자국이 보이는 곳으로 돌아와 주세요.");
+}
+
+FString FNavDestinations::LexiArrivedText(const FString& NodeType, const FString& Label)
+{
+	const FString Name = ResolveDestName(NodeType, Label);
+	switch (Classify(NodeType))
+	{
+	case ENavDestKind::Exhibit:
+		return FString::Printf(
+			TEXT("%s 앞에 도착했어요!\n지금 이 공룡의 마커를 스캔하면 AR로 더 자세히 볼 수 있어요."), *Name);
+	case ENavDestKind::Facility:
+		return FString::Printf(TEXT("%s에 도착했어요!\n안내를 마칠게요."), *Name);
+	case ENavDestKind::Entrance:
+	default:
+		return FString::Printf(TEXT("%s에 도착했어요!\n즐거운 관람 되셨나요?"), *Name);
+	}
+}
+
+FString FNavDestinations::LexiEndedText(const FString& NodeType)
+{
+	return (Classify(NodeType) == ENavDestKind::Exhibit)
+		? FString(TEXT("안내를 마칠게요.\nAR 스캔 탭에서 마커를 비춰보세요!"))
+		: FString(TEXT("안내를 마칠게요.\n또 필요하면 미니맵을 눌러주세요."));
+}
+
+FString FNavDestinations::LexiRecognizedText()
+{
+	return TEXT("인식 완료!\n이제 공룡을 자세히 살펴보세요.");
 }
 
 void FNavDestinations::BuildDestinationOrder(const TArray<FNavMapNode>& Nodes, TArray<int32>& OutOrder)

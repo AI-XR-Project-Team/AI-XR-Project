@@ -352,4 +352,11 @@ struct FNavGuidance
 	/** 목적지 도착이면 true(도착 화면 트리거). */
 	UPROPERTY(BlueprintReadOnly, Category = "Nav")
 	bool bArrived = false;
+
+	/**
+	 * 경로 이탈이면 true(FNavProgress.bOffRoute 를 그대로 옮긴다). 렉시 안내 로그(§3)가
+	 * "경로에서 벗어났어요" 문구로 갈아탈 때 본다. UNavRouteProgress::GetGuidance() 가 채운다.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Nav")
+	bool bOffRoute = false;
 };

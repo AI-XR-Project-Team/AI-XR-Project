@@ -273,4 +273,8 @@ public:
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Dino|오버레이")
 	TSubclassOf<class ADinoOverlayActor> CustomOverlayClass;
+
+	/** Optional entrance sequence. Null preserves the existing species behavior. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Dino|Reveal")
+	TObjectPtr<class UTimeRevealProfile> TimeRevealProfile;
 };

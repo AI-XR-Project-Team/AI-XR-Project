@@ -77,6 +77,9 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Overlay|Info")
 	bool bClickable = true;
 
+	UPROPERTY(Transient, BlueprintReadOnly, Category = "Overlay")
+	bool bRevealLocked = false;
+
 	/** 탭 처리 진입점. 마우스 클릭·터치·BP 호출이 모두 여기로 모인다. */
 	UFUNCTION(BlueprintCallable, Category = "Overlay|Info")
 	void HandleTapped();

@@ -92,19 +92,48 @@ struct TIMEMACHINEAR_API FNavDestinations
 	/** HUD 전방 셰브론(거리 배지 옆) 텍스처 오브젝트 경로. */
 	static FString ForwardChevronObjectPath();
 
-	// ---- 안내 로그 문구(final §D 표). 안내 수단이 node_type 으로 갈린다 ----
+	// ---- 조사(助詞) 헬퍼. 받침 유무로 자연스러운 한국어 문구를 만든다 ----
 
-	/** 안내 중 문구. exhibit → 발자국, facility·entrance → 화살표. */
-	static FString GuidingText(const FString& NodeType);
+	/**
+	 * 받침 유무로 "으로/로" 를 고른다(ㄹ 받침·받침 없음 → "로", 그 밖 받침 → "으로").
+	 * 한글이 아니면 "(으)로". 안내 로그 문구("{목적지}로 안내할게요!")에 쓴다.
+	 */
+	static FString ToParticle(const FString& Word);
 
-	/** 도착 문구. exhibit 는 "(공룡) 앞에 도착…", 그 밖은 "목적지에 도착하였습니다". */
-	static FString ArrivalText(const FString& NodeType, const FString& Label);
+	/**
+	 * 받침 유무로 "이/가" 를 고른다. 한글이 아니면 "이(가)".
+	 * (TimeRevealComponent.cpp 의 익명 함수를 여기로 옮겼다 — 회중시계 연출 문구도 같은 규칙을 쓴다.)
+	 */
+	static FString SubjectParticle(const FString& Word);
+
+	// ---- 안내 로그 문구(렉시 말풍선). 안내 수단이 node_type 으로 갈린다 ----
+	//
+	// 전부 "렉시가 하는 말"로 통일한다(nav-lexi-guide-design.md §2). Label 이 비면
+	// exhibit 은 "전시물", 그 밖은 "목적지"로 채운다.
+
+	/** 네비 켬, 아직 측위 전. */
+	static FString LexiNavOnText();
+
+	/** 측위 성립, 목적지 미정. */
+	static FString LexiLocalizedText();
+
+	/**
+	 * 안내 중. RemainingCm ≤ 500 이면 "조금만 더 가면" 문구로 갈아탄다.
+	 * 2줄은 서버 원문(Instruction)이 있으면 그걸, 없으면 발자국/화살표 문구로 채운다.
+	 */
+	static FString LexiGuidingText(const FString& NodeType, const FString& Label, const FNavGuidance& Guidance);
+
+	/** 경로 이탈(§3 OffRoute 단계). */
+	static FString LexiOffRouteText();
+
+	/** 목적지 도착. exhibit/facility/entrance 로 마무리 문구가 갈린다. */
+	static FString LexiArrivedText(const FString& NodeType, const FString& Label);
+
+	/** 도착 후 잠깐의 마무리 문구(§4 자동 종료의 Ended 단계). */
+	static FString LexiEndedText(const FString& NodeType);
 
 	/** 전시물 마커 인식 완료(초록). */
-	static FString RecognizedText()
-	{
-		return TEXT("인식이 완료되었습니다. 이제 공룡을 관찰해주세요");
-	}
+	static FString LexiRecognizedText();
 
 	/**
 	 * 그래프 노드 중 목적지 6종을 **버튼 배치 순서**로 골라 인덱스를 준다.

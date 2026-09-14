@@ -61,18 +61,76 @@ bool FNavDestinationsTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("junction 아이콘 없음"),
 		FNavDestinations::IconObjectPath(TEXT("junction"), TEXT("D지점")).IsEmpty());
 
-	// (5) 안내 문구 — 발자국/화살표 분기, 도착 문구에 label.
-	TestEqual(TEXT("전시물 안내=발자국"),
-		FNavDestinations::GuidingText(TEXT("exhibit")), FString(TEXT("공룡발자국을 따라가주세요")));
-	TestEqual(TEXT("화장실 안내=화살표"),
-		FNavDestinations::GuidingText(TEXT("facility")), FString(TEXT("안내화살표를 따라가주세요")));
-	TestEqual(TEXT("입구 안내=화살표"),
-		FNavDestinations::GuidingText(TEXT("entrance")), FString(TEXT("안내화살표를 따라가주세요")));
+	// (5) 조사 — ToParticle("으로/로")·SubjectParticle("이/가").
+	TestEqual(TEXT("트리케라톱스→로"), FNavDestinations::ToParticle(TEXT("트리케라톱스")), FString(TEXT("로")));
+	TestEqual(TEXT("화장실→로(ㄹ받침)"), FNavDestinations::ToParticle(TEXT("화장실")), FString(TEXT("로")));
+	TestEqual(TEXT("입구→로(받침없음)"), FNavDestinations::ToParticle(TEXT("입구")), FString(TEXT("로")));
+	TestEqual(TEXT("티라노사우르스 렉스→로"), FNavDestinations::ToParticle(TEXT("티라노사우르스 렉스")), FString(TEXT("로")));
+	TestEqual(TEXT("브라키오사우루스→로"), FNavDestinations::ToParticle(TEXT("브라키오사우루스")), FString(TEXT("로")));
+	TestEqual(TEXT("안킬로사우루스→로"), FNavDestinations::ToParticle(TEXT("안킬로사우루스")), FString(TEXT("로")));
+	TestEqual(TEXT("정문→으로(받침 있음, ㄹ 아님)"), FNavDestinations::ToParticle(TEXT("정문")), FString(TEXT("으로")));
+	TestEqual(TEXT("빈 문자열→(으)로"), FNavDestinations::ToParticle(TEXT("")), FString(TEXT("(으)로")));
+	TestEqual(TEXT("한글 아님→(으)로"), FNavDestinations::ToParticle(TEXT("Exit")), FString(TEXT("(으)로")));
+
+	TestEqual(TEXT("트리케라톱스→가(받침없음)"), FNavDestinations::SubjectParticle(TEXT("트리케라톱스")), FString(TEXT("가")));
+	TestEqual(TEXT("화장실→이(ㄹ받침)"), FNavDestinations::SubjectParticle(TEXT("화장실")), FString(TEXT("이")));
+	TestEqual(TEXT("입구→가(받침없음)"), FNavDestinations::SubjectParticle(TEXT("입구")), FString(TEXT("가")));
+	TestEqual(TEXT("빈 문자열→이(가)"), FNavDestinations::SubjectParticle(TEXT("")), FString(TEXT("이(가)")));
+
+	// (5b) 렉시 문구 — 상태별 계약(nav-lexi-guide-design.md §2).
+	TestTrue(TEXT("NavOn: 마커 안내"), FNavDestinations::LexiNavOnText().Contains(TEXT("마커")));
+	TestTrue(TEXT("Localized: 미니맵 안내"), FNavDestinations::LexiLocalizedText().Contains(TEXT("미니맵")));
+	TestTrue(TEXT("OffRoute: 이탈 안내"), FNavDestinations::LexiOffRouteText().Contains(TEXT("벗어났")));
+	TestTrue(TEXT("Recognized: 인식 완료"), FNavDestinations::LexiRecognizedText().Contains(TEXT("인식 완료")));
+
+	{
+		// 멀리 있을 때(Remaining 2800) — 서버 원문(Instruction)이 있으면 2줄에 그대로 실린다.
+		FNavGuidance Far;
+		Far.bValid = true;
+		Far.RemainingCm = 2800.f;
+		Far.Instruction = TEXT("앞으로 6m 직진하세요");
+		const FString FarText = FNavDestinations::LexiGuidingText(TEXT("exhibit"), TEXT("티라노사우루스 렉스"), Far);
+		TestTrue(TEXT("Guiding(멀리): label 포함"), FarText.Contains(TEXT("티라노사우루스 렉스")));
+		TestTrue(TEXT("Guiding(멀리): 서버 원문 포함"), FarText.Contains(TEXT("앞으로 6m 직진하세요")));
+		TestFalse(TEXT("Guiding(멀리): 재촉 문구 없음"), FarText.Contains(TEXT("조금만 더 가면")));
+
+		// 근접(Remaining 300, ≤500) — "조금만 더 가면" 으로 갈아탄다.
+		FNavGuidance Near;
+		Near.bValid = true;
+		Near.RemainingCm = 300.f;
+		const FString NearText = FNavDestinations::LexiGuidingText(TEXT("exhibit"), TEXT("티라노사우루스 렉스"), Near);
+		TestTrue(TEXT("Guiding(근접): 조금만 더 가면"), NearText.Contains(TEXT("조금만 더 가면")));
+
+		// 서버 원문이 없으면(경로 시작 직후 등) node_type 으로 발자국/화살표 문구를 대신 쓴다.
+		FNavGuidance NoInstruction;
+		NoInstruction.bValid = true;
+		NoInstruction.RemainingCm = 2000.f;
+		TestTrue(TEXT("Guiding(전시물, 원문 없음): 발자국"),
+			FNavDestinations::LexiGuidingText(TEXT("exhibit"), TEXT("화장실"), NoInstruction).Contains(TEXT("발자국")));
+		TestTrue(TEXT("Guiding(시설, 원문 없음): 화살표"),
+			FNavDestinations::LexiGuidingText(TEXT("facility"), TEXT("화장실"), NoInstruction).Contains(TEXT("화살표")));
+
+		// Label 이 비면 exhibit="전시물", 그 밖="목적지".
+		TestTrue(TEXT("Guiding(exhibit, label 없음): 전시물"),
+			FNavDestinations::LexiGuidingText(TEXT("exhibit"), TEXT(""), Far).Contains(TEXT("전시물")));
+		TestTrue(TEXT("Guiding(facility, label 없음): 목적지"),
+			FNavDestinations::LexiGuidingText(TEXT("facility"), TEXT(""), Far).Contains(TEXT("목적지")));
+	}
+
+	// (5c) 도착·종료 문구 — node_type 별 갈래 + label 포함.
 	TestTrue(TEXT("전시물 도착에 label 포함"),
-		FNavDestinations::ArrivalText(TEXT("exhibit"), TEXT("트리케라톱스")).Contains(TEXT("트리케라톱스")));
-	TestEqual(TEXT("화장실 도착 문구"),
-		FNavDestinations::ArrivalText(TEXT("facility"), TEXT("화장실")),
-		FString(TEXT("목적지에 도착하였습니다")));
+		FNavDestinations::LexiArrivedText(TEXT("exhibit"), TEXT("트리케라톱스")).Contains(TEXT("트리케라톱스")));
+	TestTrue(TEXT("전시물 도착: 스캔 안내"),
+		FNavDestinations::LexiArrivedText(TEXT("exhibit"), TEXT("트리케라톱스")).Contains(TEXT("스캔")));
+	TestTrue(TEXT("시설 도착에 label 포함"),
+		FNavDestinations::LexiArrivedText(TEXT("facility"), TEXT("화장실")).Contains(TEXT("화장실")));
+	TestTrue(TEXT("입구 도착: 관람 인사"),
+		FNavDestinations::LexiArrivedText(TEXT("entrance"), TEXT("입구·출구")).Contains(TEXT("관람")));
+	TestTrue(TEXT("도착(label 없음, exhibit): 전시물"),
+		FNavDestinations::LexiArrivedText(TEXT("exhibit"), TEXT("")).Contains(TEXT("전시물")));
+
+	TestTrue(TEXT("Ended(exhibit): AR 스캔 안내"), FNavDestinations::LexiEndedText(TEXT("exhibit")).Contains(TEXT("AR 스캔")));
+	TestTrue(TEXT("Ended(facility): 미니맵 안내"), FNavDestinations::LexiEndedText(TEXT("facility")).Contains(TEXT("미니맵")));
 
 	// (6) 버튼 순서 — 위 4칸 전시물(EX1..EX4), 아래 화장실·입구. 비목적지는 제외.
 	{

@@ -1,0 +1,144 @@
+ system /Game/TimeReveal/FX/NS_WatchOrbit.NS_WatchOrbit fixedBounds=IsValid=true, Min=(X=-350.000 Y=-350.000 Z=-350.000), Max=(X=350.000 Y=350.000 Z=350.000) warmup=0.00 exposed=[User.SpriteMaterial(MaterialInterface) ]
+   emitter Ring enabled=1 sim=CPU local=1 boundsMode=1 fixed=IsValid=true, Min=(X=-350.000 Y=-350.000 Z=-350.000), Max=(X=350.000 Y=350.000 Z=350.000) persistentIDs=0 interpSpawn=1 maxParticlesEst=0
+     renderer NiagaraSpriteRendererProperties enabled=1 /Game/TimeReveal/FX/M_TimeFX_Sprite.M_TimeFX_Sprite align=0 facing=0 sortMode=0
+     ri Constants.Ring.InitializeParticle.Lifetime Max = 1.4
+     ri Constants.Ring.InitializeParticle.Lifetime Min = 0.8
+     ri Constants.Ring.InitializeParticle.Uniform Sprite Size Max = 4.0
+     ri Constants.Ring.InitializeParticle.Uniform Sprite Size Min = 1.8
+     ri Constants.Ring.TorusLocation.Large Radius = 78.0
+     ri Constants.Ring.SpawnRate.SpawnRate = 240.0
+   emitter Ring001 enabled=1 sim=CPU local=1 boundsMode=1 fixed=IsValid=true, Min=(X=-350.000 Y=-350.000 Z=-350.000), Max=(X=350.000 Y=350.000 Z=350.000) persistentIDs=0 interpSpawn=1 maxParticlesEst=0
+     ri Constants.Ring001.InitializeParticle.Lifetime Max = 1.4
+     ri Constants.Ring001.InitializeParticle.Lifetime Min = 0.8
+     ri Constants.Ring001.InitializeParticle.Uniform Sprite Size Max = 4.0
+     ri Constants.Ring001.InitializeParticle.Uniform Sprite Size Min = 1.8
+     ri Constants.Ring001.TorusLocation.Large Radius = 78.0
+     ri Constants.Ring001.SpawnRate.SpawnRate = 240.0
+   emitter Ring002 enabled=1 sim=CPU local=1 boundsMode=1 fixed=IsValid=true, Min=(X=-350.000 Y=-350.000 Z=-350.000), Max=(X=350.000 Y=350.000 Z=350.000) persistentIDs=0 interpSpawn=1 maxParticlesEst=0
+     ri Constants.Ring002.InitializeParticle.Lifetime Max = 1.4
+     ri Constants.Ring002.InitializeParticle.Lifetime Min = 0.8
+     ri Constants.Ring002.InitializeParticle.Uniform Sprite Size Max = 4.0
+     ri Constants.Ring002.InitializeParticle.Uniform Sprite Size Min = 1.8
+     ri Constants.Ring002.TorusLocation.Large Radius = 78.0
+     ri Constants.Ring002.SpawnRate.SpawnRate = 240.0
+   emitter Singularity_Point_ enabled=1 sim=CPU local=1 boundsMode=1 fixed=IsValid=true, Min=(X=-350.000 Y=-350.000 Z=-350.000), Max=(X=350.000 Y=350.000 Z=350.000) persistentIDs=0 interpSpawn=1 maxParticlesEst=0
+     ri Constants.Singularity_Point_.InitializeParticle.Lifetime Max = 1.4
+     ri Constants.Singularity_Point_.InitializeParticle.Lifetime Min = 0.8
+     ri Constants.Singularity_Point_.InitializeParticle.Uniform Sprite Size Max = 4.0
+     ri Constants.Singularity_Point_.InitializeParticle.Uniform Sprite Size Min = 1.8
+     ri Constants.Singularity_Point_.SpawnRate.SpawnRate = 12.0
+ system /Game/TimeReveal/FX/NS_TimePortal.NS_TimePortal fixedBounds=IsValid=true, Min=(X=-350.000 Y=-350.000 Z=-350.000), Max=(X=350.000 Y=350.000 Z=350.000) warmup=0.00 exposed=[User.SpriteMaterial(MaterialInterface) ]
+   emitter Worm-Hole_Up enabled=1 sim=CPU local=1 boundsMode=1 fixed=IsValid=true, Min=(X=-350.000 Y=-350.000 Z=-350.000), Max=(X=350.000 Y=350.000 Z=350.000) persistentIDs=0 interpSpawn=1 maxParticlesEst=0
+     ri Constants.Worm-Hole_Up.InitializeParticle.Lifetime Max = 1.4
+     ri Constants.Worm-Hole_Up.InitializeParticle.Lifetime Min = 0.8
+     ri Constants.Worm-Hole_Up.InitializeParticle.Uniform Sprite Size Max = 7.0
+     ri Constants.Worm-Hole_Up.InitializeParticle.Uniform Sprite Size Min = 1.8
+     ri Constants.Worm-Hole_Up.SpawnParticlesInGrid.X Count = 4
+     ri Constants.Worm-Hole_Up.SpawnParticlesInGrid.Y Count = 4
+     ri Constants.Worm-Hole_Up.SpawnParticlesInGrid.Z Count = 4
+     ri Constants.Worm-Hole_Up.SpawnRate.SpawnRate = 280.0
+   emitter Worm-Hole_Down enabled=1 sim=CPU local=1 boundsMode=1 fixed=IsValid=true, Min=(X=-350.000 Y=-350.000 Z=-350.000), Max=(X=350.000 Y=350.000 Z=350.000) persistentIDs=0 interpSpawn=1 maxParticlesEst=0
+     ri Constants.Worm-Hole_Down.InitializeParticle.Lifetime Max = 1.4
+     ri Constants.Worm-Hole_Down.InitializeParticle.Lifetime Min = 0.8
+     ri Constants.Worm-Hole_Down.InitializeParticle.Uniform Sprite Size Max = 7.0
+     ri Constants.Worm-Hole_Down.InitializeParticle.Uniform Sprite Size Min = 1.8
+     ri Constants.Worm-Hole_Down.SpawnParticlesInGrid.X Count = 4
+     ri Constants.Worm-Hole_Down.SpawnParticlesInGrid.Y Count = 4
+     ri Constants.Worm-Hole_Down.SpawnParticlesInGrid.Z Count = 4
+     ri Constants.Worm-Hole_Down.SpawnRate.SpawnRate = 280.0
+ system /Game/FreeNiagaraPack/Effects/NS_ActiveAtom.NS_ActiveAtom fixedBounds=dynamic warmup=0.00 exposed=[] [log]
+   emitter Ring enabled=1 sim=GPU local=0 boundsMode=1 fixed=IsValid=true, Min=(X=-1000.000 Y=-1000.000 Z=-1000.000), Max=(X=1000.000 Y=1000.000 Z=1000.000) persistentIDs=0 interpSpawn=1 maxParticlesEst=0 [log]
+     renderer NiagaraSpriteRendererProperties enabled=1 /Niagara/DefaultAssets/DefaultSpriteMaterial.DefaultSpriteMaterial align=0 facing=0 sortMode=0 [log]
+     ri Constants.Ring.InitializeParticle.Lifetime Max = 8.0 [log]
+     ri Constants.Ring.InitializeParticle.Lifetime Min = 4.0 [log]
+     ri Constants.Ring.InitializeParticle.Uniform Sprite Size Max = 12.0 [log]
+     ri Constants.Ring.InitializeParticle.Uniform Sprite Size Min = 1.0 [log]
+     ri Constants.Ring.TorusLocation.Large Radius = 1000.0 [log]
+     ri Constants.Ring.SpawnRate.SpawnRate = 5000.0 [log]
+   emitter Ring001 enabled=1 sim=GPU local=0 boundsMode=1 fixed=IsValid=true, Min=(X=-1000.000 Y=-1000.000 Z=-1000.000), Max=(X=1000.000 Y=1000.000 Z=1000.000) persistentIDs=0 interpSpawn=1 maxParticlesEst=0 [log]
+     ri Constants.Ring001.InitializeParticle.Lifetime Max = 8.0 [log]
+     ri Constants.Ring001.InitializeParticle.Lifetime Min = 4.0 [log]
+     ri Constants.Ring001.InitializeParticle.Uniform Sprite Size Max = 12.0 [log]
+     ri Constants.Ring001.InitializeParticle.Uniform Sprite Size Min = 1.0 [log]
+     ri Constants.Ring001.TorusLocation.Large Radius = 1000.0 [log]
+     ri Constants.Ring001.SpawnRate.SpawnRate = 5000.0 [log]
+   emitter Ring002 enabled=1 sim=GPU local=0 boundsMode=1 fixed=IsValid=true, Min=(X=-1000.000 Y=-1000.000 Z=-1000.000), Max=(X=1000.000 Y=1000.000 Z=1000.000) persistentIDs=0 interpSpawn=1 maxParticlesEst=0 [log]
+     ri Constants.Ring002.InitializeParticle.Lifetime Max = 8.0 [log]
+     ri Constants.Ring002.InitializeParticle.Lifetime Min = 4.0 [log]
+     ri Constants.Ring002.InitializeParticle.Uniform Sprite Size Max = 12.0 [log]
+     ri Constants.Ring002.InitializeParticle.Uniform Sprite Size Min = 1.0 [log]
+     ri Constants.Ring002.TorusLocation.Large Radius = 1000.0 [log]
+     ri Constants.Ring002.SpawnRate.SpawnRate = 5000.0 [log]
+   emitter Singularity_Point_ enabled=1 sim=GPU local=0 boundsMode=1 fixed=IsValid=true, Min=(X=-1000.000 Y=-1000.000 Z=-1000.000), Max=(X=1000.000 Y=1000.000 Z=1000.000) persistentIDs=0 interpSpawn=1 maxParticlesEst=0 [log]
+     ri Constants.Singularity_Point_.InitializeParticle.Lifetime Max = 8.0 [log]
+     ri Constants.Singularity_Point_.InitializeParticle.Lifetime Min = 4.0 [log]
+     ri Constants.Singularity_Point_.InitializeParticle.Uniform Sprite Size Max = 12.0 [log]
+     ri Constants.Singularity_Point_.InitializeParticle.Uniform Sprite Size Min = 1.0 [log]
+     ri Constants.Singularity_Point_.SpawnRate.SpawnRate = 1000.0 [log]
+ system /Game/FreeNiagaraPack/Effects/NS_Worm-Hole.NS_Worm-Hole fixedBounds=dynamic warmup=0.00 exposed=[] [log]
+   emitter Worm-Hole_Up enabled=1 sim=GPU local=0 boundsMode=1 fixed=IsValid=true, Min=(X=-1000.000 Y=-1000.000 Z=-1000.000), Max=(X=1000.000 Y=1000.000 Z=1000.000) persistentIDs=0 interpSpawn=1 maxParticlesEst=0 [log]
+     ri Constants.Worm-Hole_Up.InitializeParticle.Lifetime Max = 10.0 [log]
+     ri Constants.Worm-Hole_Up.InitializeParticle.Lifetime Min = 8.0 [log]
+     ri Constants.Worm-Hole_Up.InitializeParticle.Uniform Sprite Size Max = 4.0 [log]
+     ri Constants.Worm-Hole_Up.InitializeParticle.Uniform Sprite Size Min = 2.0 [log]
+     ri Constants.Worm-Hole_Up.SpawnParticlesInGrid.X Count = 10 [log]
+     ri Constants.Worm-Hole_Up.SpawnParticlesInGrid.Y Count = 10 [log]
+     ri Constants.Worm-Hole_Up.SpawnParticlesInGrid.Z Count = 10 [log]
+     ri Constants.Worm-Hole_Up.SpawnRate.SpawnRate = 1000.0 [log]
+   emitter Worm-Hole_Down enabled=1 sim=GPU local=0 boundsMode=1 fixed=IsValid=true, Min=(X=-1000.000 Y=-1000.000 Z=-1000.000), Max=(X=1000.000 Y=1000.000 Z=1000.000) persistentIDs=0 interpSpawn=1 maxParticlesEst=0 [log]
+     ri Constants.Worm-Hole_Down.InitializeParticle.Lifetime Max = 10.0 [log]
+     ri Constants.Worm-Hole_Down.InitializeParticle.Lifetime Min = 8.0 [log]
+     ri Constants.Worm-Hole_Down.InitializeParticle.Uniform Sprite Size Max = 4.0 [log]
+     ri Constants.Worm-Hole_Down.InitializeParticle.Uniform Sprite Size Min = 2.0 [log]
+     ri Constants.Worm-Hole_Down.SpawnParticlesInGrid.X Count = 10 [log]
+     ri Constants.Worm-Hole_Down.SpawnParticlesInGrid.Y Count = 10 [log]
+     ri Constants.Worm-Hole_Down.SpawnParticlesInGrid.Z Count = 10 [log]
+     ri Constants.Worm-Hole_Down.SpawnRate.SpawnRate = 1000.0 [log]
+ system /Game/TimeReveal/FX/NS_WatchOrbit.NS_WatchOrbit fixedBounds=IsValid=true, Min=(X=-350.000 Y=-350.000 Z=-350.000), Max=(X=350.000 Y=350.000 Z=350.000) warmup=0.00 exposed=[User.SpriteMaterial(MaterialInterface) ] [log]
+   emitter Ring enabled=1 sim=CPU local=1 boundsMode=1 fixed=IsValid=true, Min=(X=-350.000 Y=-350.000 Z=-350.000), Max=(X=350.000 Y=350.000 Z=350.000) persistentIDs=0 interpSpawn=1 maxParticlesEst=0 [log]
+     renderer NiagaraSpriteRendererProperties enabled=1 /Game/TimeReveal/FX/M_TimeFX_Sprite.M_TimeFX_Sprite align=0 facing=0 sortMode=0 [log]
+     ri Constants.Ring.InitializeParticle.Lifetime Max = 1.4 [log]
+     ri Constants.Ring.InitializeParticle.Lifetime Min = 0.8 [log]
+     ri Constants.Ring.InitializeParticle.Uniform Sprite Size Max = 4.0 [log]
+     ri Constants.Ring.InitializeParticle.Uniform Sprite Size Min = 1.8 [log]
+     ri Constants.Ring.TorusLocation.Large Radius = 78.0 [log]
+     ri Constants.Ring.SpawnRate.SpawnRate = 240.0 [log]
+   emitter Ring001 enabled=1 sim=CPU local=1 boundsMode=1 fixed=IsValid=true, Min=(X=-350.000 Y=-350.000 Z=-350.000), Max=(X=350.000 Y=350.000 Z=350.000) persistentIDs=0 interpSpawn=1 maxParticlesEst=0 [log]
+     ri Constants.Ring001.InitializeParticle.Lifetime Max = 1.4 [log]
+     ri Constants.Ring001.InitializeParticle.Lifetime Min = 0.8 [log]
+     ri Constants.Ring001.InitializeParticle.Uniform Sprite Size Max = 4.0 [log]
+     ri Constants.Ring001.InitializeParticle.Uniform Sprite Size Min = 1.8 [log]
+     ri Constants.Ring001.TorusLocation.Large Radius = 78.0 [log]
+     ri Constants.Ring001.SpawnRate.SpawnRate = 240.0 [log]
+   emitter Ring002 enabled=1 sim=CPU local=1 boundsMode=1 fixed=IsValid=true, Min=(X=-350.000 Y=-350.000 Z=-350.000), Max=(X=350.000 Y=350.000 Z=350.000) persistentIDs=0 interpSpawn=1 maxParticlesEst=0 [log]
+     ri Constants.Ring002.InitializeParticle.Lifetime Max = 1.4 [log]
+     ri Constants.Ring002.InitializeParticle.Lifetime Min = 0.8 [log]
+     ri Constants.Ring002.InitializeParticle.Uniform Sprite Size Max = 4.0 [log]
+     ri Constants.Ring002.InitializeParticle.Uniform Sprite Size Min = 1.8 [log]
+     ri Constants.Ring002.TorusLocation.Large Radius = 78.0 [log]
+     ri Constants.Ring002.SpawnRate.SpawnRate = 240.0 [log]
+   emitter Singularity_Point_ enabled=1 sim=CPU local=1 boundsMode=1 fixed=IsValid=true, Min=(X=-350.000 Y=-350.000 Z=-350.000), Max=(X=350.000 Y=350.000 Z=350.000) persistentIDs=0 interpSpawn=1 maxParticlesEst=0 [log]
+     ri Constants.Singularity_Point_.InitializeParticle.Lifetime Max = 1.4 [log]
+     ri Constants.Singularity_Point_.InitializeParticle.Lifetime Min = 0.8 [log]
+     ri Constants.Singularity_Point_.InitializeParticle.Uniform Sprite Size Max = 4.0 [log]
+     ri Constants.Singularity_Point_.InitializeParticle.Uniform Sprite Size Min = 1.8 [log]
+     ri Constants.Singularity_Point_.SpawnRate.SpawnRate = 12.0 [log]
+ system /Game/TimeReveal/FX/NS_TimePortal.NS_TimePortal fixedBounds=IsValid=true, Min=(X=-350.000 Y=-350.000 Z=-350.000), Max=(X=350.000 Y=350.000 Z=350.000) warmup=0.00 exposed=[User.SpriteMaterial(MaterialInterface) ] [log]
+   emitter Worm-Hole_Up enabled=1 sim=CPU local=1 boundsMode=1 fixed=IsValid=true, Min=(X=-350.000 Y=-350.000 Z=-350.000), Max=(X=350.000 Y=350.000 Z=350.000) persistentIDs=0 interpSpawn=1 maxParticlesEst=0 [log]
+     ri Constants.Worm-Hole_Up.InitializeParticle.Lifetime Max = 1.4 [log]
+     ri Constants.Worm-Hole_Up.InitializeParticle.Lifetime Min = 0.8 [log]
+     ri Constants.Worm-Hole_Up.InitializeParticle.Uniform Sprite Size Max = 7.0 [log]
+     ri Constants.Worm-Hole_Up.InitializeParticle.Uniform Sprite Size Min = 1.8 [log]
+     ri Constants.Worm-Hole_Up.SpawnParticlesInGrid.X Count = 4 [log]
+     ri Constants.Worm-Hole_Up.SpawnParticlesInGrid.Y Count = 4 [log]
+     ri Constants.Worm-Hole_Up.SpawnParticlesInGrid.Z Count = 4 [log]
+     ri Constants.Worm-Hole_Up.SpawnRate.SpawnRate = 280.0 [log]
+   emitter Worm-Hole_Down enabled=1 sim=CPU local=1 boundsMode=1 fixed=IsValid=true, Min=(X=-350.000 Y=-350.000 Z=-350.000), Max=(X=350.000 Y=350.000 Z=350.000) persistentIDs=0 interpSpawn=1 maxParticlesEst=0 [log]
+     ri Constants.Worm-Hole_Down.InitializeParticle.Lifetime Max = 1.4 [log]
+     ri Constants.Worm-Hole_Down.InitializeParticle.Lifetime Min = 0.8 [log]
+     ri Constants.Worm-Hole_Down.InitializeParticle.Uniform Sprite Size Max = 7.0 [log]
+     ri Constants.Worm-Hole_Down.InitializeParticle.Uniform Sprite Size Min = 1.8 [log]
+     ri Constants.Worm-Hole_Down.SpawnParticlesInGrid.X Count = 4 [log]
+     ri Constants.Worm-Hole_Down.SpawnParticlesInGrid.Y Count = 4 [log]
+     ri Constants.Worm-Hole_Down.SpawnParticlesInGrid.Z Count = 4 [log]
+     ri Constants.Worm-Hole_Down.SpawnRate.SpawnRate = 280.0 [log]

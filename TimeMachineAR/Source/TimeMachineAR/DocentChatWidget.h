@@ -41,6 +41,22 @@ class UTextBlock;
 /** 채팅창이 열리거나 닫힌 직후. 정보 카드가 도슨트에서 돌아올 때 자기를 다시 열려고 듣는다. */
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnDocentChatOpenStateChanged, bool, bIsOpen);
 
+/**
+ * 하단 바의 탭 세 개. 이 위젯이 배타 표시의 유일한 소유자다.
+ *
+ * WBP 이벤트 그래프가 같은 버튼에 붙어 패널을 따로 열고 닫아서, 도슨트를 열면
+ * 스캔 패널(틀·조준원·위치 칩·힌트·셔터)이 채팅 위에 그대로 남는 문제가 있었다.
+ * 이제 ScanPanel/NavPanel/ChatPanel/BottomBar/Btn_CloseAR 은 전부 ApplyHudTab 이
+ * ActiveTab 하나만 보고 정한다.
+ */
+UENUM(BlueprintType)
+enum class EDocentHudTab : uint8
+{
+	Scan,
+	Nav,
+	Docent
+};
+
 UCLASS(Abstract)
 class TIMEMACHINEAR_API UDocentChatWidget : public UUserWidget
 {
@@ -136,9 +152,22 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Docent|Chat")
 	bool HasExhibitContext() const { return bExhibitContextSet && !ExhibitKey.IsEmpty(); }
 
+	// ------------------------------------------------------------ HUD 탭
+
+	/**
+	 * 하단 바 탭을 바꾼다. ScanPanel/NavPanel/ChatPanel/BottomBar/Btn_CloseAR 의
+	 * 배타 표시를 이 한 곳에서 강제한다(ApplyHudTab).
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Docent|HUD")
+	void SetHudTab(EDocentHudTab Tab);
+
+	UFUNCTION(BlueprintPure, Category = "Docent|HUD")
+	EDocentHudTab GetHudTab() const { return ActiveTab; }
+
 protected:
 	virtual void NativeConstruct() override;
 	virtual void NativeDestruct() override;
+	virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime) override;
 
 	// ------------------------------------------------------------ 바인딩 위젯
 
@@ -304,6 +333,14 @@ protected:
 	UFUNCTION(BlueprintImplementableEvent, Category = "Docent|Chat")
 	void OnChatOpenChanged(bool bOpen);
 
+public:
+	/**
+	 * 회중시계 연출(UTimeRevealComponent)이 단계별 렉시 말풍선을 덮어쓴다. 마커 인식 뒤
+	 * 기본 문구("대상을 인식했어요! 공룡을 터치하면…") 대신 이 문구를 쓴다. 비우면 기본으로 복귀.
+	 * 스캔 HUD(ScanHintText)만 바꾸며 채팅·정보창·내비 문구는 건드리지 않는다.
+	 */
+	void SetRevealHint(const FText& InHint);
+
 private:
 	UFUNCTION() void HandleReferenceCapture();
 	UFUNCTION() void HandleReferenceRescan();
@@ -312,6 +349,29 @@ private:
 	UFUNCTION() void HandleCameraFacingChanged(bool bFront);
 	void RefreshReferenceUI();
 	bool bReferenceRecognized = false;
+
+	/** 지금 켜진 하단 바 탭. 이 값 하나로 세 패널의 배타 표시가 정해진다. */
+	EDocentHudTab ActiveTab = EDocentHudTab::Scan;
+
+	/**
+	 * ActiveTab 기준으로 ScanPanel/NavPanel/ChatPanel/BottomBar/Btn_CloseAR 을 맞춘다.
+	 *
+	 * WBP 의 자체 클릭 핸들러가 우리보다 먼저 돌면서 같은 위젯을 건드릴 수 있어서,
+	 * 클릭 핸들러 쪽과 NativeTick 양쪽에서 다시 부른다. GetWidgetFromName 으로 찾으므로
+	 * BindWidget 이 아닌 위젯도 다룬다. 값이 다를 때만 SetVisibility 한다.
+	 */
+	void ApplyHudTab(bool bForceRefresh = false);
+
+	/** ScanButton/ScanCloseButton/NavCloseButton 클릭 → SetHudTab(Scan). OnClicked 시그니처(무인자) 때문에 감싼다. */
+	UFUNCTION() void HandleScanTabClicked();
+	/** NabButton 클릭 → SetHudTab(Nav). 기존 HandleReferenceExit 바인딩과 별도로 함께 붙는다. */
+	UFUNCTION() void HandleNavTabClicked();
+
+	/**
+	 * 내비 도착 후 자동 종료(§4)가 정리까지 끝냈을 때(UNavMinimapWidget::OnNavigationClosed).
+	 * 스캔 탭으로 되돌린다 — 도착 뒤에는 다음으로 할 일이 AR 스캔이라서다.
+	 */
+	UFUNCTION() void HandleNavClosedByAutoEnd();
 
 	/**
 	 * 스캔 화면의 WBP 배치를 코드로 다듬는다. WBP 는 건드리지 않는다.
@@ -350,6 +410,9 @@ private:
 	/** 셔터 결과 안내. 만료 시각까지 힌트 말풍선에 대신 띄운다. */
 	FString CaptureToast;
 	double CaptureToastUntil = 0.0;
+
+	/** SetRevealHint 로 들어온 연출 단계 문구. 인식 상태에서만 쓴다. */
+	FText RevealHint;
 
 	/** 전환 직전에 스캔 중이었으면 후면으로 돌아올 때 다시 켠다. */
 	bool bResumeScanAfterFlip = false;
