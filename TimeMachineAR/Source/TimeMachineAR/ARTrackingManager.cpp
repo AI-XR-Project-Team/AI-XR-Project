@@ -301,7 +301,7 @@ void AARTrackingManager::CheckForTrackedImages()
 		bIsAnchored = true;
 
 		// 5. 프록시 컴포넌트 생성 및 마커 앵커 생성 (렌더링 필터 보간 방식)
-		AnchorProxy = NewObject<USceneComponent>(this, TEXT("AnchorProxy"));
+		AnchorProxy = NewObject<USceneComponent>(this);
 		AnchorProxy->RegisterComponent();
 		AnchorProxy->SetWorldTransform(ImageTransform);
 
