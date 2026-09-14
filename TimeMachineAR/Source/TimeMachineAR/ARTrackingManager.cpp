@@ -281,8 +281,14 @@ void AARTrackingManager::CheckForTrackedImages()
 		FActorSpawnParameters SpawnParams;
 		SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
 
+		TSubclassOf<ADinoOverlayActor> ClassToSpawn = OverlayActorClass;
+		if (Species != nullptr && Species->CustomOverlayClass != nullptr)
+		{
+			ClassToSpawn = Species->CustomOverlayClass;
+		}
+
 		SpawnedOverlay = GetWorld()->SpawnActorDeferred<ADinoOverlayActor>(
-			OverlayActorClass, ImageTransform, nullptr, nullptr,
+			ClassToSpawn, ImageTransform, nullptr, nullptr,
 			ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
 
 		if (SpawnedOverlay == nullptr)

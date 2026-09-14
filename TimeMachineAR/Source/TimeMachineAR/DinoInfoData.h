@@ -265,4 +265,12 @@ public:
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Dino|오버레이")
 	FTransform MeshTransform;
+
+	/** 
+	 * 커스텀 오버레이 블루프린트 클래스.
+	 * 비워두면 ARTrackingManager 의 기본 오버레이 액터 클래스를 사용합니다.
+	 * 아르켈론처럼 특수한 이펙트가 포함된 별도의 블루프린트가 있다면 이 곳에 지정합니다.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Dino|오버레이")
+	TSubclassOf<class ADinoOverlayActor> CustomOverlayClass;
 };
