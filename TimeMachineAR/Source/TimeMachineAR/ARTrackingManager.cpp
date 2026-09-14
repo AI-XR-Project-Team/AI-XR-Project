@@ -95,6 +95,12 @@ void AARTrackingManager::ClearOverlay()
 		OverlayPin = nullptr;
 	}
 
+	if (AnchorProxy)
+	{
+		AnchorProxy->DestroyComponent();
+		AnchorProxy = nullptr;
+	}
+
 	if (SpawnedOverlay)
 	{
 		SpawnedOverlay->Destroy();
@@ -202,6 +208,24 @@ void AARTrackingManager::Tick(float DeltaTime)
 		CheckForTrackedImages();
 	}
 
+	if (bIsAnchored && SpawnedOverlay && AnchorProxy && OverlayPin
+		&& OverlayPin->GetTrackingState() == EARTrackingState::Tracking)
+	{
+		const FTransform Target = AnchorProxy->GetComponentTransform();
+		const FVector CurLoc = SpawnedOverlay->GetActorLocation();
+		const FQuat   CurRot = SpawnedOverlay->GetActorQuat();
+
+		const float dPos = FVector::Dist(CurLoc, Target.GetLocation());
+		const float dDeg = FMath::RadiansToDegrees(CurRot.AngularDistance(Target.GetRotation()));
+
+		if (dPos > DeadbandCm || dDeg > DeadbandDeg)
+		{
+			const FVector NewLoc = FMath::VInterpTo(CurLoc, Target.GetLocation(), DeltaTime, FollowSpeed);
+			const FQuat   NewRot = FMath::QInterpTo(CurRot, Target.GetRotation(), DeltaTime, FollowSpeed);
+			SpawnedOverlay->SetActorLocationAndRotation(NewLoc, NewRot);
+		}
+	}
+
 	UpdateScanPhase();
 }
 
@@ -276,11 +300,13 @@ void AARTrackingManager::CheckForTrackedImages()
 		// 4. 중복 스폰 방지
 		bIsAnchored = true;
 
-		// 5. 마커 앵커 대신 월드 앵커에 고정 (TrackedImage 대신 nullptr 전달).
-		// 진동(Jitter)과 움찔거림(Twitch)을 완벽히 없애는 대신, 
-		// 기기 이동 시 미세하게 밀리는 현상(Drift)만 남기는 3번 방식입니다.
+		// 5. 프록시 컴포넌트 생성 및 마커 앵커 생성 (렌더링 필터 보간 방식)
+		AnchorProxy = NewObject<USceneComponent>(this);
+		AnchorProxy->RegisterComponent();
+		AnchorProxy->SetWorldTransform(ImageTransform);
+
 		OverlayPin = UARBlueprintLibrary::PinComponent(
-			SpawnedOverlay->GetRootComponent(), ImageTransform, nullptr, FName("DinoHybridAnchor"));
+			AnchorProxy, ImageTransform, TrackedImage, FName("DinoImageAnchor"));
 
 		UE_LOG(LogTemp, Log, TEXT("[AR] 마커 '%s' -> 공룡 '%s'"),
 			MarkerCode.IsEmpty() ? TEXT("(이름없음)") : *MarkerCode,

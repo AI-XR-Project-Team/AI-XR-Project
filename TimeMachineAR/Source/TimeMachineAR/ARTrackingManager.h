@@ -149,6 +149,18 @@ private:
 	// 스캔 중일 때만 마커를 찾는다.
 	bool bIsScanning = false;
 
+	UPROPERTY()
+	USceneComponent* AnchorProxy = nullptr;
+
+	UPROPERTY(EditAnywhere, Category="AR Tracking|Stabilize")
+	float DeadbandCm = 0.5f;
+
+	UPROPERTY(EditAnywhere, Category="AR Tracking|Stabilize")
+	float DeadbandDeg = 0.3f;
+
+	UPROPERTY(EditAnywhere, Category="AR Tracking|Stabilize")
+	float FollowSpeed = 6.f;
+
 	bool bFrontCamera = false;
 
 	/** 전면 카메라용 세션 설정. 처음 전환할 때 SessionConfig 를 바탕으로 만든다. */
