@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "Subsystems/WorldSubsystem.h"
 #include "NavTypes.h"
+#include "ARTypes.h"   // 13-4 감지 판정 표본(EARTrackingQuality·Reason)
 #include "NavLocalizer.generated.h"
 
 class UARTrackedImage;
@@ -31,6 +32,102 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnNavTrackingRecovered);
  * 최초 측위(OnLocalized)와 구분한다 — 기존 UI 를 건드리지 않고 8·9단계가 여기에 붙는다.
  */
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnNavAnchorChanged, const FString&, MarkerCode);
+
+// ==================================================================== 13-4 재측위 (D50~D53)
+
+/**
+ * 13-4 D51 — 측위 상태기계. `Localized` 는 "정상" 이다(측위 전도 여기 — 측위 여부는 IsLocalized 로 가른다).
+ *
+ *     Localized ──(감지 A·B·C)──▶ Relocalizing ──(복구 조건)──▶ Recovered(1.5초) ──▶ Localized
+ */
+UENUM(BlueprintType)
+enum class ENavLocState : uint8
+{
+	Localized,
+	Relocalizing,
+	Recovered,
+};
+
+/** 13-4 — 측위가 틀어져 재측위에 들어갔을 때. Reason = shake · occluded · dark · featureless · jump · resume. */
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnNavRelocalizationStarted, const FString&, Reason);
+
+/** 13-4 — 재측위가 끝나 측위가 다시 섰을 때. SourceCode = 복구에 쓴 기준("CA12" · 마커 code · "console"). */
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnNavRelocalized, const FString&, SourceCode);
+
+/** 13-4 감지 판정(순수 함수 `UNavLocalizer::JudgeRelocEntry`)의 한 틱 표본. */
+struct FNavRelocSample
+{
+	EARTrackingQuality Quality = EARTrackingQuality::OrientationAndPosition;
+	EARTrackingQualityReason Reason = EARTrackingQualityReason::None;
+	/** 카메라 **월드** 위치(cm)·yaw·pitch(도). 맵 pose 는 재래치 때도 뛰므로 보지 않는다(명세 §3.2 B). */
+	FVector CameraWorld = FVector::ZeroVector;
+	float CameraYawDeg = 0.f;
+	float CameraPitchDeg = 0.f;
+	bool bHasCamera = true;
+	float DeltaTime = 0.f;
+	/** 지난 판정 이후 SolveTransform 이 불렸다 — 이번 비교는 순간이동 판정에서 뺀다(§3.7 함정 1). */
+	bool bSolvedThisTick = false;
+};
+
+/** 13-4 감지 문턱(ini 값 그대로). 0 이하면 그 판정을 끈다 — `JumpCm` 이 0 이하면 B 전체를 끈다(런북 §2). */
+struct FNavRelocParams
+{
+	float NotTrackingSeconds = 1.0f;
+	float ReasonHoldSeconds = 3.0f;
+	float JumpCm = 100.f;
+	float JumpDeg = 35.f;
+	float SpeedMps = 3.0f;
+	/** 좋은 프레임이 이만큼(초) 연속이면 "나쁨" 누적을 지운다. */
+	float GoodResetSeconds = 0.5f;
+};
+
+/** 13-4 감지 누적 상태. `JudgeRelocEntry` 가 갱신한다. */
+struct FNavRelocAccum
+{
+	/** NotTracking 프레임만 쌓는다(A 의 1초 문턱). */
+	float NotTrackingSeconds = 0.f;
+	/** "나쁨" 전체(NotTracking + 저하 Reason). 손으로 가리면 둘이 번갈아 와도 끊기지 않는다(§3.7 함정 2). */
+	float BadSeconds = 0.f;
+	/** 연속 양호 시간. GoodResetSeconds 를 넘으면 위 누적을 전부 지운다. */
+	float GoodSeconds = 0.f;
+	/** 이유 라벨 고르기 — 이번 "나쁨" 구간에서 가장 오래 쌓인 것이 이유다. */
+	float OccludedSeconds = 0.f;
+	float ShakeSeconds = 0.f;
+	float DarkSeconds = 0.f;
+	float FeaturelessSeconds = 0.f;
+	/** >0 이면 A(Reason)·B 를 무시한다. A(NotTracking) 는 예외. */
+	float CooldownSeconds = 0.f;
+	bool bHasPrev = false;
+	FVector PrevCameraWorld = FVector::ZeroVector;
+	float PrevYawDeg = 0.f;
+	float PrevPitchDeg = 0.f;
+	/** 판정 시계(초) — 잘린 DeltaTime 누적. */
+	double Clock = 0.0;
+	/** 최근 0.5초 카메라 위치(창 속도용). */
+	TArray<TPair<double, FVector>> Window;
+};
+
+/** 13-4 감지 판정 결과. Reason 이 비면 진입 없음. 측정값은 로그용이다. */
+struct FNavRelocVerdict
+{
+	FString Reason;
+	float JumpCm = 0.f;
+	float JumpDeg = 0.f;
+	float SpeedMps = 0.f;
+	/** B 문턱 미달이지만 튜닝용으로 남길 만큼 컸다(30cm+ · 문턱 절반+) → `[NavReloc] REJECT`. */
+	bool bNearMiss = false;
+	/** B 문턱은 넘었지만 쿨다운이라 막았다(REJECT 줄에 표시). */
+	bool bCooldownBlocked = false;
+};
+
+/** 13-4 복구 후보 1건(순수 함수 `UNavLocalizer::PickRelocCandidate` 입력). */
+struct FNavRelocCandidate
+{
+	/** 카메라에서 핀까지 월드 거리(cm). */
+	float DistanceCm = 0.f;
+	/** 품질 양호 진입 후 연속 Tracking 시간(초). */
+	float StableSeconds = 0.f;
+};
 
 /**
  * 실내 측위. "지금 내가 맵의 어디에 서 있는가"를 매 틱 알려준다.
@@ -170,9 +267,48 @@ public:
 	/**
 	 * AR 추적 품질이 PoorQualityHoldSeconds 이상 나쁜 상태로 지속되고 있으면 true(5-B1).
 	 * 자동 reroute 게이트가 "가짜 이탈" 을 거르는 데 쓴다(NavMinimapWidget).
+	 * 13-4 — **재측위 중에도 true** 다. 바닥 그래픽 숨김·리라우트 보류가 코드 한 줄 없이 따라온다(명세 §3.3).
 	 */
 	UFUNCTION(BlueprintPure, Category = "Nav|Localizer")
-	bool IsTrackingDegraded() const { return bTrackingDegraded; }
+	bool IsTrackingDegraded() const { return bTrackingDegraded || LocState == ENavLocState::Relocalizing; }
+
+	// ------------------------------------------------------------------ 13-4 재측위 (D50~D53)
+	//
+	// 측위가 틀어질 정도면(감지 A 센서·시야 / B 좌표 순간이동 / C 앱 복귀) 안내를 멈추고 오버레이를 띄운다.
+	// 앵커(또는 known 마커)가 다시 안정되게 잡히면 그 기준으로 강제 재래치하고 복구한다. 임계값은 전부 ini.
+	// 로그 규약(집 테스트 채점용): `[NavReloc] ENTER reason=… dx=…cm dyaw=…° q=… r=… t=…` ·
+	// `[NavReloc] EXIT via=… stay=…s drift=…cm` · `[NavReloc] REJECT reason=jump dx=…cm dyaw=…° v=…m/s`
+
+	UFUNCTION(BlueprintPure, Category = "Nav|Localizer")
+	ENavLocState GetLocState() const { return LocState; }
+
+	/** 재측위 중(오버레이가 떠 있고 위치 방송이 멈춘 상태)인가. */
+	UFUNCTION(BlueprintPure, Category = "Nav|Localizer")
+	bool IsRelocalizing() const { return LocState == ENavLocState::Relocalizing; }
+
+	/**
+	 * 재측위에 들어간다(C++ 전용). 이미 재측위 중이면 무시한다. 감지 A·B·C 와 콘솔 `nav.reloc enter` 가 부른다.
+	 * 위치 방송을 멈추고(마지막 정상 pose 유지) `OnRelocalizationStarted` 를 쏜다. 5-B 배너가 떠 있으면 내린다.
+	 */
+	void RequestRelocalization(const FString& Reason);
+
+	/** 복구 조건을 건너뛰고 곧장 Recovered 로(콘솔 `nav.reloc exit` — 테스트용). 재측위 중이 아니면 무시. */
+	void ForceRelocalizationRecovered(const FString& SourceCode);
+
+	/** 재측위 이유 코드(마지막 진입). */
+	FString GetRelocReason() const { return RelocReason; }
+
+	/** 재측위에 들어간 뒤 흐른 시간(초). 재측위 중이 아니면 0. 오버레이의 30·90초 문구 단계가 쓴다. */
+	float GetRelocElapsedSeconds() const;
+
+	/** 추적 품질이 연속 양호였던 시간(초). 리졸버가 복구 후보 핀의 "안정" 판정에 쓴다. */
+	float GetRelocGoodSeconds() const { return RelocGoodSeconds; }
+
+	/**
+	 * 앵커를 가까이서 만났다(리졸버: 카메라 NearAnchorCm 안에 Tracking 핀). 경로 F 소프트 힌트 시계를 되돌리고
+	 * 힌트 배너가 떠 있으면 내린다.
+	 */
+	void NoteAnchorObserved();
 
 	// ------------------------------------------------------------------ 좌표 변환
 	//
@@ -206,9 +342,17 @@ public:
 	UPROPERTY(BlueprintAssignable, Category = "Nav|Localizer")
 	FOnNavTrackingRecovered OnTrackingRecovered;
 
-	/** 측위 후 앵커 마커가 다른 마커로 바뀌었을 때(7단계 앵커 전환). */
+	/** 측위 후 앵커 마커가 다른 마커로 바뀌었을 때(7단계 앵커 전환). 13-4 — 재측위 중 복구 재래치에선 쏘지 않는다. */
 	UPROPERTY(BlueprintAssignable, Category = "Nav|Localizer")
 	FOnNavAnchorChanged OnAnchorChanged;
+
+	/** 13-4 — 재측위에 들어갔을 때. NavRelocalizeOverlaySubsystem 이 붙는다(BP 배선 없음). */
+	UPROPERTY(BlueprintAssignable, Category = "Nav|Localizer")
+	FOnNavRelocalizationStarted OnRelocalizationStarted;
+
+	/** 13-4 — 재측위에서 복구됐을 때(✓ "측위가 잡혔습니다"). BP 배선 없음. */
+	UPROPERTY(BlueprintAssignable, Category = "Nav|Localizer")
+	FOnNavRelocalized OnRelocalized;
 
 	// ------------------------------------------------------------------ 설정
 
@@ -296,6 +440,59 @@ public:
 		meta = (ClampMin = "0.05"))
 	float QualityRecoverSeconds = 0.5f;
 
+	// ------------------------------------------------------------------ 13-4 재측위 설정 (ini 새 섹션, 명세 §3.6)
+	//
+	// `[/Script/TimeMachineAR.NavLocalizer]` — 현장에서 재빌드 없이 바꾼다(런북 §1). 기본값 = 명세 값.
+	// 촬영일에 오탐이 남으면 문턱을 올리거나 끈다: RelocJumpCm=0(B 끔) · RelocNotTrackingSeconds=9999 · bRelocOnResume=False.
+
+	/** 감지 A — NotTracking 이 이만큼(초) 쌓이면 진입(가림·주머니·심한 흔들림). */
+	UPROPERTY(Config, EditAnywhere, Category = "Nav|Reloc", meta = (ClampMin = "0.1"))
+	float RelocNotTrackingSeconds = 1.0f;
+
+	/** 감지 A — 흔들림·밋밋함·어두움("나쁨" 전체, NotTracking 포함)이 이만큼(초) 쌓이면 진입. */
+	UPROPERTY(Config, EditAnywhere, Category = "Nav|Reloc", meta = (ClampMin = "0.1"))
+	float RelocReasonHoldSeconds = 3.0f;
+
+	/** 감지 B — 카메라 월드 위치가 한 틱에 이만큼(cm) 튀면 진입. 0 이하면 B 전체를 끈다. */
+	UPROPERTY(Config, EditAnywhere, Category = "Nav|Reloc")
+	float RelocJumpCm = 100.f;
+
+	/** 감지 B — 카메라 yaw 가 한 틱에 이만큼(도) 튀면 진입. 0 이하면 yaw 판정만 끈다. */
+	UPROPERTY(Config, EditAnywhere, Category = "Nav|Reloc")
+	float RelocJumpDeg = 35.f;
+
+	/** 감지 B — 0.5초 창 이동 속도(m/s)가 이 이상이면 진입(보행 ≤1.5). 0 이하면 끈다. */
+	UPROPERTY(Config, EditAnywhere, Category = "Nav|Reloc")
+	float RelocSpeedMps = 3.0f;
+
+	/** 재측위 최소 체류(초) — 이보다 빨리 잡혀도 변환만 받고 오버레이는 유지한다(깜빡임 방지). */
+	UPROPERTY(Config, EditAnywhere, Category = "Nav|Reloc", meta = (ClampMin = "0.0"))
+	float RelocMinStaySeconds = 2.0f;
+
+	/** 복구 뒤 재진입 쿨다운(초). 그동안 A(Reason)·B 는 무시하고 A(NotTracking) 만 받는다. */
+	UPROPERTY(Config, EditAnywhere, Category = "Nav|Reloc", meta = (ClampMin = "0.0"))
+	float RelocCooldownSeconds = 5.0f;
+
+	/** 복구 후보 핀(또는 known 마커)이 품질 양호 진입 후 이만큼(초) 연속 Tracking 이어야 한다. */
+	UPROPERTY(Config, EditAnywhere, Category = "Nav|Reloc", meta = (ClampMin = "0.0"))
+	float RelocPinStableSeconds = 0.5f;
+
+	/** 감지 C — 앱이 포그라운드로 돌아오면(측위 중일 때) 재측위. 촬영용 조용 모드는 False. */
+	UPROPERTY(Config, EditAnywhere, Category = "Nav|Reloc")
+	bool bRelocOnResume = true;
+
+	/** 경로 F — 앵커를 이만큼(초) 가까이서 못 만나면 5-B 배너 자리에 한 줄(오버레이 아님). 0 이하면 끈다. */
+	UPROPERTY(Config, EditAnywhere, Category = "Nav|Reloc")
+	float RelocSoftHintSeconds = 90.f;
+
+	/** 오버레이 화면 어둡기(0~1). 0.20 = AR 카메라가 거의 그대로 보인다. */
+	UPROPERTY(Config, EditAnywhere, Category = "Nav|Reloc", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float RelocDimAlpha = 0.20f;
+
+	/** 오버레이 글씨 박스 불투명도(0~1). 유리 반사가 센 곳에서 묻히면 0.75. */
+	UPROPERTY(Config, EditAnywhere, Category = "Nav|Reloc", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float RelocTextBoxAlpha = 0.62f;
+
 	// ------------------------------------------------------------------ 마커 이미지 등록 (7단계 §A)
 	//
 	// 정식 경로 = **DA_ARSession 에 baked candidate 로 쿡**(6-1a 해결책과 동일). 마커 텍스처를
@@ -378,7 +575,8 @@ public:
 	virtual bool IsTickable() const override
 	{
 		// 탐색 중이거나 측위된 뒤에만 돈다. 도슨트만 쓰는 관람객에겐 매 프레임 부담을 안 준다.
-		return Super::IsTickable() && (bScanning || bLocalized);
+		// 13-4 — 재측위 상태기계(콘솔 강제 진입 포함)는 측위 전이어도 끝까지 굴린다.
+		return Super::IsTickable() && (bScanning || bLocalized || LocState != ENavLocState::Localized);
 	}
 
 	virtual TStatId GetStatId() const override;
@@ -432,6 +630,53 @@ private:
 
 	/** 매 틱 추적 품질을 보고, 지속 저하/회복 시 델리게이트를 방송한다(측위 후에만). */
 	void MonitorTrackingQuality(float DeltaTime);
+
+	// --- 13-4 재측위 (D50~D53) ---
+	ENavLocState LocState = ENavLocState::Localized;
+	/** 마지막 진입 이유 코드. */
+	FString RelocReason;
+	/** 재측위에 들어간 월드 시각(최소 체류 · 30/90초 문구 단계). */
+	double RelocEnterTime = 0.0;
+	/** Recovered 로 넘어간 월드 시각(1.5초 뒤 Localized). */
+	double RecoveredTime = 0.0;
+	/** 재측위 중 받은 복구 변환의 기준 code. 비어 있으면 아직 못 받았다(품질이 나빠지면 버린다). */
+	FString PendingRecoverySource;
+	/** 추적 품질 연속 양호 시간(초) — 복구 조건 ① · 리졸버의 핀 안정 판정. */
+	float RelocGoodSeconds = 0.f;
+	/** 감지 A·B 누적(순수 판정 함수가 갱신한다). */
+	FNavRelocAccum RelocAccum;
+	/** 지난 판정 이후 SolveTransform 이 불렸다. 판정이 **소비할 때** 지운다(리졸버 틱이 앞이든 뒤든 잡힌다). */
+	bool bSolvedSinceMonitor = false;
+	/** 순간이동(B)은 한 틱 미뤄 확정한다 — 그 사이 재래치가 오면(같은 프레임 리졸버 재보정) 진입하지 않는다. */
+	bool bPendingJump = false;
+	FNavRelocVerdict PendingJumpVerdict;
+	/** 다음 ENTER 로그에 실을 측정값(B 만 채운다). */
+	FNavRelocVerdict EntryDetail;
+	/** 감지 C — 포그라운드 복귀 표시(콜백에선 표시만, 판정은 Tick). */
+	bool bPendingResume = false;
+	FDelegateHandle ForegroundHandle;
+	/** 경로 F — 앵커를 가까이서 못 만난 시간(초)과 배너를 띄웠는지. */
+	float SoftHintSeconds = 0.f;
+	bool bSoftHintShown = false;
+	/** REJECT 로그 스로틀(분당 10줄) — 창 시작 · 줄 수 · 눌린 줄 수와 그 최대값. */
+	double RejectWindowStart = -1.0;
+	int32 RejectLinesInWindow = 0;
+	int32 RejectSuppressed = 0;
+	FNavRelocVerdict RejectSuppressedMax;
+
+	/** 감지 A·B·C 판정 + 재측위·복구 상태 전환. Tick 에서 UpdateCurrentPose **앞에** 부른다(런북 §B-1). */
+	void MonitorRelocalization(float DeltaTime);
+	/** 복구 조건을 만족했다 → Recovered · EXIT 로그 · 새 위치 방송 · OnRelocalized. */
+	void EnterRecovered(const FString& SourceCode);
+	/** 재측위 중 변환을 받았다(앵커·마커). 상태 전환은 MonitorRelocalization 이 조건을 본 뒤에 한다. */
+	void NoteRelocalizationFix(const FString& SourceCode);
+	/** 감지 누적·카메라 표본을 버린다(측위 성립 · 복구 완료 · 앱 복귀 조용 모드). 쿨다운도 0 이 된다. */
+	void ResetRelocDetection();
+	FNavRelocParams MakeRelocParams() const;
+	/** REJECT 튜닝 로그(분당 10줄 — 넘치면 최대값만 모아 분마다 한 줄). */
+	void LogRelocReject(const FNavRelocVerdict& Verdict);
+	void FlushRelocRejects(double Now);
+	void HandleAppForeground();
 
 	UFUNCTION()
 	void HandleMarkersReceived(const TArray<FNavMarker>& Markers);
@@ -487,4 +732,26 @@ public:
 	static FString DecideAnchorTransition(
 		const FString& CurrentAnchorCode, bool bAnchorTracking,
 		const TArray<FString>& TrackedKnownNow, const TSet<FString>& TrackedKnownLast);
+
+	/**
+	 * 13-4 감지 판정(순수 로직, 명세 §3.2). 한 틱 표본을 누적에 반영하고 진입 이유를 돌려준다(없으면 빈 Reason).
+	 *  - A: NotTracking 누적 ≥ NotTrackingSeconds 또는 "나쁨"(NotTracking + 저하 Reason) 누적 ≥ ReasonHoldSeconds.
+	 *       좋은 프레임이 GoodResetSeconds 연속이면 누적을 지운다. 이유 = 이번 구간에서 가장 오래 쌓인 것
+	 *       (ExcessiveMotion→shake · InsufficientLight→dark · InsufficientFeatures→featureless · 그 밖의 NotTracking→occluded).
+	 *  - B: 재래치 틱이 아니고, 한 틱 |Δ위치| ≥ JumpCm 또는 |Δyaw| ≥ JumpDeg(위·아래를 볼 땐 제외) 또는
+	 *       0.5초 창 속도 ≥ SpeedMps → jump. 문턱 미달이지만 큰 값은 bNearMiss(REJECT 튜닝 로그).
+	 *  - 쿨다운(Accum.CooldownSeconds > 0) 중엔 A(Reason)·B 를 무시한다. A(NotTracking) 는 예외.
+	 */
+	static FNavRelocVerdict JudgeRelocEntry(const FNavRelocSample& Sample, const FNavRelocParams& Params,
+		FNavRelocAccum& Accum);
+
+	/** 13-4 복구 판정(순수 로직, §3.3): 변환을 받았고 · 최소 체류가 지났고 · 품질 양호가 QualityRecoverSeconds 이상 연속. */
+	static bool JudgeRelocExit(float StaySeconds, float GoodQualitySeconds, bool bHasFix,
+		float MinStaySeconds, float QualityRecoverSeconds);
+
+	/** 13-4 복구 후보(순수 로직, §3.3 ③④): 안정 시간 ≥ PinStableSeconds 인 것 중 **최근접**의 인덱스. 없으면 INDEX_NONE. */
+	static int32 PickRelocCandidate(const TArray<FNavRelocCandidate>& Candidates, float PinStableSeconds);
+
+	/** 13-4 감지 A 의 저하 Reason(ExcessiveMotion · InsufficientFeatures · InsufficientLight)인가. */
+	static bool IsRelocBadReason(EARTrackingQualityReason Reason);
 };

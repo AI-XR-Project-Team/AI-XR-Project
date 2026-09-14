@@ -319,6 +319,20 @@ private:
 	 */
 	bool ComputeImpliedCameraMap(const FNavCloudResolveEntry& Entry, FVector& OutMap) const;
 
+	/**
+	 * 13-4 D51 — 재측위 중 복구 재래치. 히스테리시스·최소 체류·점프 게이트 **없이** 안정된 최근접 Tracking 핀으로
+	 * 곧장 측위를 다시 세운다(틀린 건 지금 변환이다). 안정 = 품질 양호 진입 후 `RelocPinStableSeconds` 이상 연속 Tracking.
+	 * 복구 판정(최소 체류 등)은 NavLocalizer 몫이고, 여기선 0.2초에 한 번까지만 건다(프레임 훅 ⑥ 과 중복 방지).
+	 * 에셋 앵커(`asset*`)는 ApplyAnchorsJson 이 Entries 에서 이미 뺐다.
+	 */
+	void RelatchForRelocalization(class UNavLocalizer& Localizer, const FVector& CamLoc, double Now);
+	/** 13-4 — 재측위 중 핀별 연속 Tracking 시작 시각(0.2초 표본). 재측위가 아니면 비운다. */
+	TMap<int32, double> RelocPinTrackingSince;
+	/** 13-4 — 복구 재래치를 마지막으로 건 월드 시각(<0 = 아직). */
+	double LastRelocRelatchTime = -1.0;
+	/** 13-4 — 이번 재측위에서 RELATCH 로그를 남긴 기준 번호(같은 핀 반복 재래치는 한 줄만). */
+	int32 RelocLoggedPointNo = 0;
+
 	/** 서버 목록을 주기적으로 다시 받아 **새로 등록된 앵커·바뀐 좌표**를 반영한다. */
 	void RefreshAnchorsIfDue(double Now);
 

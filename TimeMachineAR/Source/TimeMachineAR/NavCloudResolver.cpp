@@ -1104,8 +1104,18 @@ void UNavCloudResolverSubsystem::WatchRecognizedAnchor(FNavCloudResolveEntry& En
 	// ⑥ **재관측일 때만** 변환을 다시 세운다(마커의 bRelatchOnReacquire 와 같은 규칙).
 	//    매 틱 재계산하면 추적 노이즈가 실려 지도가 떨린다. 같은 앵커라 점프 게이트는 걸지 않는다 —
 	//    추적 재초기화로 월드 원점이 옮겨 갔다면 이 재보정이 곧 복구다.
-	if (Gap < kReacquireGapSeconds)
+	//    13-4 — 재측위 중이면 gap 을 보지 않는다: 계속 보이던 핀으로도 다시 세운다(재추적으로 핀의 월드 pose 도 함께
+	//    옮겨졌으니 그게 정답이다 — 명세 §3.7 함정 3). 프레임마다 세우지 않도록 UpdateReferenceAnchor 와 같은 규칙으로만 건다.
+	if (Gap < kReacquireGapSeconds && !Localizer->IsRelocalizing())
 	{
+		return;
+	}
+	if (Localizer->IsRelocalizing())
+	{
+		if (APlayerCameraManager* Cam = UGameplayStatics::GetPlayerCameraManager(this, 0))
+		{
+			RelatchForRelocalization(*Localizer, Cam->GetCameraLocation(), Now);
+		}
 		return;
 	}
 
@@ -1220,6 +1230,13 @@ bool UNavCloudResolverSubsystem::PassJumpGate(int32 CandidatePointNo, const FVec
 		{
 			OutReason = FString::Printf(TEXT("합의 #%d·#%d"), CandidatePointNo, Pair.Key);
 			JumpRejects.Reset();
+			// 13-4 D50 — 게이트를 **통과**하면 곧 새 앵커로 고쳐진다: 오버레이 없이 토스트 한 줄 + SNAP 로그만.
+			UE_LOG(LogNavCloudResolve, Log, TEXT("[NavReloc] SNAP via=CA%d why=합의 detail=%s"), CandidatePointNo, *OutReason);
+			EnsureHud();
+			if (Hud != nullptr)
+			{
+				Hud->ShowMessage(FString::Printf(TEXT("위치를 다시 잡았습니다 (#%d)"), CandidatePointNo));
+			}
 			return true;
 		}
 	}
@@ -1234,6 +1251,12 @@ bool UNavCloudResolverSubsystem::PassJumpGate(int32 CandidatePointNo, const FVec
 		{
 			OutReason = FString::Printf(TEXT("지속 %.0f초"), Held);
 			JumpRejects.Reset();
+			UE_LOG(LogNavCloudResolve, Log, TEXT("[NavReloc] SNAP via=CA%d why=지속 detail=%s"), CandidatePointNo, *OutReason);
+			EnsureHud();
+			if (Hud != nullptr)
+			{
+				Hud->ShowMessage(FString::Printf(TEXT("위치를 다시 잡았습니다 (#%d)"), CandidatePointNo));
+			}
 			return true;
 		}
 	}
@@ -1266,9 +1289,25 @@ void UNavCloudResolverSubsystem::UpdateReferenceAnchor(double Now)
 		return;
 	}
 
+	// 13-4 — 재측위가 아니면 복구 재래치 기록(핀 안정 시계)을 비운다. 다음 재측위는 처음부터 센다.
+	const bool bRelocalizing = Localizer->IsRelocalizing();
+	if (!bRelocalizing && (RelocPinTrackingSince.Num() > 0 || LastRelocRelatchTime >= 0.0))
+	{
+		RelocPinTrackingSince.Reset();
+		LastRelocRelatchTime = -1.0;
+		RelocLoggedPointNo = 0;
+	}
+
 	if (Localizer->IsLocalized() && !Localizer->IsAnchoredToCloudAnchor())
 	{
 		RefPointNo = 0; // QR 마커가 기준이다 — 앵커로 덮지 않는다.
+		return;
+	}
+
+	// 13-4 D51 — 재측위 중이면 히스테리시스·최소 체류·점프 게이트를 **전부 건너뛰고** 안정된 최근접 핀으로 곧장 세운다.
+	if (bRelocalizing)
+	{
+		RelatchForRelocalization(*Localizer, Cam->GetCameraLocation(), Now);
 		return;
 	}
 
@@ -1302,6 +1341,12 @@ void UNavCloudResolverSubsystem::UpdateReferenceAnchor(double Now)
 		return;
 	}
 	FNavCloudResolveEntry& Nearest = Entries[NearestIdx];
+
+	// 13-4 경로 F — 근접(NearAnchorCm) Tracking 핀이 있으면 "앵커를 만났다" — 소프트 힌트 시계를 되돌린다.
+	if (NearestD <= NearAnchorCm)
+	{
+		Localizer->NoteAnchorObserved();
+	}
 
 	if (!Localizer->IsLocalized())
 	{
@@ -1390,7 +1435,8 @@ void UNavCloudResolverSubsystem::UpdateReferenceAnchor(double Now)
 			SurveyTime(), FromNo, Nearest.PointNo, RefD, NearestD, DriftCm, ReasonToken);
 	}
 
-	if (DriftCm >= kRelatchToastCm)
+	// 13-4 — 합의·지속으로 게이트를 통과했으면 PassJumpGate 가 "위치를 다시 잡았습니다" 를 이미 띄웠다. 겹쳐 띄우지 않는다.
+	if (DriftCm >= kRelatchToastCm && GateReason.IsEmpty())
 	{
 		EnsureHud();
 		if (Hud != nullptr)
@@ -1398,6 +1444,60 @@ void UNavCloudResolverSubsystem::UpdateReferenceAnchor(double Now)
 			Hud->ShowMessage(FString::Printf(
 				TEXT("%d번 앵커로 기준 전환 (%.0fcm)"), Nearest.PointNo, DriftCm));
 		}
+	}
+}
+
+void UNavCloudResolverSubsystem::RelatchForRelocalization(UNavLocalizer& Localizer, const FVector& CamLoc, double Now)
+{
+	// ③ 안정 — 핀별 "연속 Tracking 시작" 을 0.2초 표본으로 적는다. 놓치면 지워 처음부터 다시 센다.
+	TArray<FNavRelocCandidate> Candidates;
+	TArray<int32> CandidateEntries;
+	for (int32 i = 0; i < Entries.Num(); ++i)
+	{
+		const UARPin* Pin = GetTrackingRecognizedPin(Entries[i]);
+		if (Pin == nullptr)
+		{
+			RelocPinTrackingSince.Remove(Entries[i].PointNo);
+			continue;
+		}
+		const double Since = RelocPinTrackingSince.FindOrAdd(Entries[i].PointNo, Now);
+		FNavRelocCandidate& Candidate = Candidates.AddDefaulted_GetRef();
+		Candidate.DistanceCm = static_cast<float>(Distance2D(CamLoc, Pin->GetLocalToWorldTransform().GetLocation()));
+		// ①·③ — 품질이 양호해진 뒤로 센다(그 전부터 Tracking 이던 핀도 양호 시각부터).
+		Candidate.StableSeconds = FMath::Min(static_cast<float>(Now - Since), Localizer.GetRelocGoodSeconds());
+		CandidateEntries.Add(i);
+	}
+
+	// ②·④ — 안정된 핀 중 최근접. 없으면 다음 표본까지 기다린다(오버레이는 그대로 떠 있다).
+	const int32 Pick = UNavLocalizer::PickRelocCandidate(Candidates, Localizer.RelocPinStableSeconds);
+	if (Pick == INDEX_NONE)
+	{
+		return;
+	}
+	if (LastRelocRelatchTime >= 0.0 && Now - LastRelocRelatchTime < kSchedulerIntervalSeconds)
+	{
+		return; // 프레임 훅 ⑥ 과 0.2초 스케줄러가 겹쳐 프레임마다 세우지 않게.
+	}
+	LastRelocRelatchTime = Now;
+
+	FNavCloudResolveEntry& Entry = Entries[CandidateEntries[Pick]];
+	const int32 FromNo = RefPointNo;
+	Localizer.LocalizeFromCloudAnchor(
+		FString::Printf(TEXT("CA%d"), Entry.PointNo),
+		Entry.Pin->GetLocalToWorldTransform(),
+		MakeAnchorPose(Entry));
+	Entry.bLocalizeApplied = true;
+	RefPointNo = Entry.PointNo;
+	RefSince = Now;
+	JumpRejects.Reset(); // 변환이 바뀌었다 — 옛 변환 기준의 점프 기록은 무효
+
+	// 같은 핀으로 0.2초마다 다시 세우므로 기준이 바뀔 때만 한 줄 남긴다(복구 확정은 Localizer 의 EXIT 줄).
+	if (RelocLoggedPointNo != Entry.PointNo)
+	{
+		RelocLoggedPointNo = Entry.PointNo;
+		UE_LOG(LogNavCloudResolve, Log,
+			TEXT("[NavReloc] RELATCH via=CA%d dist=%.0fcm stable=%.1fs (기준 #%d→#%d · 히스테리시스·게이트 없이)"),
+			Entry.PointNo, Candidates[Pick].DistanceCm, Candidates[Pick].StableSeconds, FromNo, Entry.PointNo);
 	}
 }
 
@@ -1562,6 +1662,7 @@ UNavCloudResolveHud* UNavCloudResolverSubsystem::GetSharedHud() { return nullptr
 bool UNavCloudResolverSubsystem::TryLocalizeWithAnchor(FNavCloudResolveEntry& /*Entry*/) { return false; }
 void UNavCloudResolverSubsystem::WatchRecognizedAnchor(FNavCloudResolveEntry& /*Entry*/, double /*Now*/) {}
 void UNavCloudResolverSubsystem::UpdateReferenceAnchor(double /*Now*/) {}
+void UNavCloudResolverSubsystem::RelatchForRelocalization(class UNavLocalizer& /*Localizer*/, const FVector& /*CamLoc*/, double /*Now*/) {}
 bool UNavCloudResolverSubsystem::PassJumpGate(int32 /*CandidatePointNo*/, const FVector2D& /*ImpliedMap*/,
 	const FVector2D& /*CurrentMap*/, double /*Now*/, FString& /*OutReason*/) { return false; }
 int32 UNavCloudResolverSubsystem::FindCurrentTransformSupporter(int32 /*ExcludePointNo*/, const FVector2D& /*CurrentMap*/) const { return 0; }

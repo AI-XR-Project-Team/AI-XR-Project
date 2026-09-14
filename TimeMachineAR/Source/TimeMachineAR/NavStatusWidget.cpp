@@ -104,6 +104,11 @@ void UNavStatusWidget::RequestRescan()
 
 void UNavStatusWidget::HandleTrackingDegraded(const FString& Reason)
 {
+	// 13-4 — 재측위 중엔 전체화면 오버레이(NavRelocalizeOverlay)가 같은 안내를 한다. 배너를 겹쳐 띄우지 않는다.
+	if (BoundLocalizer.IsValid() && BoundLocalizer->IsRelocalizing())
+	{
+		return;
+	}
 	ShowTrackingWarning(Reason);
 }
 

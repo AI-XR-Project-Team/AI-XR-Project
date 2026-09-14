@@ -27,6 +27,20 @@ namespace
 	/** 축척이 0 으로 죽는 것을 막는 하한. */
 	constexpr float MinRangeCm = 1.f;
 
+	/** 13-4 §3.5 — 재측위 중 내 위치·경로를 그리는 불투명도. */
+	constexpr float kRelocRouteOpacity = 0.35f;
+
+	/**
+	 * 이번 NativePaint 의 경로·내 위치 불투명도 배수. NativePaint 가 TGuardValue 로 세우고 PaintBand·PaintChevrons 가 읽는다
+	 * (그리기 함수 시그니처·헤더를 바꾸지 않으려는 것 — 페인트는 게임 스레드에서 위젯마다 차례로 돈다).
+	 */
+	float GRouteOpacity = 1.f;
+
+	FLinearColor RouteTint(const FLinearColor& C)
+	{
+		return C.CopyWithNewOpacity(C.A * GRouteOpacity);
+	}
+
 	FString SkinPath(const TCHAR* Name)
 	{
 		return FString::Printf(TEXT("/Game/UI/Nav/Skin/%s.%s"), Name, Name);
@@ -614,6 +628,11 @@ int32 UNavMinimapWidget::NativePaint(const FPaintArgs& Args, const FGeometry& Al
 		LastPaintSeconds = FApp::GetCurrentTime();
 	}
 
+	// 13-4 §3.5 — 재측위 중이면 내 위치·경로를 흐리게 그린다(위치는 NavLocalizer 가 멈춰 둔다). 벽·노드 등 지도는 그대로.
+	const UNavLocalizer* RelocLocalizer = IsDesignTime() ? nullptr : UNavLocalizer::GetNavLocalizer(this);
+	TGuardValue<float> RouteOpacityGuard(GRouteOpacity,
+		(RelocLocalizer != nullptr && RelocLocalizer->IsRelocalizing()) ? kRelocRouteOpacity : 1.f);
+
 	bHasCachedTransform = false;   // 이번 프레임 변환을 새로 잡는다.
 
 	const bool bFull = (Mode == ENavMinimapMode::Full);
@@ -744,7 +763,7 @@ int32 UNavMinimapWidget::NativePaint(const FPaintArgs& Args, const FGeometry& Al
 			++Layer;
 			const FVector2D COnly = WorldToLocal(CurrentXY);
 			PaintRing(OutDrawElements, Layer, Geom, COnly,
-				CurrentPoseRadiusPx * 0.5f, CurrentPoseRadiusPx, CurrentPoseColor);
+				CurrentPoseRadiusPx * 0.5f, CurrentPoseRadiusPx, RouteTint(CurrentPoseColor));
 		}
 		return Layer;
 	}
@@ -778,7 +797,7 @@ int32 UNavMinimapWidget::NativePaint(const FPaintArgs& Args, const FGeometry& Al
 			else if (i == Last) { Color = DestNodeColor; }
 		}
 		PaintRing(OutDrawElements, Layer, Geom, LocalPts[i],
-			NodeRingRadiusPx, NodeRingThicknessPx, Color);
+			NodeRingRadiusPx, NodeRingThicknessPx, RouteTint(Color));
 	}
 
 	// 현재 위치. 측위 계층이 붙기 전에는 여기 오지 않는다.
@@ -790,7 +809,7 @@ int32 UNavMinimapWidget::NativePaint(const FPaintArgs& Args, const FGeometry& Al
 		// 채운 원 대신 반지름만큼 두꺼운 링을 그린다. Slate 에는 채운 원
 		// 프리미티브가 없고, 삼각형 팬을 직접 만드는 것보다 이쪽이 짧다.
 		PaintRing(OutDrawElements, Layer, Geom, C,
-			CurrentPoseRadiusPx * 0.5f, CurrentPoseRadiusPx, CurrentPoseColor);
+			CurrentPoseRadiusPx * 0.5f, CurrentPoseRadiusPx, RouteTint(CurrentPoseColor));
 
 		if (bCurrentHasHeading)
 		{
@@ -801,7 +820,7 @@ int32 UNavMinimapWidget::NativePaint(const FPaintArgs& Args, const FGeometry& Al
 			Tick.Add(C + Dir * CurrentPoseRadiusPx);
 			Tick.Add(C + Dir * (CurrentPoseRadiusPx * 2.2f));
 			FSlateDrawElement::MakeLines(OutDrawElements, Layer, Geom, Tick,
-				ESlateDrawEffect::None, CurrentPoseColor, true, 2.f);
+				ESlateDrawEffect::None, RouteTint(CurrentPoseColor), true, 2.f);
 		}
 	}
 
@@ -826,12 +845,12 @@ void UNavMinimapWidget::PaintBand(FSlateWindowElementList& Out, int32 Layer,
 	Side.Add(A + Half);
 	Side.Add(B + Half);
 	FSlateDrawElement::MakeLines(Out, Layer, Geom, Side,
-		ESlateDrawEffect::None, PathColor, true, PathLineThicknessPx);
+		ESlateDrawEffect::None, RouteTint(PathColor), true, PathLineThicknessPx);
 
 	Side[0] = A - Half;
 	Side[1] = B - Half;
 	FSlateDrawElement::MakeLines(Out, Layer, Geom, Side,
-		ESlateDrawEffect::None, PathColor, true, PathLineThicknessPx);
+		ESlateDrawEffect::None, RouteTint(PathColor), true, PathLineThicknessPx);
 }
 
 void UNavMinimapWidget::PaintChevrons(FSlateWindowElementList& Out, int32 Layer,
@@ -900,7 +919,7 @@ void UNavMinimapWidget::PaintChevrons(FSlateWindowElementList& Out, int32 Layer,
 			Chevron.Add(P + Dir * (ArrowLengthPx * 0.5f));
 			Chevron.Add(P - Dir * (ArrowLengthPx * 0.5f) - Normal * HalfSpan);
 			FSlateDrawElement::MakeLines(Out, Layer, Geom, Chevron,
-				ESlateDrawEffect::None, PathColor, true, ArrowThicknessPx);
+				ESlateDrawEffect::None, RouteTint(PathColor), true, ArrowThicknessPx);
 
 			NextAtCm += SpacingCm;
 		}
