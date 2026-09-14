@@ -120,6 +120,7 @@ cd backend_server
 | 트리케라톱스 | `triceratops_full_skeleton` |
 | 안킬로사우루스 | `ankylosaurus_full_skeleton` |
 | 브라키오사우루스 | `brachiosaurus_full_skeleton` |
+| 아르켈론 | `archelon_full_skeleton` (seeds/05_dino_archelon.sql 적용 필요) |
 
 - 서버가 이 키를 못 찾으면 세션 생성이 **404** 다. 즉 시드의 `model_asset_key` 와
   앱 DataAsset(`DA_Dino_*`)의 `ExhibitKey` 가 **글자까지 같아야** 한다.

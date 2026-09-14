@@ -38,6 +38,9 @@ class UTextBlock;
  *
  * 그리고 클래스 기본값에서 BubbleClass / ChipClass 를 지정해야 한다.
  */
+/** 채팅창이 열리거나 닫힌 직후. 정보 카드가 도슨트에서 돌아올 때 자기를 다시 열려고 듣는다. */
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnDocentChatOpenStateChanged, bool, bIsOpen);
+
 UCLASS(Abstract)
 class TIMEMACHINEAR_API UDocentChatWidget : public UUserWidget
 {
@@ -119,6 +122,10 @@ public:
 
 	UFUNCTION(BlueprintPure, Category = "Docent|Chat")
 	bool IsChatOpen() const { return bIsOpen; }
+
+	/** ShowChat/HideChat 직후. 인자는 새 상태. */
+	UPROPERTY(BlueprintAssignable, Category = "Docent|Chat")
+	FOnDocentChatOpenStateChanged OnOpenStateChanged;
 
 	/**
 	 * 마커로 고른 공룡이 있는지.

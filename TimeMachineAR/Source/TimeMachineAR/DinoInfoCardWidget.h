@@ -5,14 +5,18 @@
 #include "DinoInfoData.h"		// FDinoTab 을 값으로 들고 있어 전방 선언으로는 안 된다
 #include "DinoInfoCardWidget.generated.h"
 
+class UBorder;
 class UButton;
 class UDinoInfoData;
 class UDinoStatTile;
 class UDinoTabButton;
+class UDocentChatWidget;
 class UImage;
 class UPanelWidget;
 class UScrollBox;
+class USizeBox;
 class UTextBlock;
+class SBox;
 
 /** 카드의 "AI 도슨트에게 질문하기" 를 눌렀을 때. 대상 전시물 UUID 를 넘긴다. */
 // 파라미터 이름(ExhibitId)은 BP 노드 핀 이름이라 바꾸면 AR_MainMap 레벨 BP 가
@@ -31,6 +35,10 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnDinoFullscreenClicked, UDinoInfoD
  *
  * 히어로 자리는 아직 정적 사진(UImage)이다. 3D 모델 뷰로 바꿀 때는 이 위젯을
  * 그대로 두고 브러시만 렌더 타깃으로 갈아 끼우면 레이아웃이 살아남는다.
+ *
+ * DA 의 CardSkin 이 Ocean(아르켈론)이면 WBP 배치 대신 C++ 이 세로 전체 화면을 짠다
+ * (BuildOceanSkin). 그때도 아래 바인딩 이름의 포인터를 새 위젯으로 돌려 놓으므로
+ * 채우기·탭·타일·CTA 로직은 하나다.
  *
  * WBP 로 상속할 때 필요한 자식 위젯 (이름이 다르면 WBP 컴파일이 알려준다):
  *   - NameKoText   (Text Block)        : 필수
@@ -111,7 +119,9 @@ public:
 	FOnDinoFullscreenClicked OnFullscreenClicked;
 
 protected:
+	virtual TSharedRef<SWidget> RebuildWidget() override;
 	virtual void NativeConstruct() override;
+	virtual void NativeTick(const FGeometry& Geometry, float DeltaTime) override;
 	virtual void NativeDestruct() override;
 
 	// 실기기(터치)
@@ -123,6 +133,9 @@ protected:
 	virtual FReply NativeOnMouseButtonDown(const FGeometry& InGeometry, const FPointerEvent& InEvent) override;
 	virtual FReply NativeOnMouseMove(const FGeometry& InGeometry, const FPointerEvent& InEvent) override;
 	virtual FReply NativeOnMouseButtonUp(const FGeometry& InGeometry, const FPointerEvent& InEvent) override;
+
+	/** 안드로이드 뒤로 키. 카드 안의 어느 위젯이 포커스를 갖고 있어도 여기로 먼저 온다(터널링). */
+	virtual FReply NativeOnPreviewKeyDown(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent) override;
 
 	// ------------------------------------------------------------ 바인딩 위젯
 
@@ -328,4 +341,71 @@ private:
 
 	/** 하단 바 위로 올리는 재부착을 한 번만 하기 위한 표식. */
 	bool bElevatedZ = false;
+
+	// ------------------------------------------------------ 바다(아르켈론) 스킨
+	//
+	// DA 의 CardSkin 이 Ocean 이면 WBP 트리 대신 C++ 로 짠 전체 화면 트리를 RootWidget 에
+	// 끼운다. 도슨트·내비 스킨과 같은 방식이다(WBP 는 그대로, 코드가 레이아웃을 잡는다).
+	// 다른 종(Default)으로 돌아오면 WBP 루트를 되돌리고 이름으로 다시 바인딩한다.
+
+	/** CurrentInfo 의 스킨을 트리에 반영한다. 바뀌었으면 true — 슬레이트를 다시 만들어야 한다. */
+	bool ApplySkin(EDinoCardSkin Skin);
+
+	/** 바다 스킨 트리를 한 번 만들고 바인딩 포인터를 그쪽으로 돌린다. */
+	void BuildOceanSkin();
+
+	/** WBP 루트로 되돌리고 BindWidget 포인터를 이름으로 다시 잇는다. */
+	void RestoreDefaultSkin();
+
+	/** 스킨을 바꾼 뒤 슬레이트를 다시 만든다. 뷰포트에 있으면 떼었다 다시 붙인다(ZOrder 100). */
+	void RebuildSlateIfNeeded();
+
+	/** 바다 스킨 전용 칸(전시존 배지·CTA 문구·삽화 크기)을 CurrentInfo 로 채운다. */
+	void ApplyOceanInfo();
+
+	UFUNCTION() void HandleMenuClicked();
+	UFUNCTION() void HandleMenuBackdropClicked();
+	UFUNCTION() void HandleNavClicked();
+	UFUNCTION() void HandleScanClicked();
+	UFUNCTION() void HandleDocentOpenStateChanged(bool bIsOpen);
+
+	/** 화면의 도슨트 챗 위젯. 하단 바의 내비게이션이 그 위젯의 버튼을 대신 누른다. */
+	UDocentChatWidget* FindDocentChat() const;
+
+	/** 뒤로 키를 받으려면 카드 안에 포커스가 있어야 한다. 열 때와 탭을 바꿀 때 부른다. */
+	void FocusCard();
+
+	EDinoCardSkin ActiveSkin = EDinoCardSkin::Default;
+	bool bSlateDirty = false;
+	/** Stable Slate container: the viewport may retain the old tree during a touch. */
+	TWeakPtr<SBox> SkinHost;
+	UPROPERTY() TObjectPtr<USizeBox> OceanTextCenter;
+	TWeakObjectPtr<UDocentChatWidget> HiddenScanHud;
+	ESlateVisibility ScanHudVisibility = ESlateVisibility::SelfHitTestInvisible;
+
+	/** WBP 가 잡아 둔 원래 루트. 바다 스킨을 되돌릴 때 쓴다. */
+	UPROPERTY() TObjectPtr<UWidget> DefaultRoot;
+	/** WBP 가 지정한 타일·탭 클래스. 바다 스킨은 C++ 클래스로 바꿔 끼우므로 되돌릴 값을 든다. */
+	TSubclassOf<UDinoStatTile> DefaultStatTileClass;
+	TSubclassOf<UDinoTabButton> DefaultTabButtonClass;
+
+	/** 바다 스킨 트리. 한 번 만들고 재사용한다. */
+	UPROPERTY() TObjectPtr<UWidget> OceanRoot;
+	UPROPERTY() TObjectPtr<UImage> OceanBackground;
+	UPROPERTY() TObjectPtr<UTextBlock> OceanZoneName;
+	UPROPERTY() TObjectPtr<UTextBlock> OceanZoneSub;
+	UPROPERTY() TObjectPtr<UTextBlock> OceanCtaPrompt;
+	UPROPERTY() TObjectPtr<UButton> OceanMenuButton;
+	UPROPERTY() TObjectPtr<UWidget> OceanMenuPopup;
+	UPROPERTY() TObjectPtr<UButton> OceanMenuBackdrop;
+	UPROPERTY() TObjectPtr<UButton> OceanNavButton;
+	UPROPERTY() TObjectPtr<UButton> OceanScanButton;
+	UPROPERTY() TObjectPtr<UButton> OceanDocentButton;
+	UPROPERTY() TArray<TObjectPtr<UButton>> OceanMenuItems;
+
+	/** 도슨트에서 돌아올 때 같은 공룡·탭을 복원하기 위한 값. CTA 를 눌렀을 때만 채운다. */
+	UPROPERTY() TObjectPtr<UDinoInfoData> ReopenInfo;
+	int32 ReopenTabIndex = 0;
+	bool bReopenAfterDocent = false;
+	TWeakObjectPtr<UDocentChatWidget> BoundDocentChat;
 };
