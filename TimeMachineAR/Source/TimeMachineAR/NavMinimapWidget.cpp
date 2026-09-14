@@ -262,22 +262,33 @@ void UNavMinimapWidget::PushDestinationToMarker()
 void UNavMinimapWidget::RefreshArGuides(const FNavProgress& P)
 {
 	// 바닥 발자국: 정적 경로 위, 사용자 앞 구간에 목적지 종류별 발자국/화살표.
+	// 도착 판정(bArrived, 히스테리시스 포함)과 목적지 좌표는 여기서 명시적으로 넘긴다 —
+	// 도착하면 사용자 앞 창에 발자국이 남지 않으므로 액터가 혼자서는 링을 그릴 수 없다.
+	bool bGuideHead = false;
+	FVector GuideHeadWorld = FVector::ZeroVector;
 	if (FloorGuide != nullptr)
 	{
 		if (RouteXY.Num() >= 2 && bHasCurrent)
 		{
+			FNavFloorArrival Arrival;
+			Arrival.bArrived = P.bValid && P.bArrived;
+			Arrival.bHasDestination = GetNodePos(DestinationNodeId, Arrival.DestMapXY);
 			FloorGuide->UpdateGuide(RouteXY, CurrentXY,
-				GetNodeType(DestinationNodeId), GetNodeLabel(DestinationNodeId));
+				GetNodeType(DestinationNodeId), GetNodeLabel(DestinationNodeId), Arrival);
+			bGuideHead = FloorGuide->GetGuideHeadWorld(GuideHeadWorld);
 		}
 		else
 		{
 			FloorGuide->HideGuide();
 		}
 	}
-	// 목적지 마름모: 남은 거리(경로거리)를 매 프레임 갱신(월드 투영은 위젯이 스스로).
+	// 목적지 마름모: 남은 거리(경로거리)·도착 여부를 매 프레임 갱신(월드 투영은 위젯이 스스로).
+	// 전방 셰브론 + 거리 배지는 가장 먼 보이는 발자국 위에 투영한다(시안 1·2 상태).
 	if (DestMarker != nullptr && P.bValid)
 	{
 		DestMarker->SetRemaining(P.RemainingCm);
+		DestMarker->SetArrived(P.bArrived);
+		DestMarker->SetGuideHead(bGuideHead, GuideHeadWorld);
 	}
 }
 

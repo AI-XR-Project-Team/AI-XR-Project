@@ -482,6 +482,7 @@ void UDocentChatWidget::ApplyOpenState(bool bOpen)
 	}
 
 	OnChatOpenChanged(bOpen);
+	OnOpenStateChanged.Broadcast(bOpen);
 }
 
 void UDocentChatWidget::PollInputFocus()
@@ -1203,32 +1204,61 @@ void UDocentChatWidget::ApplyChatSkin()
 	// ---- 배경: 사진 위 어두운 반투명 막. 목업의 유리 느낌은 이 한 겹이 만든다.
 	if (UImage* Backdrop = Cast<UImage>(ChatBackdrop))
 	{
-		Backdrop->SetColorAndOpacity(FLinearColor::FromSRGBColor(FColor(10, 13, 20, 200)));
+		Backdrop->SetBrush(FSlateRoundedBoxBrush(FLinearColor(0.015f, 0.02f, 0.025f, 0.66f), 28.f, Outline, 1.f));
+		Backdrop->SetColorAndOpacity(FLinearColor::White);
+	}
+	// Replace the legacy opaque blue surfaces as well as the foreground icons.
+	if (UImage* Header = Cast<UImage>(GetWidgetFromName(TEXT("HeaderBG"))))
+	{
+		Header->SetBrush(FSlateRoundedBoxBrush(FLinearColor(0.02f, 0.025f, 0.03f, 0.3f), 0.f));
+		Header->SetColorAndOpacity(FLinearColor::White);
+	}
+	if (UImage* Input = Cast<UImage>(GetWidgetFromName(TEXT("InputBG"))))
+	{
+		Input->SetBrush(FSlateRoundedBoxBrush(Glass, 64.f, Outline, 1.5f));
+		Input->SetColorAndOpacity(FLinearColor::White);
 	}
 
 	// ---- 상단 바: 원형 뒤로가기 / 제목 / 원형 더보기
 	// 실기기에서 92px 은 손가락보다 작아 보였다 - 1.7 배(156).
-	MakeRoundIconButton(CloseButton, TEXT("/Game/UI/Docent/arrow_back.arrow_back"), 156.f, 82.f);
+	MakeRoundIconButton(CloseButton, TEXT("/Game/UI/Docent/arrow_back.arrow_back"), 104.f, 54.f);
 	MakeRoundIconButton(Cast<UButton>(GetWidgetFromName(TEXT("MenuButton"))),
-		TEXT("/Game/UI/Docent/more_vert.more_vert"), 156.f, 82.f);
+		TEXT("/Game/UI/Docent/more_vert.more_vert"), 104.f, 54.f);
 	if (DocentNameText != nullptr)
 	{
 		FSlateFontInfo Font = DocentNameText->GetFont();
 		Font.Size = 40;
 		DocentNameText->SetFont(Font);
 		DocentNameText->SetColorAndOpacity(FSlateColor(TextMain));
-		DocentNameText->SetJustification(ETextJustify::Center);
+		DocentNameText->SetJustification(ETextJustify::Left);
+		if (UHorizontalBoxSlot* S = Cast<UHorizontalBoxSlot>(DocentNameText->Slot))
+		{
+			S->SetPadding(FMargin(50.f, 0.f, 0.f, 0.f));
+		}
 	}
 
 	// ---- 시작 화면: 링 안의 렉시 + 인사말
 	if (UImage* Hero = Cast<UImage>(GetWidgetFromName(TEXT("Avatar"))))
 	{
-		if (UTexture2D* Halo = DocentSkinTexture(TEXT("lexi_halo")))
+		if (UTexture2D* Halo = DocentSkinTexture(TEXT("lexi_idle")))
 		{
-			Hero->SetBrushFromTexture(Halo);
-			Hero->SetDesiredSizeOverride(FVector2D(420.f, 450.f));
+			FSlateBrush Brush;
+			Brush.SetResourceObject(Halo);
+			Brush.ImageSize = FVector2D(400.f, 480.f);
+			Hero->SetBrush(Brush);
+			Hero->SetDesiredSizeOverride(Brush.ImageSize);
 			Hero->SetVisibility(ESlateVisibility::HitTestInvisible);
 		}
+	}
+	if (UWidget* Glow = GetWidgetFromName(TEXT("Glow"))) Glow->SetVisibility(ESlateVisibility::Collapsed);
+	if (UImage* Ring = Cast<UImage>(GetWidgetFromName(TEXT("Ring"))))
+	{
+		FSlateBrush Brush = Ring->GetBrush();
+		Brush.ImageSize = FVector2D(440.f, 90.f);
+		Ring->SetBrush(Brush);
+		Ring->SetColorAndOpacity(FLinearColor(0.2f, 0.8f, 1.f, 0.85f));
+		Ring->SetVisibility(ESlateVisibility::HitTestInvisible);
+		if (UOverlaySlot* S = Cast<UOverlaySlot>(Ring->Slot)) S->SetVerticalAlignment(VAlign_Bottom);
 	}
 	// 시작 화면 덩어리(렉시 + 인사말)를 추천 질문 바로 위에 붙인다. 가운데 정렬로 두면
 	// 남는 공간이 인사말과 추천 질문 사이에 끼어 목업과 달리 둘이 멀어진다.
@@ -1236,7 +1266,7 @@ void UDocentChatWidget::ApplyChatSkin()
 	{
 		if (UOverlaySlot* S = Cast<UOverlaySlot>(EmptyStateBox->Slot))
 		{
-			S->SetVerticalAlignment(VAlign_Bottom);
+			S->SetVerticalAlignment(VAlign_Center);
 			S->SetHorizontalAlignment(HAlign_Fill);
 			S->SetPadding(FMargin(0.f, 0.f, 0.f, 36.f));
 		}
@@ -1249,6 +1279,7 @@ void UDocentChatWidget::ApplyChatSkin()
 		GreetingLabel->SetColorAndOpacity(FSlateColor(TextMain));
 		GreetingLabel->SetJustification(ETextJustify::Center);
 		GreetingLabel->SetLineHeightPercentage(1.35f);
+		GreetingLabel->SetText(FText::FromString(TEXT("안녕하세요!\n저는 AI 도슨트 ‘렉시’예요.\n공룡에 대해 궁금한 것을 물어보세요!")));
 	}
 
 	// ---- 입력창: 유리 캡슐 + 원형 보내기

@@ -15,6 +15,12 @@ public class TimeMachineAR : ModuleRules
 		// ApplicationCore : 안드로이드 가상 키보드 표시/숨김 이벤트(FPlatformRect).
 		PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "InputCore", "EnhancedInput", "AugmentedReality", "AndroidPermission", "HTTP", "Json", "JsonUtilities", "UMG", "Slate", "SlateCore", "ApplicationCore" });
 
+		if (Target.bBuildEditor)
+		{
+			// RenderCore : 에디터 오프스크린 프리뷰 테스트(Nav.FloorGuidePreview)의 FlushRenderingCommands.
+			PrivateDependencyModuleNames.AddRange(new string[] { "RenderCore", "RHI" });
+		}
+
 		if (Target.Platform == UnrealTargetPlatform.Android)
 		{
 			// Launch : FJavaWrapper. GameActivity 에 심어 둔 메서드를 JNI 로 부른다.

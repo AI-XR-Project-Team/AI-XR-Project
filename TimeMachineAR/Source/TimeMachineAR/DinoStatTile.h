@@ -41,6 +41,12 @@ protected:
 	UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional), Category = "Dino|Card")
 	TObjectPtr<UImage> StatIcon;
 
+	/**
+	 * FDinoStat::IconTint 를 아이콘에 입힐지. 기본 false — 기존 WBP 타일은 자기 색을
+	 * 유지한다. 흰 마스크 아이콘을 쓰는 바다 스킨 타일만 켠다.
+	 */
+	bool bApplyIconTint = false;
+
 private:
 	/** SetStat 이 NativeConstruct 보다 먼저 올 수 있어 값을 들고 있다가 다시 칠한다. */
 	void Apply();

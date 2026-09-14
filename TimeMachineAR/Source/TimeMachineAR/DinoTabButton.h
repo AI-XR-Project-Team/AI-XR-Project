@@ -68,6 +68,26 @@ protected:
 	UFUNCTION(BlueprintImplementableEvent, Category = "Dino|Card")
 	void OnSelectionChanged(bool bIsSelected);
 
+	// ------------------------------------------------------------ 스타일 값
+	//
+	// 기본값은 기존 WBP_DinoTabButton 의 동작(선택 탭만 아이콘, 흰/회색 글자)이다.
+	// 바다 스킨(UDinoOceanTabButton)이 생성자에서 바꾼다. 색을 코드에 박는 이유는
+	// 그 탭 버튼이 WBP 없이 C++ 로만 만들어지기 때문이다.
+
+	/** 비선택 탭에도 아이콘을 둘지. 시안(아르켈론)은 네 탭 모두 아이콘이 있다. */
+	bool bShowIconWhenUnselected = false;
+
+	FLinearColor SelectedLabelColor = FLinearColor::White;
+	FLinearColor UnselectedLabelColor = FLinearColor(0.22f, 0.24f, 0.30f, 1.f);
+
+	/** true 면 아이콘에도 선택/비선택 색을 입힌다(흰 마스크 아이콘 전제). */
+	bool bTintIcon = false;
+	FLinearColor SelectedIconTint = FLinearColor::White;
+	FLinearColor UnselectedIconTint = FLinearColor::White;
+
+	/** Apply 끝에 불린다. 서브클래스가 밑줄·배경 같은 것을 덧칠하는 자리. */
+	virtual void OnApplied() {}
+
 private:
 	/** UButton::OnClicked 는 다이나믹 델리게이트라 UFUNCTION 이어야 한다. */
 	UFUNCTION()
