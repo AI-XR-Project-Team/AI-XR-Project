@@ -35,17 +35,18 @@
 DEFINE_LOG_CATEGORY_STATIC(LogNavAssetSpawn, Log, All);
 
 #if NAV_CLOUD_RESOLVE
+// 익명 네임스페이스라도 유니티 빌드에선 NavCloudResolver.cpp 와 한 TU 에 묶이므로 이름을 Spawn* 으로 구분한다.
 namespace
 {
 	/** 한 시도를 포기하고 다시 요청하기까지의 시간(초). 12단계 리졸버와 같은 값. */
-	constexpr double kAttemptTimeoutSeconds = 12.0;
+	constexpr double kSpawnAttemptTimeoutSeconds = 12.0;
 	/** 목록 조회 실패 시 재시도 간격(초). */
-	constexpr double kFetchRetrySeconds = 5.0;
+	constexpr double kSpawnFetchRetrySeconds = 5.0;
 	/**
 	 * 한 앵커에 허용할 최대 시도 횟수. 촬영은 앵커 앞에 서서 하므로 12단계(60회=12분)처럼
 	 * 길게 붙들 이유가 없다 — 12초×10 ≈ 2분이면 안 잡히는 것이고, 스캔을 다시 누르면 리셋된다.
 	 */
-	constexpr int32 kMaxAttempts = 10;
+	constexpr int32 kSpawnMaxAttempts = 10;
 
 	/** ini 를 못 읽었을 때 쓰는 폴백. Archelon 이 아직 없어도 §C~§G 파이프라인은 돌아야 한다(D25). */
 	const TCHAR* kFallbackAssetClassPath =
@@ -56,9 +57,30 @@ namespace
 	/** 서버 주소 폴백 — 폰을 USB 로 맥에 꽂고 `adb reverse tcp:8000 tcp:8000` 하면 이 주소가 맥 서버에 닿는다. */
 	const TCHAR* kUsbServerBaseUrl = TEXT("http://127.0.0.1:8000");
 
-	FString CloudStateName(ECloudARPinCloudState State) { return UEnum::GetValueAsString(State); }
-	FString TaskResultName(EARPinCloudTaskResult Result) { return UEnum::GetValueAsString(Result); }
-	FString QualityReasonName(EARTrackingQualityReason Reason) { return UEnum::GetValueAsString(Reason); }
+	FString SpawnCloudStateName(ECloudARPinCloudState State) { return UEnum::GetValueAsString(State); }
+	FString SpawnTaskResultName(EARPinCloudTaskResult Result) { return UEnum::GetValueAsString(Result); }
+	FString SpawnQualityReasonName(EARTrackingQualityReason Reason) { return UEnum::GetValueAsString(Reason); }
+
+	/** pydantic 은 Decimal 을 문자열("12.50")로 내보낸다 — 숫자·문자열 둘 다 받는다(테스트 앱 JsonNum 과 같다). */
+	double SpawnJsonNum(const TSharedPtr<FJsonObject>& Obj, const TCHAR* Field, double Default)
+	{
+		if (!Obj.IsValid())
+		{
+			return Default;
+		}
+		const TSharedPtr<FJsonValue> V = Obj->TryGetField(Field);
+		if (!V.IsValid() || V->IsNull())
+		{
+			return Default;
+		}
+		if (V->Type == EJson::String)
+		{
+			const FString Str = V->AsString();
+			return Str.IsNumeric() ? FCString::Atod(*Str) : Default;
+		}
+		double Out = Default;
+		return V->TryGetNumber(Out) ? Out : Default;
+	}
 
 	/**
 	 * 핀을 놓는다 — 리졸브가 진행 중이면 **취소까지**(RemoveCloudARPin 만으로는 안 끊겨 ARCore 작업이 쌓인다).
@@ -77,7 +99,7 @@ namespace
 	}
 
 	/** 이 상태면 이번 시도는 끝났다(성공 못 함) — 다시 요청해야 한다. */
-	bool IsCloudError(ECloudARPinCloudState State)
+	bool SpawnIsCloudError(ECloudARPinCloudState State)
 	{
 		return State == ECloudARPinCloudState::ErrorInternalError
 			|| State == ECloudARPinCloudState::ErrorLocalizationFailure
@@ -91,6 +113,16 @@ namespace
 	}
 }
 #endif
+
+FTransform UNavCloudAssetSpawner::ComposeAssetTransform(const FTransform& AnchorXf, const FVector& OffLoc, float OffYaw,
+	float OffScale, float IniYawDeg, float IniZCm, float IniScale)
+{
+	// 테스트 앱 ComposeTarget 과 같은 식(헤더 주석) — 위치 보정은 앵커 축, ini z 는 월드 위, yaw 는 더하고 배율은 곱한다.
+	FRotator Rot = AnchorXf.Rotator();
+	Rot.Yaw += IniYawDeg + OffYaw;
+	const FVector Loc = AnchorXf.GetLocation() + AnchorXf.GetRotation().RotateVector(OffLoc) + FVector(0.f, 0.f, IniZCm);
+	return FTransform(Rot, Loc, FVector(IniScale * OffScale));
+}
 
 bool UNavCloudAssetSpawner::ShouldCreateSubsystem(UObject* Outer) const
 {
@@ -120,9 +152,10 @@ void UNavCloudAssetSpawner::Initialize(FSubsystemCollectionBase& Collection)
 #if NAV_CLOUD_RESOLVE
 	LoadSpawnConfig();
 	UE_LOG(LogNavAssetSpawn, Log,
-		TEXT("[NavAssetSpawn] 에셋 스포너 시작(13-1) — 에셋='%s' 종='%s' DA위치=%s yaw=%.1f° z=%.0fcm scale=%.2f"),
+		TEXT("[NavAssetSpawn] 에셋 스포너 시작(13-1) — 에셋='%s' 종='%s' DA위치=%s yaw=%.1f° z=%.0fcm scale=%.2f · 에셋지도=%s"),
 		*AssetClassPath, AssetDinoInfoPath.IsEmpty() ? TEXT("(BP 기본값)") : *AssetDinoInfoPath,
-		bApplyDinoInfoLocation ? TEXT("적용") : TEXT("무시"), SpawnYawOffsetDeg, SpawnZOffsetCm, SpawnScale);
+		bApplyDinoInfoLocation ? TEXT("적용") : TEXT("무시"), SpawnYawOffsetDeg, SpawnZOffsetCm, SpawnScale,
+		AssetMapId.IsEmpty() ? TEXT("(네비 지도와 같음)") : *AssetMapId);
 #endif
 }
 
@@ -268,6 +301,12 @@ bool UNavCloudAssetSpawner::ResolveServerConfig()
 	}
 	ServerBaseUrl.TrimStartAndEndInline();
 	MapId.TrimStartAndEndInline();
+	// 13-3 — 에셋 앵커는 네비 지도와 **다른 지도**에 둘 수 있다(AssetMapId). 비우면 예전처럼 네비 지도.
+	LoadSpawnConfig();
+	if (!AssetMapId.IsEmpty())
+	{
+		MapId = AssetMapId;
+	}
 
 	if (MapId.IsEmpty())
 	{
@@ -276,7 +315,7 @@ bool UNavCloudAssetSpawner::ResolveServerConfig()
 		{
 			bWarned = true;
 			UE_LOG(LogNavAssetSpawn, Warning,
-				TEXT("[NavAssetSpawn] DefaultMapId 없음 — 에셋 앵커를 받을 수 없다"));
+				TEXT("[NavAssetSpawn] AssetMapId·DefaultMapId 둘 다 없음 — 에셋 앵커를 받을 수 없다"));
 		}
 		return false;
 	}
@@ -291,8 +330,9 @@ bool UNavCloudAssetSpawner::ResolveServerConfig()
 	ServerCandidates.AddUnique(FString(kUsbServerBaseUrl));
 	ServerCandidateIndex = 0;
 	ServerBaseUrl = ServerCandidates[0];
-	UE_LOG(LogNavAssetSpawn, Log, TEXT("[NavAssetSpawn] 서버 후보=[%s] map=%s"),
-		*FString::Join(ServerCandidates, TEXT(", ")), *MapId);
+	UE_LOG(LogNavAssetSpawn, Log, TEXT("[NavAssetSpawn] 서버 후보=[%s] map=%s%s"),
+		*FString::Join(ServerCandidates, TEXT(", ")), *MapId,
+		AssetMapId.IsEmpty() ? TEXT(" (네비 지도와 같음)") : TEXT(" (에셋 지도 AssetMapId — 네비와 별개)"));
 	return true;
 }
 
@@ -312,9 +352,11 @@ void UNavCloudAssetSpawner::LoadSpawnConfig()
 		GConfig->GetFloat(kConfigSection, TEXT("SpawnScale"), SpawnScale, GGameIni);
 		GConfig->GetString(kConfigSection, TEXT("AssetDinoInfoPath"), AssetDinoInfoPath, GGameIni);
 		GConfig->GetBool(kConfigSection, TEXT("bApplyDinoInfoLocation"), bApplyDinoInfoLocation, GGameIni);
+		GConfig->GetString(kConfigSection, TEXT("AssetMapId"), AssetMapId, GGameIni);
 	}
 	AssetClassPath.TrimStartAndEndInline();
 	AssetDinoInfoPath.TrimStartAndEndInline();
+	AssetMapId.TrimStartAndEndInline();
 	if (AssetClassPath.IsEmpty())
 	{
 		AssetClassPath = kFallbackAssetClassPath;
@@ -410,7 +452,7 @@ void UNavCloudAssetSpawner::FetchAssetAnchors()
 		return;
 	}
 	bFetchInFlight = true;
-	NextFetchTime = Now + kFetchRetrySeconds;
+	NextFetchTime = Now + kSpawnFetchRetrySeconds;
 
 	const FString Url = FString::Printf(
 		TEXT("%s/maps/%s/cloud-anchors?state=bound"), *ServerBaseUrl, *MapId);
@@ -486,8 +528,20 @@ void UNavCloudAssetSpawner::ApplyAnchorsJson(const FString& Body)
 		E.PointNo = PointNo;
 		E.CloudId = CloudId;
 		E.Label = Label;
-		UE_LOG(LogNavAssetSpawn, Log, TEXT("[NavAssetSpawn] #%d '%s' cloud_id=%s"),
-			E.PointNo, *E.Label, *E.CloudId);
+		// 서버 배치 보정(테스트 앱 조정 패드가 저장한 값). 없으면(null) 0·0·1 — 예전과 같은 자리에 뜬다.
+		const TSharedPtr<FJsonObject>* OffObj = nullptr;
+		if ((*Obj)->TryGetObjectField(TEXT("asset_offset"), OffObj) && OffObj != nullptr && OffObj->IsValid())
+		{
+			E.OffLoc = FVector(
+				SpawnJsonNum(*OffObj, TEXT("x_cm"), 0.0),
+				SpawnJsonNum(*OffObj, TEXT("y_cm"), 0.0),
+				SpawnJsonNum(*OffObj, TEXT("z_cm"), 0.0));
+			E.OffYaw = static_cast<float>(SpawnJsonNum(*OffObj, TEXT("yaw_deg"), 0.0));
+			E.OffScale = FMath::Clamp(static_cast<float>(SpawnJsonNum(*OffObj, TEXT("scale"), 1.0)), 0.05f, 50.f);
+		}
+		UE_LOG(LogNavAssetSpawn, Log,
+			TEXT("[NavAssetSpawn] #%d '%s' cloud_id=%s 보정=(%.1f,%.1f,%.1f)cm yaw=%.1f scale=%.3f"),
+			E.PointNo, *E.Label, *E.CloudId, E.OffLoc.X, E.OffLoc.Y, E.OffLoc.Z, E.OffYaw, E.OffScale);
 	}
 
 	if (Entries.Num() == 0)
@@ -545,7 +599,7 @@ void UNavCloudAssetSpawner::StartResolve(FNavAssetAnchorEntry& Entry)
 	{
 		Entry.Pin = nullptr; // 다음 틱이 다시 시도한다.
 		UE_LOG(LogNavAssetSpawn, Warning, TEXT("[NavAssetSpawn] #%d 리졸브 시작 실패: %s"),
-			Entry.PointNo, *TaskResultName(Result));
+			Entry.PointNo, *SpawnTaskResultName(Result));
 	}
 }
 
@@ -575,7 +629,7 @@ void UNavCloudAssetSpawner::PollResolves()
 		if (Pin == nullptr)
 		{
 			// 시작 자체가 실패했던 건 — 스캔이 살아 있을 때만 간격을 지켜 다시 요청한다.
-			if (bScanArmed && E.Attempts < kMaxAttempts && Now - E.AttemptStart > kAttemptTimeoutSeconds)
+			if (bScanArmed && E.Attempts < kSpawnMaxAttempts && Now - E.AttemptStart > kSpawnAttemptTimeoutSeconds)
 			{
 				StartResolve(E);
 			}
@@ -602,22 +656,22 @@ void UNavCloudAssetSpawner::PollResolves()
 		}
 
 		// 실패/타임아웃이면 이번 시도를 버리고 다시 요청한다.
-		const bool bTimedOut = (Now - E.AttemptStart > kAttemptTimeoutSeconds);
-		if (IsCloudError(CState) || bTimedOut)
+		const bool bTimedOut = (Now - E.AttemptStart > kSpawnAttemptTimeoutSeconds);
+		if (SpawnIsCloudError(CState) || bTimedOut)
 		{
 			UE_LOG(LogNavAssetSpawn, Warning,
 				TEXT("[NavAssetSpawn] #%d 시도 %d 실패 — state=%s tracking=%d 이유=%s%s"),
-				E.PointNo, E.Attempts, *CloudStateName(CState), bTracking ? 1 : 0,
-				*QualityReasonName(UARBlueprintLibrary::GetTrackingQualityReason()),
+				E.PointNo, E.Attempts, *SpawnCloudStateName(CState), bTracking ? 1 : 0,
+				*SpawnQualityReasonName(UARBlueprintLibrary::GetTrackingQualityReason()),
 				bTimedOut ? TEXT(" (타임아웃)") : TEXT(""));
 
 			ReleaseCloudPin(World, Pin); // 타임아웃이면 아직 진행 중이다 — 취소까지 해야 끊긴다
 			E.Pin = nullptr;
-			if (bScanArmed && E.Attempts < kMaxAttempts)
+			if (bScanArmed && E.Attempts < kSpawnMaxAttempts)
 			{
 				StartResolve(E);
 			}
-			else if (E.Attempts >= kMaxAttempts)
+			else if (E.Attempts >= kSpawnMaxAttempts)
 			{
 				E.bGaveUp = true;
 				UE_LOG(LogNavAssetSpawn, Error,
@@ -645,10 +699,11 @@ void UNavCloudAssetSpawner::SpawnOrFollow(FNavAssetAnchorEntry& Entry)
 	// 앵커 pose + ini 오프셋(D25). 방향은 앵커 yaw 가 정한다(D26) — 마음에 안 들면
 	// 리빌드(십몇 분)보다 **원하는 방향을 보고 앵커를 다시 등록**(자바 도구 30초)하는 게 빠르다.
 	const FTransform AnchorXf = Pin->GetLocalToWorldTransform();
-	FRotator Rot = AnchorXf.Rotator();
-	Rot.Yaw += SpawnYawOffsetDeg;
-	const FVector Loc = AnchorXf.GetLocation() + FVector(0.f, 0.f, SpawnZOffsetCm);
-	const FTransform Target(Rot, Loc, FVector(SpawnScale));
+	// + 서버 배치 보정(asset_offset) — 테스트 앱 조정 패드와 같은 합성식.
+	const FTransform Target = ComposeAssetTransform(AnchorXf, Entry.OffLoc, Entry.OffYaw, Entry.OffScale,
+		SpawnYawOffsetDeg, SpawnZOffsetCm, SpawnScale);
+	const FVector Loc = Target.GetLocation();
+	const FRotator Rot = Target.Rotator();
 
 	if (IsValid(Entry.SpawnedActor))
 	{
@@ -716,7 +771,7 @@ void UNavCloudAssetSpawner::SpawnOrFollow(FNavAssetAnchorEntry& Entry)
 	UE_LOG(LogNavAssetSpawn, Log,
 		TEXT("[NavAssetSpawn] #%d '%s' 스폰(종=%s, 살점표시=%d, DA위치무시=%d) — 월드(%.0f, %.0f, %.0f) yaw=%.1f° scale=%.2f"),
 		Entry.PointNo, *AssetClassPath, Info != nullptr ? *Info->GetPathName() : TEXT("BP 기본값"),
-		Overlay != nullptr ? 1 : 0, bZeroedLocation ? 1 : 0, Loc.X, Loc.Y, Loc.Z, Rot.Yaw, SpawnScale);
+		Overlay != nullptr ? 1 : 0, bZeroedLocation ? 1 : 0, Loc.X, Loc.Y, Loc.Z, Rot.Yaw, Target.GetScale3D().X);
 }
 
 void UNavCloudAssetSpawner::ClearAll()
