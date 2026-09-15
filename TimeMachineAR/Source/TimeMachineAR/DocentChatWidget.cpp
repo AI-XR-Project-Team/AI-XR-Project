@@ -683,6 +683,12 @@ void UDocentChatWidget::HandleScanTabClicked()
 void UDocentChatWidget::HandleNavTabClicked()
 {
 	SetHudTab(EDocentHudTab::Nav);
+	// 내비 탭에 들어오자마자 전체 지도를 띄운다. 예전엔 우측 상단 미니맵(사각형)을 한 번 더
+	// 눌러야 목적지를 고를 수 있었다. 이미 떠 있으면 OpenFullMap 이 알아서 무시한다.
+	if (UNavMinimapWidget* Minimap = Cast<UNavMinimapWidget>(GetWidgetFromName(TEXT("WBP_NavMinimap"))))
+	{
+		Minimap->OpenFullMap();
+	}
 }
 
 void UDocentChatWidget::HandleNavClosedByAutoEnd()

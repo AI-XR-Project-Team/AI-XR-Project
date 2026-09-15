@@ -364,7 +364,7 @@ private:
 
 	/** ScanButton/ScanCloseButton/NavCloseButton 클릭 → SetHudTab(Scan). OnClicked 시그니처(무인자) 때문에 감싼다. */
 	UFUNCTION() void HandleScanTabClicked();
-	/** NabButton 클릭 → SetHudTab(Nav). 기존 HandleReferenceExit 바인딩과 별도로 함께 붙는다. */
+	/** NabButton 클릭 → SetHudTab(Nav) 후 전체 지도를 바로 연다. 기존 HandleReferenceExit 바인딩과 별도로 함께 붙는다. */
 	UFUNCTION() void HandleNavTabClicked();
 
 	/**
