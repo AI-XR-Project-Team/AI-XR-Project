@@ -38,7 +38,8 @@ namespace NavCloudAnchorRoles
 // 리졸브만 한다. 11단계 관리자 등록 코드(NavCloudAnchorAdmin)는 폴백으로 남겨 둔다(D17).
 //
 // ## 흐름
-//  1. AR 세션 Running → `ConfigGoogleARCoreServices(ARPinCloudMode=Enabled)`
+//  1. AR 세션 Running → `ConfigGoogleARCoreServices(ARPinCloudMode=Enabled)` — 플러그인이 이때 버리는 마커 이미지 DB 는
+//     `NavArCoreConfig` 가 되돌린다(2026-09-15 · 마커 트리거)
 //  2. `GET /maps/{map}/cloud-anchors?state=bound` → cloud_id 목록
 //  3. 13-3 D42 — **동시 6개까지만**, 가까울 법한 것부터 `CreateAndResolveCloudARPin`
 //  4. `GetARPinCloudState()==Success` **그리고** `GetTrackingState()==Tracking` 이면 인식 확정

@@ -49,6 +49,28 @@ bool FNavCloudAssetComposeTest::RunTest(const FString& Parameters)
 		TestTrue(TEXT("④ 전용 오버레이 지정 → 그 클래스"),
 			UNavCloudAssetSpawner::GetSpeciesOverlayClass(Info) == ADinoOverlayActor::StaticClass());
 	}
+
+	// ⑤ 마커 트리거 — 증강 이미지 pose 를 앵커처럼 세운다(위치 그대로 · yaw 만). 이미지 축: X = 인쇄물 위쪽 · Z = 인쇄면 법선.
+	{
+		const FVector P(10.0, 20.0, 30.0);
+
+		// 바닥·책상에 눕힌 마커 — 앞 = 인쇄물 위쪽.
+		const FTransform Flat = UNavCloudAssetSpawner::GravityAlignMarkerTransform(FTransform(FRotator(0.0, 30.0, 0.0), P));
+		TestTrue(TEXT("⑤ 위치 그대로"), Flat.GetLocation().Equals(P, Tol));
+		TestEqual(TEXT("⑤ 눕힌 마커 yaw = 인쇄물 위쪽"), FRotator::NormalizeAxis(Flat.Rotator().Yaw), 30.0, Tol);
+		TestEqual(TEXT("⑤ 배율 1"), Flat.GetScale3D().X, 1.0, Tol);
+
+		// 기울어진 마커 — pitch·roll 은 버린다(공룡이 눕지 않는다).
+		const FTransform Tilted = UNavCloudAssetSpawner::GravityAlignMarkerTransform(FTransform(FRotator(40.0, 30.0, 15.0), P));
+		TestEqual(TEXT("⑤ 기울인 마커 pitch 0"), Tilted.Rotator().Pitch, 0.0, Tol);
+		TestEqual(TEXT("⑤ 기울인 마커 roll 0"), Tilted.Rotator().Roll, 0.0, Tol);
+
+		// 모니터에 띄운 마커 — 보는 사람이 +X 를 보고, 화면은 이쪽(−X)을 향한다: 인쇄물 위쪽 = 월드 위, 법선 = −X.
+		const FQuat Monitor = FRotationMatrix::MakeFromXZ(FVector::UpVector, FVector(-1.0, 0.0, 0.0)).ToQuat();
+		const FTransform Upright = UNavCloudAssetSpawner::GravityAlignMarkerTransform(FTransform(Monitor, P));
+		TestEqual(TEXT("⑤ 세운 마커 yaw = 보는 방향(+X)"), FRotator::NormalizeAxis(Upright.Rotator().Yaw), 0.0, Tol);
+		TestEqual(TEXT("⑤ 세운 마커 pitch 0"), Upright.Rotator().Pitch, 0.0, Tol);
+	}
 	return true;
 }
 

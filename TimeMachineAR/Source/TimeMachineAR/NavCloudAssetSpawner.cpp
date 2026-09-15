@@ -4,13 +4,14 @@
 
 #include "Engine/Engine.h"
 #include "Engine/World.h"
+#include "NavArCoreConfig.h"                             // 마커 트리거 스위치 · Cloud Anchor 모드 + 마커 이미지 DB 복원
 #include "DinoInfoData.h"                                // GetSpeciesOverlayClass(순수 · 플러그인 비의존)
 #include "DinoOverlayActor.h"                            // TSubclassOf<ADinoOverlayActor> 비교에 완전한 타입이 필요하다(Mac 빌드 포함)
 
 // ARCore Cloud Anchors 는 Android 전용이라 GoogleARCoreServices 의존도 Android 타깃에만 걸린다
 // (TimeMachineAR.Build.cs). NAV_CLOUD_RESOLVE 는 그 조건과 1:1 로 붙어 있는 정의다.
 #if NAV_CLOUD_RESOLVE
-#include "ARTrackingManager.h"                           // 스캔 델리게이트 — **바인딩만** 한다
+#include "ARTrackingManager.h"                           // 스캔·마커 인식 델리게이트 — **바인딩**과 공개 ClearOverlay 만 쓴다
 #include "DinoOverlayActor.h"                            // 공개 함수(SetDinoInfo·StartReveal)만 부른다 — 수정 0
 #include "TimeRevealComponent.h"                         // 회중시계 연출 — 공개 AttachTo 만 부른다(수정 0)
 #include "TimeRevealProfile.h"
@@ -20,6 +21,7 @@
 #include "NavClient.h"                                   // ServerBaseUrl
 #include "ARBlueprintLibrary.h"
 #include "ARPin.h"
+#include "ARTrackable.h"                                 // 마커 트리거 — UARTrackedImage
 #include "ARTypes.h"
 #include "GoogleARCoreServicesFunctionLibrary.h"
 #include "Engine/GameInstance.h"
@@ -60,6 +62,22 @@ namespace
 	/** 서버 주소 폴백 — 폰을 USB 로 맥에 꽂고 `adb reverse tcp:8000 tcp:8000` 하면 이 주소가 맥 서버에 닿는다. */
 	const TCHAR* kUsbServerBaseUrl = TEXT("http://127.0.0.1:8000");
 
+	/** 종 데이터 기본값 — ini 에 `AssetDinoInfoPath` 키가 없을 때(팀원 빌드엔 로컬 ini 섹션이 없다). 에셋 앵커·마커 트리거가 띄우는 종. */
+	const TCHAR* kSpawnDefaultDinoInfoPath = TEXT("/Game/UI/DinoCard/DA_Dino_Archelon.DA_Dino_Archelon");
+
+	/** 마커 트리거가 본뜨는 에셋 앵커 기본 번호 — neuti4f `asset3`(아르켈론 · 조정 패드로 맞춘 자리). */
+	constexpr int32 kSpawnMarkerTemplatePointNo = 203;
+	/**
+	 * #203 배치 보정 **스냅샷** — 2026-09-15 서버 `GET /maps/385f15c8…/cloud-anchors?state=bound` 값.
+	 * 서버에 못 닿는 빌드(팀원 집)는 이 값으로 #203 과 같은 자리·크기에 띄운다. 서버값을 받으면 그걸 쓰고, 다르면 로그로 갱신을 알린다.
+	 */
+	const TCHAR* kSpawnTemplateSnapshotLabel = TEXT("asset3");
+	constexpr double kSpawnTemplateSnapshotXCm = 289.11;
+	constexpr double kSpawnTemplateSnapshotYCm = 41.88;
+	constexpr double kSpawnTemplateSnapshotZCm = 1.71;
+	constexpr float kSpawnTemplateSnapshotYawDeg = 0.f;
+	constexpr float kSpawnTemplateSnapshotScale = 1.407f;
+
 	FString SpawnCloudStateName(ECloudARPinCloudState State) { return UEnum::GetValueAsString(State); }
 	FString SpawnTaskResultName(EARPinCloudTaskResult Result) { return UEnum::GetValueAsString(Result); }
 	FString SpawnQualityReasonName(EARTrackingQualityReason Reason) { return UEnum::GetValueAsString(Reason); }
@@ -83,6 +101,24 @@ namespace
 		}
 		double Out = Default;
 		return V->TryGetNumber(Out) ? Out : Default;
+	}
+
+	/** 목록 행의 `asset_offset`(null 이면 0·0·1) — 앵커 항목과 마커 트리거가 같은 해석을 쓴다. */
+	void SpawnReadAssetOffset(const TSharedPtr<FJsonObject>& Row, FVector& OutLoc, float& OutYaw, float& OutScale)
+	{
+		OutLoc = FVector::ZeroVector;
+		OutYaw = 0.f;
+		OutScale = 1.f;
+		const TSharedPtr<FJsonObject>* OffObj = nullptr;
+		if (Row.IsValid() && Row->TryGetObjectField(TEXT("asset_offset"), OffObj) && OffObj != nullptr && OffObj->IsValid())
+		{
+			OutLoc = FVector(
+				SpawnJsonNum(*OffObj, TEXT("x_cm"), 0.0),
+				SpawnJsonNum(*OffObj, TEXT("y_cm"), 0.0),
+				SpawnJsonNum(*OffObj, TEXT("z_cm"), 0.0));
+			OutYaw = static_cast<float>(SpawnJsonNum(*OffObj, TEXT("yaw_deg"), 0.0));
+			OutScale = FMath::Clamp(static_cast<float>(SpawnJsonNum(*OffObj, TEXT("scale"), 1.0)), 0.05f, 50.f);
+		}
 	}
 
 	/**
@@ -133,6 +169,26 @@ UClass* UNavCloudAssetSpawner::GetSpeciesOverlayClass(const UDinoInfoData* Info)
 	return (Info != nullptr && Info->CustomOverlayClass != nullptr) ? Info->CustomOverlayClass.Get() : nullptr;
 }
 
+FTransform UNavCloudAssetSpawner::GravityAlignMarkerTransform(const FTransform& MarkerXf)
+{
+	// 증강 이미지 pose(UE) — X = 인쇄물 위쪽 · Y = 오른쪽 · Z = 인쇄면 법선(엔진 GoogleARCoreAPI.cpp ARCoreToUnrealTransform 기저 변환).
+	// 앞 = (X − Z) 의 수평 성분: 눕히면 X, 세우면 −Z(보는 사람이 바라보는 쪽). 둘을 더해 기울기가 바뀌어도 방향이 튀지 않게 한다.
+	const FQuat Rot = MarkerXf.GetRotation();
+	FVector Forward = Rot.GetAxisX() - Rot.GetAxisZ();
+	Forward.Z = 0.0;
+	if (!Forward.Normalize(1e-4))
+	{
+		// 인쇄면이 거의 아래를 향한 퇴화 자세 — 위쪽 축만 투영한다.
+		Forward = Rot.GetAxisX();
+		Forward.Z = 0.0;
+		if (!Forward.Normalize(1e-4))
+		{
+			Forward = FVector::ForwardVector;
+		}
+	}
+	return FTransform(FRotator(0.0, Forward.Rotation().Yaw, 0.0), MarkerXf.GetLocation());
+}
+
 bool UNavCloudAssetSpawner::ShouldCreateSubsystem(UObject* Outer) const
 {
 	if (!Super::ShouldCreateSubsystem(Outer))
@@ -166,6 +222,10 @@ void UNavCloudAssetSpawner::Initialize(FSubsystemCollectionBase& Collection)
 		bApplyDinoInfoLocation ? TEXT("적용") : TEXT("무시"), SpawnYawOffsetDeg, SpawnZOffsetCm, SpawnScale,
 		AssetMapId.IsEmpty() ? TEXT("(네비 지도와 같음)") : *AssetMapId,
 		AssetTimeRevealProfilePath.IsEmpty() ? TEXT("(없음 — 종 데이터만)") : *AssetTimeRevealProfilePath);
+	UE_LOG(LogNavAssetSpawn, Log,
+		TEXT("[NavAssetSpawn] 마커 트리거 %s — 등록 마커를 #%d '%s' 과 같은 조립으로 띄운다(보정 (%.1f,%.1f,%.1f)cm yaw=%.1f scale=%.3f · 서버값을 받으면 교체)"),
+		bMarkerTriggers ? TEXT("ON") : TEXT("OFF"), MarkerTemplatePointNo, *TemplateLabel,
+		TemplateOffLoc.X, TemplateOffLoc.Y, TemplateOffLoc.Z, TemplateOffYaw, TemplateOffScale);
 #endif
 }
 
@@ -175,10 +235,12 @@ void UNavCloudAssetSpawner::Deinitialize()
 	if (AARTrackingManager* Manager = TrackingManager.Get())
 	{
 		Manager->OnScanStateChanged.RemoveDynamic(this, &UNavCloudAssetSpawner::HandleScanStateChanged);
+		Manager->OnMarkerFound.RemoveDynamic(this, &UNavCloudAssetSpawner::HandleMarkerFound);
 	}
 	ClearAll();
 #endif
 	Entries.Reset();
+	MarkerEntries.Reset();
 	Super::Deinitialize();
 }
 
@@ -192,6 +254,12 @@ void UNavCloudAssetSpawner::Tick(float DeltaTime)
 	Super::Tick(DeltaTime);
 
 #if NAV_CLOUD_RESOLVE
+	// 카메라 전환 등으로 AR 세션이 다시 시작되면 플러그인이 마커 이미지 DB 를 또 버린다 — 세션이 멈춘 틱도 봐야 재시작을 안다.
+	if (const UWorld* World = GetWorld())
+	{
+		NavArCoreConfig::TickKeepMarkerImages(World->GetTimeSeconds());
+	}
+
 	// AR 세션이 돌기 전엔 플러그인 호출이 무의미하다. 매니저 탐색도 레벨이 뜬 뒤에 하면 된다.
 	if (UARBlueprintLibrary::GetARSessionStatus().Status != EARSessionStatus::Running)
 	{
@@ -200,6 +268,19 @@ void UNavCloudAssetSpawner::Tick(float DeltaTime)
 
 	TryBindTrackingManager();
 	TryConfigureCloudMode();
+
+	// 마커 트리거 — 스캔 중 보이는 등록 마커를 #203 조립으로 띄우고(회차당 하나), 뜬 것은 그 핀을 따라가게 한다.
+	if (bScanArmed && bMarkerTriggers && MarkerEntries.Num() == 0)
+	{
+		PollMarkerTriggers();
+	}
+	for (FNavAssetAnchorEntry& Marker : MarkerEntries)
+	{
+		if (!Marker.bGaveUp)
+		{
+			SpawnOrFollow(Marker);
+		}
+	}
 
 	// 스캔을 누르기 전엔 아무것도 하지 않는다(D22 — 트리거는 「AR 스캔」 버튼뿐).
 	if (Entries.Num() == 0 && !bScanArmed)
@@ -233,7 +314,7 @@ void UNavCloudAssetSpawner::HandleScanStateChanged(bool bScanning)
 #if NAV_CLOUD_RESOLVE
 	if (bScanning)
 	{
-		// 스캔 ON = 이 회차의 시작. 지난 회차의 에셋·핀을 먼저 걷어낸다(중복 방지).
+		// 스캔 ON = 이 회차의 시작. 지난 회차의 에셋·핀(마커 트리거 포함)을 먼저 걷어낸다(중복 방지).
 		// 매니저도 StartScan 에서 자기 오버레이를 먼저 지운다 — 같은 자리에 맞춰 둔다.
 		ClearAll();
 		bScanArmed = true;
@@ -254,6 +335,45 @@ void UNavCloudAssetSpawner::HandleScanStateChanged(bool bScanning)
 #endif
 }
 
+void UNavCloudAssetSpawner::HandleMarkerFound(UARPin* Pin, const FTransform& /*MarkerPose*/, const FString& MarkerCode)
+{
+#if NAV_CLOUD_RESOLVE
+	if (!bMarkerTriggers)
+	{
+		return; // 끄면 매니저가 띄운 것을 그대로 둔다(끈 빌드는 마커 이미지 DB 도 안 되돌려 보통 여기까지 오지 않는다).
+	}
+
+	// 매니저가 마커 자리에 종별 공룡을 띄우고 StopScan 을 부른 직후다(ARTrackingManager.cpp CheckForTrackedImages) —
+	// #203 조립으로 먼저 띄우고, 띄웠으면 매니저 것을 공개 ClearOverlay 로 걷는다. 같은 틱 안이라 걷기 전 모습은 화면에 안 나온다.
+	// 매니저는 스캔이 꺼져 있어 다시 띄우지 않는다. 이미지는 매니저 핀에서 먼저 떠 둔다 — ClearOverlay 가 그 핀을 지운다.
+	if (MarkerEntries.Num() == 0)
+	{
+		UARTrackedImage* Image = (Pin != nullptr) ? Cast<UARTrackedImage>(Pin->GetTrackedGeometry()) : nullptr;
+		if (Image == nullptr)
+		{
+			Image = FindTrackedMarker(MarkerCode);
+		}
+		if (Image != nullptr)
+		{
+			SpawnMarkerTrigger(Image);
+		}
+	}
+	if (MarkerEntries.Num() == 0)
+	{
+		UE_LOG(LogNavAssetSpawn, Warning,
+			TEXT("[NavAssetSpawn] 마커 '%s' 를 #%d 조립으로 못 띄웠다(추적 이미지·핀 없음) — 매니저 공룡을 그대로 둔다"),
+			*MarkerCode, MarkerTemplatePointNo);
+		return;
+	}
+	if (AARTrackingManager* Manager = TrackingManager.Get())
+	{
+		Manager->ClearOverlay();
+		UE_LOG(LogNavAssetSpawn, Log,
+			TEXT("[NavAssetSpawn] 마커 '%s' — 매니저 종별 공룡을 걷고 #%d 조립으로 바꿨다"), *MarkerCode, MarkerTemplatePointNo);
+	}
+#endif
+}
+
 #if NAV_CLOUD_RESOLVE
 
 void UNavCloudAssetSpawner::TryBindTrackingManager()
@@ -269,13 +389,14 @@ void UNavCloudAssetSpawner::TryBindTrackingManager()
 	}
 	TrackingManager = Manager;
 	Manager->OnScanStateChanged.AddDynamic(this, &UNavCloudAssetSpawner::HandleScanStateChanged);
+	Manager->OnMarkerFound.AddDynamic(this, &UNavCloudAssetSpawner::HandleMarkerFound);
 
 	// 붙기 전에 이미 스캔 중이었으면(자동 스캔 설정 등) 놓친 ON 을 여기서 따라잡는다.
 	if (Manager->IsScanning())
 	{
 		HandleScanStateChanged(true);
 	}
-	UE_LOG(LogNavAssetSpawn, Log, TEXT("[NavAssetSpawn] 스캔 버튼에 연결됨(매니저 수정 0)"));
+	UE_LOG(LogNavAssetSpawn, Log, TEXT("[NavAssetSpawn] 스캔 버튼·마커 인식에 연결됨(매니저 수정 0)"));
 }
 
 void UNavCloudAssetSpawner::TryConfigureCloudMode()
@@ -284,9 +405,8 @@ void UNavCloudAssetSpawner::TryConfigureCloudMode()
 	{
 		return;
 	}
-	FGoogleARCoreServicesConfig Config;
-	Config.ARPinCloudMode = EARPinCloudMode::Enabled;
-	if (UGoogleARCoreServicesFunctionLibrary::ConfigGoogleARCoreServices(Config))
+	// 플러그인이 이때 버리는 마커 이미지 DB 는 NavArCoreConfig 가 되돌린다(리졸버와 같은 경로 — 먼저 부른 쪽이 켠다).
+	if (NavArCoreConfig::EnableCloudAnchorMode(TEXT("NavAssetSpawn")))
 	{
 		bCloudConfigured = true;
 		UE_LOG(LogNavAssetSpawn, Log, TEXT("[NavAssetSpawn] Cloud Anchor 모드 ON"));
@@ -354,6 +474,9 @@ void UNavCloudAssetSpawner::LoadSpawnConfig()
 	}
 	bSpawnConfigLoaded = true;
 
+	// 키가 없을 때의 기본값 — GetString·GetInt 는 키가 없으면 값을 건드리지 않는다.
+	AssetDinoInfoPath = kSpawnDefaultDinoInfoPath;
+	MarkerTemplatePointNo = kSpawnMarkerTemplatePointNo;
 	if (GConfig != nullptr)
 	{
 		GConfig->GetString(kConfigSection, TEXT("AssetClassPath"), AssetClassPath, GGameIni);
@@ -364,7 +487,9 @@ void UNavCloudAssetSpawner::LoadSpawnConfig()
 		GConfig->GetBool(kConfigSection, TEXT("bApplyDinoInfoLocation"), bApplyDinoInfoLocation, GGameIni);
 		GConfig->GetString(kConfigSection, TEXT("AssetMapId"), AssetMapId, GGameIni);
 		GConfig->GetString(kConfigSection, TEXT("AssetTimeRevealProfilePath"), AssetTimeRevealProfilePath, GGameIni);
+		GConfig->GetInt(kConfigSection, TEXT("MarkerTemplatePointNo"), MarkerTemplatePointNo, GGameIni);
 	}
+	bMarkerTriggers = NavArCoreConfig::AreMarkerTriggersEnabled();
 	AssetClassPath.TrimStartAndEndInline();
 	AssetDinoInfoPath.TrimStartAndEndInline();
 	AssetMapId.TrimStartAndEndInline();
@@ -379,6 +504,14 @@ void UNavCloudAssetSpawner::LoadSpawnConfig()
 	{
 		SpawnScale = 1.f;
 	}
+
+	// 마커 트리거가 서버값을 받기 전에 쓸 보정 — #203 이면 스냅샷(팀원 집에서도 #203 과 같은 자리·크기), 다른 번호면 보정 없음.
+	const bool bSnapshot = (MarkerTemplatePointNo == kSpawnMarkerTemplatePointNo);
+	TemplateLabel = bSnapshot ? FString(kSpawnTemplateSnapshotLabel) : FString::Printf(TEXT("#%d"), MarkerTemplatePointNo);
+	TemplateOffLoc = bSnapshot
+		? FVector(kSpawnTemplateSnapshotXCm, kSpawnTemplateSnapshotYCm, kSpawnTemplateSnapshotZCm) : FVector::ZeroVector;
+	TemplateOffYaw = bSnapshot ? kSpawnTemplateSnapshotYawDeg : 0.f;
+	TemplateOffScale = bSnapshot ? kSpawnTemplateSnapshotScale : 1.f;
 }
 
 UClass* UNavCloudAssetSpawner::LoadAssetClass()
@@ -522,6 +655,8 @@ void UNavCloudAssetSpawner::ApplyAnchorsJson(const FString& Body)
 		UE_LOG(LogNavAssetSpawn, Warning, TEXT("[NavAssetSpawn] 앵커 목록 파싱 실패"));
 		return;
 	}
+	// 마커 트리거가 본뜨는 앵커(#203)의 저장값은 스캔이 꺼졌어도 받는다 — 대응표 마커를 잡은 매니저가 StopScan 을 부른다.
+	CaptureTemplateOffset(Arr);
 	if (!bScanArmed)
 	{
 		return; // 응답이 오는 사이 스캔이 꺼졌다 — 새로 걸지 않는다.
@@ -562,16 +697,7 @@ void UNavCloudAssetSpawner::ApplyAnchorsJson(const FString& Body)
 		E.CloudId = CloudId;
 		E.Label = Label;
 		// 서버 배치 보정(테스트 앱 조정 패드가 저장한 값). 없으면(null) 0·0·1 — 예전과 같은 자리에 뜬다.
-		const TSharedPtr<FJsonObject>* OffObj = nullptr;
-		if ((*Obj)->TryGetObjectField(TEXT("asset_offset"), OffObj) && OffObj != nullptr && OffObj->IsValid())
-		{
-			E.OffLoc = FVector(
-				SpawnJsonNum(*OffObj, TEXT("x_cm"), 0.0),
-				SpawnJsonNum(*OffObj, TEXT("y_cm"), 0.0),
-				SpawnJsonNum(*OffObj, TEXT("z_cm"), 0.0));
-			E.OffYaw = static_cast<float>(SpawnJsonNum(*OffObj, TEXT("yaw_deg"), 0.0));
-			E.OffScale = FMath::Clamp(static_cast<float>(SpawnJsonNum(*OffObj, TEXT("scale"), 1.0)), 0.05f, 50.f);
-		}
+		SpawnReadAssetOffset(*Obj, E.OffLoc, E.OffYaw, E.OffScale);
 		UE_LOG(LogNavAssetSpawn, Log,
 			TEXT("[NavAssetSpawn] #%d '%s' cloud_id=%s 보정=(%.1f,%.1f,%.1f)cm yaw=%.1f scale=%.3f"),
 			E.PointNo, *E.Label, *E.CloudId, E.OffLoc.X, E.OffLoc.Y, E.OffLoc.Z, E.OffYaw, E.OffScale);
@@ -605,6 +731,61 @@ void UNavCloudAssetSpawner::ApplyAnchorsJson(const FString& Body)
 	for (FNavAssetAnchorEntry& E : Entries)
 	{
 		StartResolve(E);
+	}
+}
+
+void UNavCloudAssetSpawner::CaptureTemplateOffset(const TArray<TSharedPtr<FJsonValue>>& Rows)
+{
+	if (!bMarkerTriggers)
+	{
+		return;
+	}
+	for (const TSharedPtr<FJsonValue>& V : Rows)
+	{
+		const TSharedPtr<FJsonObject>* Obj;
+		if (!V.IsValid() || !V->TryGetObject(Obj) || !Obj->IsValid())
+		{
+			continue;
+		}
+		int32 PointNo = 0;
+		if (!(*Obj)->TryGetNumberField(TEXT("point_no"), PointNo) || PointNo != MarkerTemplatePointNo)
+		{
+			continue;
+		}
+		FVector Loc = FVector::ZeroVector;
+		float Yaw = 0.f;
+		float Scale = 1.f;
+		SpawnReadAssetOffset(*Obj, Loc, Yaw, Scale);
+		FString Label;
+		(*Obj)->TryGetStringField(TEXT("label"), Label);
+
+		if (!bTemplateFromServer)
+		{
+			UE_LOG(LogNavAssetSpawn, Log,
+				TEXT("[NavAssetSpawn] 마커 트리거 기준 #%d '%s' 서버 저장값 — 보정=(%.2f,%.2f,%.2f)cm yaw=%.2f scale=%.3f"),
+				PointNo, *Label, Loc.X, Loc.Y, Loc.Z, Yaw, Scale);
+			// 서버에 못 닿는 빌드(팀원 집)는 코드 스냅샷으로 뜬다 — 다르면 스냅샷을 갱신해야 두 곳이 같은 자리에 뜬다.
+			const bool bSameAsSnapshot = (MarkerTemplatePointNo != kSpawnMarkerTemplatePointNo)
+				|| (Loc.Equals(FVector(kSpawnTemplateSnapshotXCm, kSpawnTemplateSnapshotYCm, kSpawnTemplateSnapshotZCm), 0.05)
+					&& FMath::IsNearlyEqual(Yaw, kSpawnTemplateSnapshotYawDeg, 0.05f)
+					&& FMath::IsNearlyEqual(Scale, kSpawnTemplateSnapshotScale, 0.0005f));
+			if (!bSameAsSnapshot)
+			{
+				UE_LOG(LogNavAssetSpawn, Warning,
+					TEXT("[NavAssetSpawn] #%d 서버 저장값이 코드 스냅샷과 다르다 — 서버 없는 빌드는 옛 자리에 뜬다. NavCloudAssetSpawner.cpp kSpawnTemplateSnapshot* 갱신"),
+					PointNo);
+			}
+		}
+		TemplateLabel = Label;
+		TemplateOffLoc = Loc;
+		TemplateOffYaw = Yaw;
+		TemplateOffScale = Scale;
+		bTemplateFromServer = true;
+		for (FNavAssetAnchorEntry& Marker : MarkerEntries)
+		{
+			ApplyTemplateOffset(Marker); // 이미 떠 있으면 다음 틱 SpawnOrFollow 가 새 자리로 옮긴다.
+		}
+		return;
 	}
 }
 
@@ -715,9 +896,82 @@ void UNavCloudAssetSpawner::PollResolves()
 	}
 }
 
+void UNavCloudAssetSpawner::PollMarkerTriggers()
+{
+	if (UARTrackedImage* Image = FindTrackedMarker(FString()))
+	{
+		SpawnMarkerTrigger(Image);
+	}
+}
+
+UARTrackedImage* UNavCloudAssetSpawner::FindTrackedMarker(const FString& MarkerCode) const
+{
+	for (UARTrackedGeometry* Geometry : UARBlueprintLibrary::GetAllGeometriesByClass(UARTrackedImage::StaticClass()))
+	{
+		UARTrackedImage* Image = Cast<UARTrackedImage>(Geometry);
+		if (Image == nullptr || Image->GetTrackingState() != EARTrackingState::Tracking || Image->GetDetectedImage() == nullptr)
+		{
+			continue;
+		}
+		if (MarkerCode.IsEmpty() || Image->GetDetectedImage()->GetFriendlyName() == MarkerCode)
+		{
+			return Image;
+		}
+	}
+	return nullptr;
+}
+
+bool UNavCloudAssetSpawner::SpawnMarkerTrigger(UARTrackedImage* Image)
+{
+	const UWorld* World = GetWorld();
+	if (Image == nullptr || World == nullptr)
+	{
+		return false;
+	}
+	const FString MarkerName = (Image->GetDetectedImage() != nullptr)
+		? Image->GetDetectedImage()->GetFriendlyName() : FString(TEXT("(이름없음)"));
+
+	// 매니저처럼 이미지에 핀을 붙인다 — 추적이 다듬어지면 따라가고, 회중시계 연출은 이 핀으로 "안 보임"을 판단한다.
+	UARPin* Pin = UARBlueprintLibrary::PinComponent(nullptr, Image->GetLocalToWorldTransform(), Image,
+		FName(TEXT("NavAssetMarkerTrigger")));
+	if (Pin == nullptr)
+	{
+		UE_LOG(LogNavAssetSpawn, Warning, TEXT("[NavAssetSpawn] 마커 '%s' 핀 생성 실패 — 다음 틱에 다시"), *MarkerName);
+		return false;
+	}
+
+	FNavAssetAnchorEntry& Marker = MarkerEntries.AddDefaulted_GetRef();
+	Marker.MarkerName = MarkerName;
+	Marker.Pin = Pin;
+	Marker.FirstRequest = World->GetTimeSeconds();
+	Marker.AttemptStart = Marker.FirstRequest;
+	ApplyTemplateOffset(Marker);
+	UE_LOG(LogNavAssetSpawn, Log,
+		TEXT("[NavAssetSpawn] 마커 '%s' → #%d '%s' 트리거 — 보정=(%.1f,%.1f,%.1f)cm yaw=%.1f scale=%.3f (%s)"),
+		*MarkerName, Marker.PointNo, *Marker.Label, Marker.OffLoc.X, Marker.OffLoc.Y, Marker.OffLoc.Z,
+		Marker.OffYaw, Marker.OffScale, bTemplateFromServer ? TEXT("서버 저장값") : TEXT("코드 스냅샷 — 서버값 미수신"));
+
+	SpawnOrFollow(Marker);
+	if (Marker.SpawnedActor != nullptr)
+	{
+		Toast(FString::Printf(TEXT("마커 %s → #%d 조립으로 에셋 표시"), *MarkerName, Marker.PointNo));
+	}
+	return true;
+}
+
+void UNavCloudAssetSpawner::ApplyTemplateOffset(FNavAssetAnchorEntry& Entry) const
+{
+	Entry.PointNo = MarkerTemplatePointNo;
+	Entry.Label = TemplateLabel;
+	Entry.OffLoc = TemplateOffLoc;
+	Entry.OffYaw = TemplateOffYaw;
+	Entry.OffScale = TemplateOffScale;
+}
+
 void UNavCloudAssetSpawner::SpawnOrFollow(FNavAssetAnchorEntry& Entry)
 {
-	UCloudARPin* Pin = Cast<UCloudARPin>(Entry.Pin);
+	// 클라우드 핀이든 마커 이미지에 붙인 일반 핀이든 같은 조립이다 — 마커 트리거가 #203 과 같은 결과를 내는 자리.
+	UARPin* Pin = Entry.Pin;
 	UWorld* World = GetWorld();
 	if (Pin == nullptr || World == nullptr)
 	{
@@ -731,8 +985,10 @@ void UNavCloudAssetSpawner::SpawnOrFollow(FNavAssetAnchorEntry& Entry)
 
 	// 앵커 pose + ini 오프셋(D25). 방향은 앵커 yaw 가 정한다(D26) — 마음에 안 들면
 	// 리빌드(십몇 분)보다 **원하는 방향을 보고 앵커를 다시 등록**(자바 도구 30초)하는 게 빠르다.
-	const FTransform AnchorXf = Pin->GetLocalToWorldTransform();
-	// + 서버 배치 보정(asset_offset) — 테스트 앱 조정 패드와 같은 합성식.
+	// 마커 트리거는 이미지 pose 를 앵커처럼 세운 것(yaw 만 — GravityAlignMarkerTransform)을 앵커 자리로 쓴다.
+	const FTransform PinXf = Pin->GetLocalToWorldTransform();
+	const FTransform AnchorXf = Entry.MarkerName.IsEmpty() ? PinXf : GravityAlignMarkerTransform(PinXf);
+	// + 서버 배치 보정(asset_offset) — 테스트 앱 조정 패드와 같은 합성식. 마커 트리거는 본뜬 앵커(#203)의 값이다.
 	const FTransform Target = ComposeAssetTransform(AnchorXf, Entry.OffLoc, Entry.OffYaw, Entry.OffScale,
 		SpawnYawOffsetDeg, SpawnZOffsetCm, SpawnScale);
 	const FVector Loc = Target.GetLocation();
@@ -743,6 +999,10 @@ void UNavCloudAssetSpawner::SpawnOrFollow(FNavAssetAnchorEntry& Entry)
 		Entry.SpawnedActor->SetActorTransform(Target);
 		return;
 	}
+
+	const FString Who = Entry.MarkerName.IsEmpty()
+		? FString::Printf(TEXT("#%d '%s'"), Entry.PointNo, *Entry.Label)
+		: FString::Printf(TEXT("마커 '%s'(#%d '%s' 조립)"), *Entry.MarkerName, Entry.PointNo, *Entry.Label);
 
 	// 종이 전용 오버레이 BP(CustomOverlayClass)를 지정하면 그걸 띄운다 — 마커 흐름(ARTrackingManager.cpp
 	// CheckForTrackedImages)과 같은 선택. 없으면 ini 의 AssetClassPath(기본 T-Rex 오버레이 + 종 데이터).
@@ -765,8 +1025,8 @@ void UNavCloudAssetSpawner::SpawnOrFollow(FNavAssetAnchorEntry& Entry)
 		Class, Target, nullptr, nullptr, ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
 	if (Spawned == nullptr)
 	{
-		UE_LOG(LogNavAssetSpawn, Error, TEXT("[NavAssetSpawn] #%d 스폰 실패 (%s)"),
-			Entry.PointNo, *Class->GetPathName());
+		UE_LOG(LogNavAssetSpawn, Error, TEXT("[NavAssetSpawn] %s 스폰 실패 (%s)"),
+			*Who, *Class->GetPathName());
 		Entry.bGaveUp = true;
 		return;
 	}
@@ -808,8 +1068,8 @@ void UNavCloudAssetSpawner::SpawnOrFollow(FNavAssetAnchorEntry& Entry)
 	}
 
 	// 회중시계 연출(TimeReveal) — 마커 흐름(ARTrackingManager.cpp)과 같이 종의 TimeRevealProfile 로 붙인다.
-	// 붙으면 공룡을 숨기고 시계를 띄워, 위로 던지면 시간의 문이 열리며 나타난다. 추적 핀은 이 클라우드 앵커다
-	// (2초 넘게 안 보이면 연출이 취소되고 공룡이 바로 보인다). 위의 StartReveal 은 연출이 끝나 원래 머티리얼로
+	// 붙으면 공룡을 숨기고 시계를 띄워, 위로 던지면 시간의 문이 열리며 나타난다. 추적 핀은 이 클라우드 앵커(마커 트리거면
+	// 이미지 핀)다(2초 넘게 안 보이면 연출이 취소되고 공룡이 바로 보인다). 위의 StartReveal 은 연출이 끝나 원래 머티리얼로
 	// 돌아왔을 때 살점 알파가 0 에 남지 않게 먼저 걸어 둔다(연출 중엔 메시가 숨겨져 화면에 영향 없음).
 	// 종 데이터에 설정이 없으면 ini AssetTimeRevealProfilePath 로 보충한다(develop DA 가 참조를 잃은 동안의 임시 경로 — 헤더 주석).
 	UTimeRevealProfile* RevealProfile = (Info != nullptr && Info->TimeRevealProfile != nullptr)
@@ -821,8 +1081,8 @@ void UNavCloudAssetSpawner::SpawnOrFollow(FNavAssetAnchorEntry& Entry)
 	}
 	Entry.SpawnedActor = Spawned;
 	UE_LOG(LogNavAssetSpawn, Log,
-		TEXT("[NavAssetSpawn] #%d '%s' 스폰(클래스=%s, 종=%s, 살점표시=%d, DA위치무시=%d, 회중시계=%d) — 월드(%.0f, %.0f, %.0f) yaw=%.1f° scale=%.2f"),
-		Entry.PointNo, *Entry.Label, *Class->GetPathName(), Info != nullptr ? *Info->GetPathName() : TEXT("BP 기본값"),
+		TEXT("[NavAssetSpawn] %s 스폰(클래스=%s, 종=%s, 살점표시=%d, DA위치무시=%d, 회중시계=%d) — 월드(%.0f, %.0f, %.0f) yaw=%.1f° scale=%.2f"),
+		*Who, *Class->GetPathName(), Info != nullptr ? *Info->GetPathName() : TEXT("BP 기본값"),
 		Overlay != nullptr ? 1 : 0, bZeroedLocation ? 1 : 0, bTimeReveal ? 1 : 0, Loc.X, Loc.Y, Loc.Z, Rot.Yaw, Target.GetScale3D().X);
 }
 
@@ -840,6 +1100,22 @@ void UNavCloudAssetSpawner::ClearAll()
 		E.Pin = nullptr;
 	}
 	Entries.Reset();
+
+	// 마커 트리거 — 이미지에 붙인 일반 핀이다(클라우드 핀이 아니라 RemovePin 으로 뗀다).
+	for (FNavAssetAnchorEntry& Marker : MarkerEntries)
+	{
+		if (IsValid(Marker.SpawnedActor))
+		{
+			Marker.SpawnedActor->Destroy();
+		}
+		Marker.SpawnedActor = nullptr;
+		if (Marker.Pin != nullptr)
+		{
+			UARBlueprintLibrary::RemovePin(Marker.Pin);
+		}
+		Marker.Pin = nullptr;
+	}
+	MarkerEntries.Reset();
 }
 
 void UNavCloudAssetSpawner::Toast(const FString& Message)
@@ -869,8 +1145,13 @@ UTimeRevealProfile* UNavCloudAssetSpawner::LoadTimeRevealProfile() { return null
 void UNavCloudAssetSpawner::OnFetchFailed(const FString& /*Url*/, int32 /*Code*/) {}
 void UNavCloudAssetSpawner::FetchAssetAnchors() {}
 void UNavCloudAssetSpawner::ApplyAnchorsJson(const FString& /*Body*/) {}
+void UNavCloudAssetSpawner::CaptureTemplateOffset(const TArray<TSharedPtr<FJsonValue>>& /*Rows*/) {}
 void UNavCloudAssetSpawner::StartResolve(FNavAssetAnchorEntry& /*Entry*/) {}
 void UNavCloudAssetSpawner::PollResolves() {}
+void UNavCloudAssetSpawner::PollMarkerTriggers() {}
+UARTrackedImage* UNavCloudAssetSpawner::FindTrackedMarker(const FString& /*MarkerCode*/) const { return nullptr; }
+bool UNavCloudAssetSpawner::SpawnMarkerTrigger(UARTrackedImage* /*Image*/) { return false; }
+void UNavCloudAssetSpawner::ApplyTemplateOffset(FNavAssetAnchorEntry& /*Entry*/) const {}
 void UNavCloudAssetSpawner::SpawnOrFollow(FNavAssetAnchorEntry& /*Entry*/) {}
 void UNavCloudAssetSpawner::ClearAll() {}
 void UNavCloudAssetSpawner::Toast(const FString& /*Message*/) {}

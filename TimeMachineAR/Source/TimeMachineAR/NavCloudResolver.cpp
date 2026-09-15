@@ -11,6 +11,7 @@
 #if NAV_CLOUD_RESOLVE
 #include "NavCloudResolveHud.h"
 #include "NavAppMode.h"                                  // 시작 로그에 모드 표시
+#include "NavArCoreConfig.h"                             // Cloud Anchor 모드 + 마커 이미지 DB 복원
 #include "NavClient.h"                                   // ServerBaseUrl
 #include "NavLocalizer.h"                                // 앵커로 측위 세우기
 #include "NavTypes.h"                                    // FNavMarker
@@ -390,9 +391,8 @@ void UNavCloudResolverSubsystem::TryConfigureCloudMode()
 	{
 		return;
 	}
-	FGoogleARCoreServicesConfig Config;
-	Config.ARPinCloudMode = EARPinCloudMode::Enabled;
-	if (UGoogleARCoreServicesFunctionLibrary::ConfigGoogleARCoreServices(Config))
+	// 플러그인이 이때 버리는 마커 이미지 DB 는 NavArCoreConfig 가 되돌린다(스포너 마커 트리거가 쓴다 — 헤더 흐름 1).
+	if (NavArCoreConfig::EnableCloudAnchorMode(TEXT("NavCloudResolve")))
 	{
 		bCloudConfigured = true;
 		UE_LOG(LogNavCloudResolve, Log, TEXT("[NavCloudResolve] Cloud Anchor 모드 ON"));
