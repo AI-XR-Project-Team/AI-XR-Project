@@ -46,6 +46,12 @@ class UDinoInfoData;
 // - **서버 주소 폴백**: NavClient 주소가 안 닿으면 `http://127.0.0.1:8000`(USB + `adb reverse`)을 번갈아 쓴다.
 // - **진단 토스트는 스캔 회차당 한 번씩**: 서버 연결 실패 / 에셋 앵커 없음 / 목록 받음(인식 대기).
 //
+// ## 네비 앱으로 이식 (13-3, 2026-09-15 — 테스트 앱 `feature/13-1test` 에서)
+// - **서버 배치 보정**: 목록의 `asset_offset`(테스트 앱 조정 패드가 저장한 앵커 로컬 위치·yaw·배율)을 스폰에 얹는다
+//   (`ComposeAssetTransform` — 테스트 앱과 같은 식). 조정 패드 UI 는 이식하지 않는다(공지 트리거 3) — 값은 테스트 앱에서 맞춘다.
+// - **에셋 지도 분리**(`AssetMapId`): 에셋 앵커를 네비 지도(`DefaultMapId`)와 **다른 지도**에서 받는다. 비우면 예전처럼 네비 지도.
+//   네비 리졸버는 이 값을 모른다 — 측위·길 안내와 독립이고, 마커(증강 이미지) 인식에도 기대지 않는다.
+//
 // ## 빌드 분리
 // 플러그인(GoogleARCoreServices) 호출은 전부 `#if NAV_CLOUD_RESOLVE` 안이다. Mac 에디터
 // 타깃엔 그 의존이 없어 클래스 껍데기만 남는다(`ShouldCreateSubsystem=false`).
@@ -72,6 +78,11 @@ struct FNavAssetAnchorEntry
 	UPROPERTY() int32 Attempts = 0;
 	/** 재시도를 다 써서 포기했나. */
 	UPROPERTY() bool bGaveUp = false;
+
+	/** 서버에 저장된 배치 보정(`asset_offset` — 13-1 테스트 앱 조정 패드가 저장). 앵커 로컬 cm · yaw ° · 배율. 없으면 0·0·1. */
+	UPROPERTY() FVector OffLoc = FVector::ZeroVector;
+	UPROPERTY() float OffYaw = 0.f;
+	UPROPERTY() float OffScale = 1.f;
 };
 
 /**
@@ -98,6 +109,14 @@ public:
 	// FTickableGameObject
 	virtual void Tick(float DeltaTime) override;
 	virtual TStatId GetStatId() const override;
+
+	/**
+	 * 앵커 pose + ini 보정 + 서버 보정 → 에셋 월드 트랜스폼(순수 계산 · 플러그인 비의존 — 자동화 `Nav.AssetCompose`).
+	 * 위치 보정은 **앵커 축**으로 얹고(앵커가 돌면 같이 돈다) ini z 는 월드 위, yaw 는 더하고 배율은 곱한다.
+	 * ⚠️ 테스트 앱(`feature/13-1test` ComposeTarget)과 **같은 식**이어야 같은 저장값이 두 앱에서 같은 자리에 뜬다.
+	 */
+	static FTransform ComposeAssetTransform(const FTransform& AnchorXf, const FVector& OffLoc, float OffYaw, float OffScale,
+		float IniYawDeg, float IniZCm, float IniScale);
 
 private:
 	/** 「AR 스캔」 버튼이 매니저를 통해 알려 준다. 매니저는 고치지 않는다(D22). */
@@ -145,6 +164,8 @@ private:
 
 	FString ServerBaseUrl;
 	FString MapId;
+	/** (선택) 에셋 앵커를 받을 지도 — 네비 지도(`DefaultMapId`)와 달라도 된다. 비우면 `DefaultMapId`. */
+	FString AssetMapId;
 
 	/** 서버 주소 후보 — [NavClient 주소, USB(adb reverse) 127.0.0.1:8000]. 실패하면 다음으로 넘어간다. */
 	TArray<FString> ServerCandidates;
