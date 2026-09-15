@@ -23,6 +23,20 @@ app = FastAPI(
     description="Quest 3 익명 관람객용 조회 API (1주차 스켈레톤)",
 )
 
+
+
+@app.on_event("startup")
+def _apply_schema_patches() -> None:
+    """13-1 — cloud_anchors.asset_* 컬럼 자동 보강(멱등). 테스트 환경에선 끈다."""
+    import os
+
+    if os.environ.get("SKIP_SCHEMA_PATCH") == "1":
+        return
+    from app.services.schema_patch import ensure_asset_offset_columns
+
+    ensure_asset_offset_columns()
+
+
 app.include_router(health.router, tags=["health"])
 app.include_router(dinosaurs.router, tags=["dinosaurs"])
 app.include_router(exhibits.router, tags=["exhibits"])

@@ -7,6 +7,7 @@
                   → D12: 응답은 즉시 반환하고, TTL 365일 연장은 백그라운드로 건다
     ③ 검증 기록   POST /maps/{map}/cloud-anchors/points/{n}/verify   ← 앱 재시작 후 리졸브 결과
     ④ 리졸브 목록 GET  /maps/{map}/cloud-anchors                     ← 기본 bound 만
+    ⑤ 에셋 보정   PUT/DELETE /maps/{map}/cloud-anchors/points/{n}/asset-offset  ← 13-1 조정 패드
 
 ⚠️ 쓰기 엔드포인트는 관리자용인데 이 프로젝트엔 인증 계층이 없어 열려 있다.
    운영 배포 시 내부망/토큰 보호를 붙여야 한다(11단계는 프로토타입이라 보류).
@@ -21,13 +22,32 @@ from sqlalchemy.orm import Session
 from app.core.db import get_db
 from app.models.cloud_anchor import CloudAnchor
 from app.models.map_space import MapSpace
-from app.schemas.cloud_anchor import (CloudAnchorBind, CloudAnchorPointUpsert,
-                                      CloudAnchorRead, CloudAnchorVerify)
+from app.schemas.cloud_anchor import (CloudAnchorAssetOffset, CloudAnchorBind,
+                                      CloudAnchorPointUpsert, CloudAnchorRead,
+                                      CloudAnchorVerify)
 from app.services.cloud_anchor_ttl import schedule_ttl_extension
 
 router = APIRouter()
 
 _BASE = "/maps/{map_id}/cloud-anchors"
+
+
+def _asset_offset(row: CloudAnchor) -> Optional[CloudAnchorAssetOffset]:
+    if row.asset_offset_updated_at is None:
+        return None
+    return CloudAnchorAssetOffset(
+        x_cm=row.asset_off_x_cm or 0,
+        y_cm=row.asset_off_y_cm or 0,
+        z_cm=row.asset_off_z_cm or 0,
+        yaw_deg=row.asset_off_yaw_deg or 0,
+        scale=row.asset_scale or 1,
+    )
+
+
+def _clear_asset_offset(row: CloudAnchor) -> None:
+    row.asset_off_x_cm = row.asset_off_y_cm = row.asset_off_z_cm = None
+    row.asset_off_yaw_deg = row.asset_scale = None
+    row.asset_offset_updated_at = None
 
 
 def _to_read(row: CloudAnchor) -> CloudAnchorRead:
@@ -42,6 +62,7 @@ def _to_read(row: CloudAnchor) -> CloudAnchorRead:
         label=row.label,
         is_bound=row.cloud_id is not None,
         is_verified=row.verified_at is not None,
+        asset_offset=_asset_offset(row),
     )
 
 
@@ -169,6 +190,9 @@ def bind_point(
             detail=f"cloud_id already bound to point {clash.point_no}",
         )
 
+    if row.cloud_id != body.cloud_id:
+        # 에셋 보정은 **옛 앵커 pose 기준**이라 새 앵커에선 엉뚱한 자리가 된다 → 지운다.
+        _clear_asset_offset(row)
     row.cloud_id = body.cloud_id
     if body.heading_deg is not None:
         row.heading_deg = body.heading_deg
@@ -240,11 +264,63 @@ def unbind_point(
     _require_map(db, map_id)
     row = _require_point(db, map_id, point_no)
     row.cloud_id = None
+    _clear_asset_offset(row)
     row.verified_at = None
     row.verify_latency_ms = None
     row.ttl_extended_at = None
     row.create_time = row.expire_time = row.max_expire_time = None
     row.last_localize_time = row.ttl_synced_at = None
+    db.commit()
+    db.refresh(row)
+    return _to_read(row)
+
+
+@router.put(
+    _BASE + "/points/{point_no}/asset-offset",
+    response_model=CloudAnchorRead,
+    summary="에셋 배치 보정 저장 (13-1 조정 패드)",
+    responses={404: {"description": "map_id 또는 point_no 없음"}},
+)
+def put_asset_offset(
+    map_id: uuid.UUID,
+    point_no: int,
+    body: CloudAnchorAssetOffset,
+    db: Session = Depends(get_db),
+) -> CloudAnchorRead:
+    """앵커 위에 뜨는 에셋의 위치·회전·배율 보정을 **서버에 영구 저장**한다.
+
+    앱 재설치·다른 폰·리빌드와 무관하게 다음 스캔부터 이 값으로 뜬다.
+    좌표·label·cloud_id 등 다른 필드는 건드리지 않는다(포인트 PUT 과 달리 부분 갱신).
+    """
+    from datetime import datetime, timezone
+
+    _require_map(db, map_id)
+    row = _require_point(db, map_id, point_no)
+    row.asset_off_x_cm = body.x_cm
+    row.asset_off_y_cm = body.y_cm
+    row.asset_off_z_cm = body.z_cm
+    row.asset_off_yaw_deg = body.yaw_deg
+    row.asset_scale = body.scale
+    row.asset_offset_updated_at = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(row)
+    return _to_read(row)
+
+
+@router.delete(
+    _BASE + "/points/{point_no}/asset-offset",
+    response_model=CloudAnchorRead,
+    summary="에셋 배치 보정 초기화",
+    responses={404: {"description": "map_id 또는 point_no 없음"}},
+)
+def delete_asset_offset(
+    map_id: uuid.UUID,
+    point_no: int,
+    db: Session = Depends(get_db),
+) -> CloudAnchorRead:
+    _require_map(db, map_id)
+    row = _require_point(db, map_id, point_no)
+    _clear_asset_offset(row)
     db.commit()
     db.refresh(row)
     return _to_read(row)

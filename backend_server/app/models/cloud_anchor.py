@@ -43,3 +43,13 @@ class CloudAnchor(Base):
     verified_at = Column(DateTime(timezone=True))
     verify_latency_ms = Column(Integer)
     note = Column(String(200))
+
+    # 13-1 — 앵커 위 에셋 배치 보정(앵커 로컬: X=앞 Y=우 Z=위, cm · yaw ° · 배율).
+    # 현장 앱의 조정 패드가 저장한다. 앵커 pose 기준이라 cloud_id 가 바뀌면 무효 → bind 가 지운다.
+    # DDL: db/init/05_cloud_anchor_asset_offset.sql (앱 기동 시 ensure_asset_offset_columns 가 자동 적용)
+    asset_off_x_cm = Column(Numeric(8, 2))
+    asset_off_y_cm = Column(Numeric(8, 2))
+    asset_off_z_cm = Column(Numeric(8, 2))
+    asset_off_yaw_deg = Column(Numeric(6, 2))
+    asset_scale = Column(Numeric(6, 3))
+    asset_offset_updated_at = Column(DateTime(timezone=True))

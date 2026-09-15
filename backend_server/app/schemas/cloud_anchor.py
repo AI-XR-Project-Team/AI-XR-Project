@@ -17,6 +17,20 @@ from typing import Optional
 from pydantic import BaseModel, ConfigDict, Field
 
 
+class CloudAnchorAssetOffset(BaseModel):
+    """13-1 — 앵커 위 에셋 배치 보정. 앵커 로컬 축(X=앞, Y=우, Z=위), cm·°·배율.
+
+    앱(NavCloudAssetSpawner)의 합성: 위치 = 앵커 + 앵커회전·(x,y,z) · 회전 = 앵커 yaw + yaw_deg
+    (오프셋 자리에서 제자리 회전) · 배율 = ini 배율 × scale.
+    """
+
+    x_cm: Decimal = Field(default=Decimal("0"), ge=-100000, le=100000)
+    y_cm: Decimal = Field(default=Decimal("0"), ge=-100000, le=100000)
+    z_cm: Decimal = Field(default=Decimal("0"), ge=-100000, le=100000)
+    yaw_deg: Decimal = Field(default=Decimal("0"), ge=-360, le=360)
+    scale: Decimal = Field(default=Decimal("1"), gt=0, le=50)
+
+
 class CloudAnchorRead(BaseModel):
     """방문객/관리자 앱이 받는 앵커 1건. cloud_id 는 미바인딩 포인트면 null."""
 
@@ -32,6 +46,8 @@ class CloudAnchorRead(BaseModel):
     label: Optional[str] = None
     is_bound: bool = False
     is_verified: bool = False
+    # 13-1 — 저장된 에셋 배치 보정. 한 번도 저장 안 했으면 null(앱은 0/0/0/0°/×1 로 본다).
+    asset_offset: Optional[CloudAnchorAssetOffset] = None
 
 
 class CloudAnchorPointUpsert(BaseModel):
