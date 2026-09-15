@@ -37,6 +37,87 @@
 
 DEFINE_LOG_CATEGORY_STATIC(LogNavCloudResolve, Log, All);
 
+// ==================================================================== 13-3 D74 근접 앵커 가중 보정 — 순수 계산
+// 플러그인과 무관한 수학이라 #if 밖에 둔다(에디터 자동화 테스트 NavCloudBlendTest 가 쓴다).
+
+FTransform UNavCloudResolverSubsystem::MakeAnchorMapToWorld(const FTransform& AnchorWorld, const FVector& AnchorMap,
+	double HeadingDeg)
+{
+	// NavLocalizer::SolveTransform(앵커 = 인쇄물 보정각 0)·ComputeImpliedCameraMap 과 같은 식 — 한쪽을 바꾸면 모두 바꿀 것.
+	const double YawOffsetDeg = FRotator::NormalizeAxis(AnchorWorld.Rotator().Yaw + HeadingDeg);
+	const FRotator Rot(0.0, YawOffsetDeg, 0.0);
+	const FVector AnchorMapPrime(AnchorMap.X, -AnchorMap.Y, AnchorMap.Z);
+	return FTransform(Rot, AnchorWorld.GetLocation() - Rot.RotateVector(AnchorMapPrime), FVector::OneVector);
+}
+
+FVector UNavCloudResolverSubsystem::CameraMapFromTransform(const FTransform& MapToWorld, const FVector& CameraWorld)
+{
+	// NavLocalizer::WorldToMap 과 같은 식 — 역변환 후 Y 를 되돌린다.
+	const FVector P = MapToWorld.InverseTransformPosition(CameraWorld);
+	return FVector(P.X, -P.Y, P.Z);
+}
+
+FTransform UNavCloudResolverSubsystem::MakeMapToWorldFromCamera(double YawDeg, const FVector& CameraWorld,
+	const FVector& CameraMap)
+{
+	// 카메라가 맵 CameraMap 에 보이도록 이동을 정한다: World = R·(x, −y, z) + T  ⇒  T = Cam − R·(x, −y, z).
+	const FRotator Rot(0.0, YawDeg, 0.0);
+	const FVector MapPrime(CameraMap.X, -CameraMap.Y, CameraMap.Z);
+	return FTransform(Rot, CameraWorld - Rot.RotateVector(MapPrime), FVector::OneVector);
+}
+
+bool UNavCloudResolverSubsystem::BlendImpliedPoses(const TArray<FNavBlendSample>& Samples, double MinDistanceCm,
+	FVector& OutCameraMap, double& OutYawDeg)
+{
+	double WeightSum = 0.0;
+	double SinSum = 0.0;
+	double CosSum = 0.0;
+	FVector PositionSum = FVector::ZeroVector;
+	for (const FNavBlendSample& S : Samples)
+	{
+		const double D = FMath::Max(S.DistanceCm, FMath::Max(MinDistanceCm, 1.0));
+		const double W = 1.0 / (D * D);
+		WeightSum += W;
+		PositionSum += S.ImpliedCameraMap * W;
+		const double R = FMath::DegreesToRadians(S.TransformYawDeg);
+		SinSum += W * FMath::Sin(R);
+		CosSum += W * FMath::Cos(R);
+	}
+	if (WeightSum <= 0.0)
+	{
+		return false;
+	}
+	OutCameraMap = PositionSum / WeightSum;
+	OutYawDeg = FMath::RadiansToDegrees(FMath::Atan2(SinSum, CosSum));   // 원형 평균 — ±180° 를 넘나들어도 맞다
+	return true;
+}
+
+void UNavCloudResolverSubsystem::SmoothToward(FVector& InOutCameraMap, double& InOutYawDeg, const FVector& TargetCameraMap,
+	double TargetYawDeg, double DeltaSeconds, double SmoothSeconds)
+{
+	const double Alpha = (SmoothSeconds <= UE_KINDA_SMALL_NUMBER)
+		? 1.0
+		: 1.0 - FMath::Exp(-FMath::Max(DeltaSeconds, 0.0) / SmoothSeconds);
+	InOutCameraMap += (TargetCameraMap - InOutCameraMap) * Alpha;
+	InOutYawDeg = FRotator::NormalizeAxis(InOutYawDeg + FRotator::NormalizeAxis(TargetYawDeg - InOutYawDeg) * Alpha);
+}
+
+void UNavCloudResolverSubsystem::SelectBlendIndices(const TArray<FNavBlendSample>& SortedByDistance,
+	const FVector2D& GateCenter, double GateCm, int32 MaxAnchors, TArray<int32>& OutIndices)
+{
+	// 가까운 순 앞 K 개만 보고 게이트로 거른다 — 게이트 밖 핀 대신 더 먼 핀을 끌어오지 않는다.
+	OutIndices.Reset();
+	const int32 Count = FMath::Min(SortedByDistance.Num(), FMath::Max(1, MaxAnchors));
+	for (int32 i = 0; i < Count; ++i)
+	{
+		const FVector& Implied = SortedByDistance[i].ImpliedCameraMap;
+		if (FVector2D::Distance(FVector2D(Implied.X, Implied.Y), GateCenter) <= GateCm)
+		{
+			OutIndices.Add(i);
+		}
+	}
+}
+
 #if NAV_CLOUD_RESOLVE
 // 13-3 D36 — 측량 로그 전용 카테고리. 줄 앞의 `[NavCloudSurvey]` 가 §G 파서의 기준이다.
 DEFINE_LOG_CATEGORY_STATIC(LogNavCloudSurvey, Log, All);
@@ -217,6 +298,10 @@ void UNavCloudResolverSubsystem::Initialize(FSubsystemCollectionBase& Collection
 			 "기준전환 ×%.1f/%.0f초 · 점프게이트 %.0fcm · 측량로그 %s"),
 		MaxConcurrentResolves, MaxResolveRequestsPerMinute, RetryBackoffMaxSeconds, NearAnchorCm,
 		RefSwitchRatio, RefMinDwellSeconds, JumpGateCm, bSurveyLogEnabled ? TEXT("ON") : TEXT("OFF"));
+	UE_LOG(LogNavCloudResolve, Log,
+		TEXT("[NavBlend] 근접 앵커 가중 보정 %s — 최대 %d개 · 반경 %.0fcm · 게이트 %.0fcm · 평활 %.2f초 · 최소거리 %.0fcm · 인식 후 %.1f초"),
+		bBlendNearbyAnchors ? TEXT("ON") : TEXT("OFF"), BlendMaxAnchors, BlendRadiusCm, BlendGateCm,
+		BlendSmoothSeconds, BlendMinDistanceCm, BlendMinTrackSeconds);
 #endif
 }
 
@@ -287,6 +372,8 @@ void UNavCloudResolverSubsystem::Tick(float DeltaTime)
 		ScheduleResolves(Now);
 		UpdateReferenceAnchor(Now);
 	}
+	// D74 — 기준 전환·재래치가 끝난 **뒤** 같은 틱에 가중 보정을 얹는다(한 앵커 변환으로 되돌아간 순간이 화면에 안 보이게).
+	TickBlend(Now, DeltaTime);
 	LogSchedulerSummaryIfDue(Now);
 #endif
 }
@@ -934,6 +1021,7 @@ void UNavCloudResolverSubsystem::PollResolves()
 		if (CState == ECloudARPinCloudState::Success && bTracking)
 		{
 			E.bRecognized = true;
+			E.RecognizedTime = Now;   // D74 — 인식 직후 pose 는 가중 보정에 잠시 넣지 않는다
 			E.ConsecutiveFailures = 0;
 			E.NextEligibleTime = 0.0;
 			E.LastTrackedTime = Now;
@@ -1133,8 +1221,8 @@ void UNavCloudResolverSubsystem::WatchRecognizedAnchor(FNavCloudResolveEntry& En
 		TEXT("[NavCloudResolve] #%d 재보정 %d회째 — %.1f초 만에 재관측, 드리프트 %.0fcm 보정"),
 		Entry.PointNo, Entry.Relatches, Gap, DriftCm);
 
-	// 눈에 띄게 밀렸던 것을 씻어냈을 때만 알린다(토스트 잔소리 방지).
-	if (DriftCm >= kRelatchToastCm)
+	// 눈에 띄게 밀렸던 것을 씻어냈을 때만 알린다(토스트 잔소리 방지). D74 가중 보정 중이면 화면이 튀지 않으니 알리지 않는다.
+	if (DriftCm >= kRelatchToastCm && !bBlendActive)
 	{
 		EnsureHud();
 		if (Hud != nullptr)
@@ -1416,6 +1504,11 @@ void UNavCloudResolverSubsystem::UpdateReferenceAnchor(double Now)
 	RefPointNo = Nearest.PointNo;
 	RefSince = Now;
 	JumpRejects.Reset(); // 변환이 바뀌었다 — 옛 변환 기준의 점프 기록은 무효
+	if (!GateReason.IsEmpty())
+	{
+		// D74 — 합의·지속 통과 = 지금(가중) 변환이 틀렸다는 뜻이다. 옛 가중 변환으로 끌어당기지 않고 새 기준에서 다시 시작한다.
+		bBlendActive = false;
+	}
 
 	const FVector AfterMap = GetCameraMapLocation();
 	const float DriftCm = static_cast<float>(Distance2D(CurrentMap, AfterMap));
@@ -1436,7 +1529,7 @@ void UNavCloudResolverSubsystem::UpdateReferenceAnchor(double Now)
 	}
 
 	// 13-4 — 합의·지속으로 게이트를 통과했으면 PassJumpGate 가 "위치를 다시 잡았습니다" 를 이미 띄웠다. 겹쳐 띄우지 않는다.
-	if (DriftCm >= kRelatchToastCm && GateReason.IsEmpty())
+	if (DriftCm >= kRelatchToastCm && GateReason.IsEmpty() && !bBlendActive)   // D74 가중 보정 중엔 화면이 튀지 않는다
 	{
 		EnsureHud();
 		if (Hud != nullptr)
@@ -1641,8 +1734,126 @@ void UNavCloudResolverSubsystem::EnsureHud()
 	}
 }
 
+void UNavCloudResolverSubsystem::TickBlend(double Now, float DeltaTime)
+{
+	if (!bBlendNearbyAnchors)
+	{
+		return;
+	}
+	UWorld* World = GetWorld();
+	UNavLocalizer* Localizer = World ? World->GetSubsystem<UNavLocalizer>() : nullptr;
+	APlayerCameraManager* Cam = UGameplayStatics::GetPlayerCameraManager(this, 0);
+	if (Localizer == nullptr || Cam == nullptr || !Localizer->IsLocalized() || !Localizer->IsAnchoredToCloudAnchor()
+		|| Localizer->GetLocState() != ENavLocState::Localized)
+	{
+		bBlendActive = false; // 측위 전·QR 기준·재측위/복구 표시 중 — 다시 켜질 땐 그때 변환에서 시작한다
+		return;
+	}
+
+	const FVector CamLoc = Cam->GetCameraLocation();
+	// 평활 기점 — 지난 틱에 넣은 가중 변환. 그 사이 기준 전환·재래치가 한 앵커 변환으로 되돌렸어도 여기서 이어 간다
+	// (게이트는 기준 핀에서 재므로 새 기준과 어긋난 기점은 τ 로 새 기준 쪽에 미끄러져 간다 — 아래 게이트).
+	const FTransform Origin = bBlendActive ? BlendXf : Localizer->GetMapToWorldTransform();
+	FVector CurMap = CameraMapFromTransform(Origin, CamLoc);
+	double CurYaw = Origin.Rotator().Yaw;
+
+	// 후보 — 인식·Tracking · 인식 후 BlendMinTrackSeconds · 반경 안. 가까운 순으로 정렬.
+	// 게이트 중심 — D45 기준 핀이 Tracking 이면 그 핀이 함의하는 내 위치(인식 직후 대기와 무관), 아니면 평활 기점.
+	struct FBlendCandidate
+	{
+		int32 PointNo = 0;
+		FNavBlendSample Sample;
+	};
+	TArray<FBlendCandidate> Candidates;
+	FVector2D GateCenter(CurMap.X, CurMap.Y);
+	int32 GateRefNo = 0;
+	for (const FNavCloudResolveEntry& E : Entries)
+	{
+		const UARPin* Pin = GetTrackingRecognizedPin(E);
+		if (Pin == nullptr)
+		{
+			continue;
+		}
+		const FTransform AnchorWorld = Pin->GetLocalToWorldTransform();
+		const FTransform AnchorXf = MakeAnchorMapToWorld(AnchorWorld, FVector(E.PosXCm, E.PosYCm, E.PosZCm), E.HeadingDeg);
+		const FVector ImpliedMap = CameraMapFromTransform(AnchorXf, CamLoc);
+		if (E.PointNo == RefPointNo)
+		{
+			GateCenter = FVector2D(ImpliedMap.X, ImpliedMap.Y);
+			GateRefNo = E.PointNo;
+		}
+		const double DistanceCm = Distance2D(CamLoc, AnchorWorld.GetLocation());
+		if (Now - E.RecognizedTime < BlendMinTrackSeconds || DistanceCm > BlendRadiusCm)
+		{
+			continue;
+		}
+		FBlendCandidate& Candidate = Candidates.AddDefaulted_GetRef();
+		Candidate.PointNo = E.PointNo;
+		Candidate.Sample.ImpliedCameraMap = ImpliedMap;
+		Candidate.Sample.TransformYawDeg = AnchorXf.Rotator().Yaw;
+		Candidate.Sample.DistanceCm = DistanceCm;
+	}
+	Candidates.Sort([](const FBlendCandidate& A, const FBlendCandidate& B) { return A.Sample.DistanceCm < B.Sample.DistanceCm; });
+
+	// 게이트 — 게이트 중심에서 BlendGateCm 넘게 다른 곳을 함의하는 핀은 뺀다(틀린 pose 는 D46·13-4 몫).
+	// 기점(지금 그려진 위치)에서 재면, 옛 기준이 틀린 앵커였을 때 더 가까운 새 기준을 빼고 옛 변환으로 되돌려 D45 전환을 덮는다
+	// (현장 0915 15:36 — 먼 #104 기점에서 가까운 #106 이 85cm 어긋나 빠짐 · 결과 §10.10).
+	TArray<FNavBlendSample> Sorted;
+	Sorted.Reserve(Candidates.Num());
+	for (const FBlendCandidate& Candidate : Candidates)
+	{
+		Sorted.Add(Candidate.Sample);
+	}
+	TArray<int32> Picked;
+	SelectBlendIndices(Sorted, GateCenter, BlendGateCm, BlendMaxAnchors, Picked);
+	TArray<FNavBlendSample> Used;
+	FString UsedText;
+	for (const int32 Index : Picked)
+	{
+		Used.Add(Sorted[Index]);
+		UsedText += FString::Printf(TEXT(" #%d(%.1fm)"), Candidates[Index].PointNo, Sorted[Index].DistanceCm / 100.0);
+	}
+
+	FVector TargetMap = FVector::ZeroVector;
+	double TargetYaw = 0.0;
+	if (!BlendImpliedPoses(Used, BlendMinDistanceCm, TargetMap, TargetYaw))
+	{
+		bBlendActive = false; // 쉼 — 지금 변환(마지막 가중 변환, 그 뒤 D45·D46·13-4 가 세웠으면 그것)을 그대로 둔다
+		++BlendIdleTicks;
+	}
+	else
+	{
+		const FVector PrevMap = CurMap;
+		SmoothToward(CurMap, CurYaw, TargetMap, TargetYaw, DeltaTime, BlendSmoothSeconds);
+		BlendXf = MakeMapToWorldFromCamera(CurYaw, CamLoc, CurMap);
+		Localizer->ApplyCloudBlendTransform(BlendXf);
+		bBlendActive = true;
+		++BlendAppliedTicks;
+		BlendMaxStepCm = FMath::Max(BlendMaxStepCm,
+			FVector2D::Distance(FVector2D(PrevMap.X, PrevMap.Y), FVector2D(CurMap.X, CurMap.Y)));
+		const FString GateText = GateRefNo > 0 ? FString::Printf(TEXT("#%d"), GateRefNo) : FString(TEXT("기점"));
+		BlendLastUsed = FString::Printf(TEXT("%s · 게이트 %s · 목표와 차 %.0fcm/%.2f°"), *UsedText, *GateText,
+			FVector2D::Distance(FVector2D(TargetMap.X, TargetMap.Y), FVector2D(CurMap.X, CurMap.Y)),
+			FMath::Abs(FRotator::NormalizeAxis(TargetYaw - CurYaw)));
+	}
+
+	if (Now >= NextBlendLogTime)
+	{
+		NextBlendLogTime = Now + 5.0;
+		if (BlendAppliedTicks + BlendIdleTicks > 0)
+		{
+			UE_LOG(LogNavCloudResolve, Log, TEXT("[NavBlend] 5초 — 적용 %d틱 · 쉼 %d틱 · 한 틱 최대 이동 %.1fcm · 마지막:%s"),
+				BlendAppliedTicks, BlendIdleTicks, BlendMaxStepCm, BlendLastUsed.IsEmpty() ? TEXT(" -") : *BlendLastUsed);
+		}
+		BlendAppliedTicks = 0;
+		BlendIdleTicks = 0;
+		BlendMaxStepCm = 0.0;
+	}
+}
+
 #else // !NAV_CLOUD_RESOLVE — Mac 에디터 등 플러그인이 없는 타깃에선 전부 빈 껍데기.
 
+void UNavCloudResolverSubsystem::TickBlend(double /*Now*/, float /*DeltaTime*/) {}
 void UNavCloudResolverSubsystem::TryConfigureCloudMode() {}
 bool UNavCloudResolverSubsystem::ResolveServerConfig() { return false; }
 void UNavCloudResolverSubsystem::FetchBoundAnchors() {}

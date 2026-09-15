@@ -242,6 +242,18 @@ public:
 	bool LocalizeFromCloudAnchor(const FString& SourceCode, const FTransform& AnchorWorld,
 		const FNavMarker& AnchorMapPose);
 
+	/** 13-3 D74 — 지금 맵→월드 변환(읽기 전용, C++ 전용). 리졸버의 근접 앵커 가중 보정이 평활 기점으로 쓴다. */
+	FTransform GetMapToWorldTransform() const { return MapToWorldXf; }
+
+	/**
+	 * 13-3 D74 — 리졸버가 가까운 인식 앵커들을 가중 평균해 만든 변환을 넣는다(C++ 전용).
+	 * 기준점 code·앵커 pose·상태·방송은 그대로 두고 **변환만** 바꾼다(위치 방송은 다음 Tick 의 UpdateCurrentPose).
+	 * 앵커 측위가 아니거나 Localized 상태가 아니면(재측위·복구 표시 중) 무시한다.
+	 * 13-4 순간이동 판정 표시(bSolvedSinceMonitor)는 건드리지 않는다 — 이 보정은 평활돼 한 틱에 수 mm~cm 만 움직이고,
+	 * 순간이동 판정은 카메라 **월드** 좌표를 보므로 변환이 조금씩 바뀌어도 영향이 없다.
+	 */
+	void ApplyCloudBlendTransform(const FTransform& NewMapToWorld);
+
 	// ------------------------------------------------------------------ 상태
 
 	UFUNCTION(BlueprintPure, Category = "Nav|Localizer")
