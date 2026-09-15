@@ -2,6 +2,7 @@
 
 #include "NavMapArOverlay.h"
 
+#include "NavAppMode.h"                                  // 개발모드에서만 그린다
 #include "NavClient.h"                                   // ServerBaseUrl — 읽기만
 #include "NavCloudResolver.h"                            // 인식된 핀 pose · 에셋 라벨 규약
 #include "NavLocalizer.h"                                // MapToWorld · WorldToMap — 공개 함수만
@@ -60,9 +61,9 @@ namespace
 
 bool UNavMapArOverlaySubsystem::ShouldCreateSubsystem(UObject* Outer) const
 {
-	if (!Super::ShouldCreateSubsystem(Outer) || !bEnabled)
+	if (!Super::ShouldCreateSubsystem(Outer) || !bEnabled || !NavAppMode::IsDevMode())
 	{
-		return false; // ini 스위치가 꺼져 있으면 틱조차 돌지 않는다(방문객 빌드 영향 0).
+		return false; // ini 스위치가 꺼져 있거나 사용자모드면 틱조차 돌지 않는다(방문객 빌드 영향 0).
 	}
 	const UWorld* World = Cast<UWorld>(Outer);
 	return World != nullptr && World->IsGameWorld();

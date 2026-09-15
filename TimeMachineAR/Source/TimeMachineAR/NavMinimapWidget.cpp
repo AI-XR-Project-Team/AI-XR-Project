@@ -18,6 +18,7 @@
 #include "NavClient.h"      // LogNav, Reroute
 #include "NavFloorGuideActor.h"    // §C-1 바닥 발자국
 #include "NavDestMarkerWidget.h"   // §C-2 목적지 마름모 HUD
+#include "NavAppMode.h"            // 그래프 디버그는 개발모드에서만
 
 namespace
 {
@@ -1063,8 +1064,8 @@ void UNavMinimapWidget::PaintFullMapBase(FSlateWindowElementList& Out, int32& La
 	}
 
 	// 3)·4) 엣지·노드는 **디버그일 때만** 그린다(final §D-7). 사용자 화면에는 도면·구조물·
-	// 목적지 아이콘·경로선만 남는다. 아이콘은 PaintDestinationIcons 가 따로 얹는다.
-	if (!bDrawGraphDebug)
+	// 목적지 아이콘·경로선만 남는다. 아이콘은 PaintDestinationIcons 가 따로 얹는다. 디버그도 개발모드에서만(NavAppMode).
+	if (!bDrawGraphDebug || !NavAppMode::IsDevMode())
 	{
 		return;
 	}
