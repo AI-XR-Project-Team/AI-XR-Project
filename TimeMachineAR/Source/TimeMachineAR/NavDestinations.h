@@ -51,6 +51,11 @@ struct TIMEMACHINEAR_API FNavDestinations
 	 * EX1~EX4 아이콘 선택과 버튼 정렬 순서를 이 번호 하나로 정한다.
 	 */
 	static int32 DinoIndexFromLabel(const FString& Label);
+	/** Stable museum specimen number, independent of graph array order; zero for legacy labels. */
+	static int32 DisplayNumber(const FString& Label);
+	/** Shared reference palette and truthful native icon fallback for museum destinations. */
+	static FLinearColor AccentColor(const FString& NodeType, const FString& Label);
+	static FString IconGlyph(const FString& Label);
 
 	/**
 	 * node_type·label 에 맞는 아이콘 텍스처 오브젝트 경로(`/Game/UI/Nav/Icons/...`).

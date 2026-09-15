@@ -21,41 +21,41 @@ n-j,neuti4f,960,1260,120,junction,J지점
 n-k,neuti4f,960,1020,120,waypoint,K지점
 n-l,neuti4f,60,1020,120,exhibit,안킬로사우르스
 n-m,neuti4f,60,1740,120,waypoint,M지점
-mu-e-blue-n,museum_final,4545,3430,120,entrance,파란 문 입구(5구역 방향)
+mu-e-blue-n,museum_final,4545,3430,120,entrance,출구
 mu-n-corrN-a,museum_final,4720,3460,120,waypoint,5구역 복도 입구
 mu-n-corrN-b,museum_final,4830,3800,120,waypoint,5구역 복도
 mu-j-corrN-top,museum_final,4830,4260,120,junction,5구역 복도 북쪽 분기
 mu-n-box5,museum_final,4780,4680,120,waypoint,5구역 북쪽 끝(박스)
 mu-n-strip-e,museum_final,5860,4260,120,waypoint,신생대 북동 입구 앞
 mu-j-sin-in,museum_final,5930,4030,120,junction,신생대 북동 입구
-mu-x-sinsaeng,museum_final,5550,3350,120,exhibit,신생대
-mu-j-sin-door,museum_final,5630,3030,120,waypoint,빨간 문 앞(신생대)
+mu-x-sinsaeng,museum_final,5550,3350,120,exhibit,포유류 화석
+mu-j-sin-door,museum_final,5630,3030,120,exhibit,거북이 화석
 mu-d-red,museum_final,5780,3035,120,waypoint,빨간 문(2-5)
-mu-x-trickart,museum_final,6040,2950,120,exhibit,트릭아트 포토존
+mu-x-trickart,museum_final,6040,2950,120,exhibit,진주화석
 mu-j-hub-sw,museum_final,5920,2550,120,junction,허브 남서
 mu-d-navy,museum_final,5790,2515,120,waypoint,남색 문(2-1)
 mu-n-hub-south,museum_final,6030,2280,120,waypoint,허브 남쪽 통로
 mu-n-south-glass,museum_final,6100,2190,120,waypoint,남쪽 유리문 앞(외부 출입구 방향)
 mu-d-yellow,museum_final,6395,2655,120,waypoint,노란 문(2-3)
 mu-d-black,museum_final,6405,3305,120,waypoint,검은 문(2-4)
-mu-e-blue-s,museum_final,4545,3260,120,entrance,파란 문 입구(1구역 방향)
+mu-e-blue-s,museum_final,4545,3260,120,entrance,입구
 mu-n-corrS-a,museum_final,4700,3230,120,waypoint,1구역 복도 입구
 mu-n-corrS-b,museum_final,4700,2850,120,waypoint,1구역 복도
-mu-j-amseok,museum_final,4700,2450,120,junction,암석광물관 입구
-mu-x-amseok,museum_final,5100,2400,120,exhibit,암석광물관
+mu-j-amseok,museum_final,4700,2450,120,exhibit,탄생석
+mu-x-amseok,museum_final,5100,2400,120,exhibit,자수정
 mu-j-corrS-c,museum_final,4700,2030,120,junction,1구역 남쪽 분기
 mu-n-bump1,museum_final,4750,1650,120,waypoint,1구역 남쪽 끝(반원 앞)
 mu-n-south-w,museum_final,5200,2040,120,waypoint,남쪽 복도 서
 mu-n-south-e,museum_final,5600,2050,120,waypoint,남쪽 복도 동
-mu-n-ante,museum_final,5600,2400,120,junction,남색문 전실
+mu-n-ante,museum_final,5600,2400,120,exhibit,물고기화석
 mu-j-go,museum_final,6460,2530,120,junction,고생대 입구
-mu-j-go-s,museum_final,6410,2200,120,waypoint,고생대 서쪽 통로
-mu-x-gosaeng,museum_final,6900,2230,120,exhibit,고생대
+mu-j-go-s,museum_final,6410,2200,120,exhibit,삼엽충
+mu-x-gosaeng,museum_final,6900,2230,120,exhibit,고사리잎
 mu-j-jung,museum_final,6490,3400,120,junction,중생대 입구
-mu-n-jung-s,museum_final,6850,3200,120,waypoint,중생대 남쪽 통로
-mu-x-jungsaeng,museum_final,7220,3400,120,exhibit,중생대
+mu-n-jung-s,museum_final,6850,3200,120,exhibit,화석
+mu-x-jungsaeng,museum_final,7220,3400,120,exhibit,아르켈론
 mu-n-jung-e,museum_final,7260,3850,120,waypoint,중생대 동쪽 통로
 mu-n-jung-ne,museum_final,7250,4350,120,junction,중생대 북동 분기
-mu-x-jung-north,museum_final,7200,4530,120,exhibit,중생대 북쪽 전시실
+mu-x-jung-north,museum_final,7200,4530,120,exhibit,알로사우루스
 mu-n-jung-nw,museum_final,6480,4350,120,waypoint,중생대 북서 모서리
 mu-j-jung-w,museum_final,6480,3850,120,waypoint,중생대 서쪽 통로

@@ -1,380 +1,309 @@
 #include "NavFullMapWidget.h"
-
 #include "Blueprint/WidgetTree.h"
-#include "Components/PanelWidget.h"
-#include "Components/ContentWidget.h"
-#include "Components/Overlay.h"
-#include "Components/CanvasPanel.h"
-#include "Components/UniformGridPanel.h"
-#include "Components/UniformGridSlot.h"
-#include "Components/HorizontalBox.h"
-#include "Components/HorizontalBoxSlot.h"
-#include "Components/CanvasPanelSlot.h"
-#include "Components/OverlaySlot.h"
-#include "Components/Image.h"
 #include "Components/Border.h"
-#include "Components/SizeBox.h"
+#include "Components/BackgroundBlur.h"
+#include "Components/Button.h"
+#include "Components/CanvasPanel.h"
+#include "Components/CanvasPanelSlot.h"
+#include "Components/Image.h"
 #include "Components/ScaleBox.h"
+#include "Components/ScrollBox.h"
+#include "Components/SizeBox.h"
 #include "Components/TextBlock.h"
 #include "Brushes/SlateRoundedBoxBrush.h"
+#include "Engine/Font.h"
 #include "Engine/Texture2D.h"
 #include "NavDestButton.h"
 #include "NavDestinations.h"
-#include "NavClient.h"   // LogNav
+
+namespace
+{
+ constexpr float ReferenceWidth = 941.f;
+ constexpr float ReferenceHeight = 1672.f;
+ constexpr float TopCrop = 0.f;
+ struct FReferenceHotspot { int32 Number; FVector2D Center; FVector2D Size; };
+ // Source-image coordinates identify artwork only; navigation uses the live node ID.
+ const FReferenceHotspot Hotspots[] = {
+  {1,{160,1110},{110,110}}, {2,{151,889},{110,120}}, {3,{610,997},{110,110}},
+  {4,{790,1042},{110,110}}, {5,{655,681},{180,190}}, {6,{784,524},{110,110}},
+  {7,{791,784},{110,110}}, {8,{375,859},{110,110}}, {9,{382,691},{110,110}},
+  {10,{201,525},{110,110}}, {11,{221,649},{110,110}}, {12,{146,775},{110,110}},
+  {13,{327,1023},{110,110}}
+ };
+ const TCHAR* Names[] = {TEXT("자수정"),TEXT("입구"),TEXT("삼엽충"),TEXT("고사리잎"),TEXT("아르켈론"),
+  TEXT("알로사우루스"),TEXT("화석"),TEXT("물고기화석"),TEXT("진주화석"),TEXT("포유류 화석"),
+  TEXT("거북이 화석"),TEXT("출구"),TEXT("탄생석")};
+ FLinearColor Cyan() { return FLinearColor(0.08f,0.72f,1.f); }
+}
 
 void UNavFullMapWidget::NativeConstruct()
 {
-	Super::NativeConstruct();
-	BuildSkinLayout();
+ Super::NativeConstruct(); bClosing=false; BuildSkinLayout();
+}
+
+bool UNavFullMapWidget::UsesReferenceArtwork() const
+{
+ return ReferenceTexture != nullptr && ReferenceCanvas != nullptr;
 }
 
 void UNavFullMapWidget::BuildSkinLayout()
 {
-	if (!WidgetTree || !Backdrop || !MapView || SkinButtonHost) { return; }
-	// Reparent the bound map instance, preserving its state and delegates.
-	MapView->RemoveFromParent();
-	Backdrop->SetPadding(FMargin(0));
-	Backdrop->SetBrushColor(FLinearColor::FromSRGBColor(FColor(19, 22, 26, 245)));
-	UScaleBox* Scale = WidgetTree->ConstructWidget<UScaleBox>();
-	Scale->SetStretch(EStretch::ScaleToFit);
-	Backdrop->SetContent(Scale);
-	USizeBox* Design = WidgetTree->ConstructWidget<USizeBox>();
-	Design->SetWidthOverride(940); Design->SetHeightOverride(1672);
-	Scale->SetContent(Design);
-	UCanvasPanel* Canvas = WidgetTree->ConstructWidget<UCanvasPanel>();
-	Design->SetContent(Canvas);
-	auto Place = [Canvas](UWidget* W, float X, float Y, float Width, float Height)
-	{
-		UCanvasPanelSlot* S = Canvas->AddChildToCanvas(W);
-		S->SetPosition(FVector2D(X, Y)); S->SetSize(FVector2D(Width, Height));
-	};
-	auto Picture = [&](const TCHAR* Name, float X, float Y, float Width, float Height)
-	{
-		const FString Path = FString::Printf(TEXT("/Game/UI/Nav/Skin/%s.%s"), Name, Name);
-		if (UTexture2D* Texture = LoadObject<UTexture2D>(nullptr, *Path))
-		{
-			UImage* Pic = WidgetTree->ConstructWidget<UImage>();
-			Pic->SetBrushFromTexture(Texture);
-			Pic->SetVisibility(ESlateVisibility::HitTestInvisible);
-			Place(Pic, X, Y, Width, Height);
-		}
-	};
-	Picture(TEXT("lexi_pointing"), 52, 58, 220, 222);
-	Picture(TEXT("bubble_speech"), 246, 84, 610, 184);
-	UTextBlock* Hint = WidgetTree->ConstructWidget<UTextBlock>();
-	Hint->SetText(FText::FromString(TEXT("지도의 아이콘을 눌러\n목적지 안내를 시작해보세요!")));
-	FSlateFontInfo Font = Hint->GetFont(); Font.Size = 22; Hint->SetFont(Font);
-	Hint->SetColorAndOpacity(FSlateColor(FLinearColor::FromSRGBColor(FColor(156, 216, 255))));
-	Hint->SetVisibility(ESlateVisibility::HitTestInvisible);
-	Place(Hint, 310, 137, 500, 98);
-	MapView->SetVisibility(ESlateVisibility::HitTestInvisible);
-	if (MapView->WidgetTree)
-	{
-		TArray<UWidget*> MapChildren;
-		MapView->WidgetTree->GetAllWidgets(MapChildren);
-		for (UWidget* Child : MapChildren)
-			if (UBorder* Background = Cast<UBorder>(Child)) { Background->SetBrushColor(FLinearColor::Transparent); }
-	}
-	MapView->SetClipping(EWidgetClipping::ClipToBounds);
-	MapView->WallColor = FLinearColor::FromSRGBColor(FColor(153, 162, 165));
-	MapView->WallThicknessPx = 6.f;
-	Place(MapView, 30, 294, 880, 990);
-	SkinButtonHost = WidgetTree->ConstructWidget<UOverlay>();
-	Place(SkinButtonHost, 36, 1306, 868, 300);
+ if (!WidgetTree || !Backdrop || !MapView || ReferenceCanvas) { return; }
+ ReferenceTexture=LoadObject<UTexture2D>(nullptr,TEXT("/Game/UI/Nav/Reference/T_MuseumSimple.T_MuseumSimple"));
+ MapView->RemoveFromParent(); MapView->Mode=ENavMinimapMode::Full;
+ MapView->SetVisibility(ESlateVisibility::Collapsed);
+ Backdrop->SetPadding(FMargin(0)); Backdrop->SetBrushColor(FLinearColor::Transparent);
+ UCanvasPanel* ScreenCanvas=WidgetTree->ConstructWidget<UCanvasPanel>(); Backdrop->SetContent(ScreenCanvas);
+ UBackgroundBlur* CameraBlur=WidgetTree->ConstructWidget<UBackgroundBlur>();
+ CameraBlur->SetBlurStrength(8.f); CameraBlur->SetApplyAlphaToBlur(false);
+ CameraBlur->SetVisibility(ESlateVisibility::HitTestInvisible);
+ UCanvasPanelSlot* BlurSlot=ScreenCanvas->AddChildToCanvas(CameraBlur);
+ BlurSlot->SetAnchors(FAnchors(0.f,0.f,1.f,1.f)); BlurSlot->SetOffsets(FMargin(0));
+ UBorder* CameraTint=WidgetTree->ConstructWidget<UBorder>();
+ CameraTint->SetBrushColor(FLinearColor(0.003f,0.01f,0.02f,0.28f));
+ CameraTint->SetVisibility(ESlateVisibility::HitTestInvisible);
+ UCanvasPanelSlot* TintSlot=ScreenCanvas->AddChildToCanvas(CameraTint);
+ TintSlot->SetAnchors(FAnchors(0.f,0.f,1.f,1.f)); TintSlot->SetOffsets(FMargin(0));
+ TintSlot->SetZOrder(1);
+ UScaleBox* Scale=WidgetTree->ConstructWidget<UScaleBox>(); Scale->SetStretch(EStretch::ScaleToFit);
+ UCanvasPanelSlot* ScaleSlot=ScreenCanvas->AddChildToCanvas(Scale);
+ ScaleSlot->SetAnchors(FAnchors(0.f,0.f,1.f,1.f)); ScaleSlot->SetOffsets(FMargin(0));
+ ScaleSlot->SetZOrder(2);
+ USizeBox* Design=WidgetTree->ConstructWidget<USizeBox>(); Design->SetWidthOverride(ReferenceWidth);
+ Design->SetHeightOverride(1495.f); Scale->SetContent(Design);
+ ReferenceCanvas=WidgetTree->ConstructWidget<UCanvasPanel>(); Design->SetContent(ReferenceCanvas);
+ auto Place=[](UCanvasPanel* Canvas,UWidget* Widget,float X,float Y,float Width,float Height)
+ {
+  UCanvasPanelSlot* CanvasSlot=Canvas->AddChildToCanvas(Widget);
+  CanvasSlot->SetPosition(FVector2D(X,Y)); CanvasSlot->SetSize(FVector2D(Width,Height));
+  CanvasSlot->SetZOrder(Canvas->GetChildrenCount());
+ };
+ // Keep the same bound map instance alive for existing asynchronous lifecycle setters.
+ Place(ReferenceCanvas,MapView,0,0,1,1);
+ auto Slice=[&](UCanvasPanel* Canvas,float SourceX,float SourceY,float Width,float Height,float X,float Y)
+ {
+  UImage* Image=WidgetTree->ConstructWidget<UImage>();
+  if (ReferenceTexture)
+  {
+   FSlateBrush Brush; Brush.SetResourceObject(ReferenceTexture); Brush.DrawAs=ESlateBrushDrawType::Image;
+   Brush.ImageSize=FVector2D(Width,Height);
+   Brush.SetUVRegion(FBox2f(FVector2f(SourceX/ReferenceWidth,SourceY/ReferenceHeight),
+    FVector2f((SourceX+Width)/ReferenceWidth,(SourceY+Height)/ReferenceHeight)));
+   Image->SetBrush(Brush);
+  }
+  else { FSlateBrush EmptyBrush; EmptyBrush.DrawAs=ESlateBrushDrawType::NoDrawType; Image->SetBrush(EmptyBrush); }
+  Image->SetVisibility(ESlateVisibility::HitTestInvisible); Place(Canvas,Image,X,Y,Width,Height); return Image;
+ };
+ // Restrained foreground artwork over the live camera, with independently scrollable cards.
+ // Keep the approved simple panels and map; swap only Lexi's illustration.
+ UBorder* TitleCap=WidgetTree->ConstructWidget<UBorder>();
+ TitleCap->SetBrush(FSlateRoundedBoxBrush(FLinearColor(0.012f,0.023f,0.038f,1.f),40.f));
+ TitleCap->SetBrushColor(FLinearColor::White); TitleCap->SetVisibility(ESlateVisibility::HitTestInvisible);
+ Place(ReferenceCanvas,TitleCap,235,271,475,85);
+ Slice(ReferenceCanvas,0,284,ReferenceWidth,941,0,284);
+ // Center the equal-height Lexi/message row between Back and the map title.
+ UScaleBox* HeaderScale=WidgetTree->ConstructWidget<UScaleBox>();
+ HeaderScale->SetStretch(EStretch::ScaleToFit);
+ UCanvasPanelSlot* HeaderSlot=ScreenCanvas->AddChildToCanvas(HeaderScale);
+ HeaderLayoutSlot=HeaderSlot;
+ HeaderSlot->SetAnchors(FAnchors(0.f,0.f,1.f,0.f));
+ HeaderSlot->SetOffsets(FMargin(16.f,144.f,16.f,200.f)); HeaderSlot->SetZOrder(3);
+ USizeBox* HeaderSize=WidgetTree->ConstructWidget<USizeBox>();
+ HeaderDesignSize=HeaderSize;
+ HeaderSize->SetWidthOverride(1203.f); HeaderSize->SetHeightOverride(265.f);
+ HeaderScale->SetContent(HeaderSize);
+ UCanvasPanel* HeaderCanvas=WidgetTree->ConstructWidget<UCanvasPanel>(); HeaderSize->SetContent(HeaderCanvas);
+ UTexture2D* LexiTexture=LoadObject<UTexture2D>(nullptr,TEXT("/Game/UI/Nav/Reference/T_MuseumForeground.T_MuseumForeground"));
+ auto LexiSection=[&](float Y,float Width,float Height)
+ {
+  UImage* Lexi=WidgetTree->ConstructWidget<UImage>();
+  FSlateBrush Brush; Brush.SetResourceObject(LexiTexture); Brush.DrawAs=ESlateBrushDrawType::Image;
+  Brush.ImageSize=FVector2D(Width,Height);
+  Brush.SetUVRegion(FBox2f(FVector2f(130.f/941.f,Y/1671.f),FVector2f((130.f+Width)/941.f,(Y+Height)/1671.f)));
+  Lexi->SetBrush(Brush); Lexi->SetVisibility(ESlateVisibility::HitTestInvisible);
+  Place(HeaderCanvas,Lexi,0,Y,Width,Height);
+ };
+ if(LexiTexture) { LexiSection(0,260,195); LexiSection(195,245,70); }
+ UBorder* MessagePanel=WidgetTree->ConstructWidget<UBorder>();
+ const FLinearColor BubbleColor(0.012f,0.023f,0.038f,1.f);
+ MessagePanel->SetBrush(FSlateRoundedBoxBrush(BubbleColor,28.f));
+ MessagePanel->SetBrushColor(FLinearColor::White);
+ MessagePanel->SetVisibility(ESlateVisibility::HitTestInvisible);
+ UBorder* BubbleTail=WidgetTree->ConstructWidget<UBorder>();
+ BubbleTail->SetBrushColor(BubbleColor); BubbleTail->SetRenderTransformAngle(45.f);
+ BubbleTail->SetVisibility(ESlateVisibility::HitTestInvisible);
+ Place(HeaderCanvas,BubbleTail,268,120,28,28);
+ Place(HeaderCanvas,MessagePanel,280,0,923,265);
+ MessageLayoutSlot=Cast<UCanvasPanelSlot>(MessagePanel->Slot);
+ UFont* Face=LoadObject<UFont>(nullptr,TEXT("/Game/UI/Fonts/Pretendard-SemiBold_Font.Pretendard-SemiBold_Font"));
+ auto Label=[&](UCanvasPanel* Canvas,const FString& Value,int32 Size,float X,float Y,float Width,float Height)
+ {
+  UTextBlock* Text=WidgetTree->ConstructWidget<UTextBlock>(); Text->SetText(FText::FromString(Value));
+  FSlateFontInfo Font=Text->GetFont(); Font.Size=Size; if(Face) {Font.FontObject=Face;} Text->SetFont(Font);
+  Text->SetColorAndOpacity(FSlateColor(FLinearColor(0.7f,0.9f,1.f))); Text->SetJustification(ETextJustify::Center);
+  Text->SetVisibility(ESlateVisibility::HitTestInvisible); Place(Canvas,Text,X,Y,Width,Height); return Text;
+ };
+ UTextBlock* MessageTitle=Label(HeaderCanvas,TEXT("도착지를 골라주세요!"),40,312,73,859,64);
+ MessageTitle->SetColorAndOpacity(FSlateColor(FLinearColor::White));
+ MessageTitleSlot=Cast<UCanvasPanelSlot>(MessageTitle->Slot);
+ UTextBlock* MessageSubtitle=Label(HeaderCanvas,TEXT("원하는 전시물을 선택하세요."),27,312,151,859,48);
+ MessageSubtitleSlot=Cast<UCanvasPanelSlot>(MessageSubtitle->Slot);
+ FButtonStyle TransparentStyle;
+ FSlateBrush Empty; Empty.DrawAs=ESlateBrushDrawType::NoDrawType;
+ TransparentStyle.SetNormal(Empty); TransparentStyle.SetHovered(Empty); TransparentStyle.SetPressed(Empty);
+ TransparentStyle.SetDisabled(Empty); TransparentStyle.SetNormalPadding(FMargin(0)); TransparentStyle.SetPressedPadding(FMargin(0));
+ auto HotButton=[&](UCanvasPanel* Canvas,int32 Number,float X,float Y,float Width,float Height)
+ {
+  UNavDestButton* Button=WidgetTree->ConstructWidget<UNavDestButton>(); Button->SetStyle(TransparentStyle);
+  Button->SetTouchMethod(EButtonTouchMethod::PreciseTap); Button->SetClickMethod(EButtonClickMethod::PreciseClick);
+  Button->SetIsEnabled(false); Button->WireClick(); Button->OnDestClicked.AddDynamic(this,&UNavFullMapWidget::HandleDestButtonClicked);
+  Button->SetToolTipText(FText::FromString(Names[Number-1])); Place(Canvas,Button,X,Y,Width,Height);
+  DestButtons.Add(Button); DestinationButtonNumbers.Add(Number); return Button;
+ };
+ for (const FReferenceHotspot& Hotspot:Hotspots)
+ {
+  HotButton(ReferenceCanvas,Hotspot.Number,Hotspot.Center.X-Hotspot.Size.X*0.5f,
+   Hotspot.Center.Y-Hotspot.Size.Y*0.5f-TopCrop,Hotspot.Size.X,Hotspot.Size.Y);
+ }
+ UScrollBox* Carousel=WidgetTree->ConstructWidget<UScrollBox>(); Carousel->SetOrientation(Orient_Horizontal);
+ Carousel->SetScrollBarVisibility(ESlateVisibility::Collapsed); Carousel->SetClipping(EWidgetClipping::ClipToBounds);
+ Place(ReferenceCanvas,Carousel,0,1225-TopCrop,ReferenceWidth,270);
+ USizeBox* StripSize=WidgetTree->ConstructWidget<USizeBox>(); StripSize->SetWidthOverride(ReferenceWidth+10*286.f);
+ StripSize->SetHeightOverride(270); Carousel->AddChild(StripSize);
+ UCanvasPanel* Strip=WidgetTree->ConstructWidget<UCanvasPanel>(); StripSize->SetContent(Strip);
+ Slice(Strip,0,1225,ReferenceWidth,270,0,0);
+ HotButton(Strip,1,55,23,274,239); HotButton(Strip,3,336,7,273,256); HotButton(Strip,5,615,23,272,239);
+ // The initial viewport is exactly the supplied strip. Swipe reveals the other live destinations.
+ int32 ExtraIndex=0;
+ for (const FReferenceHotspot& Hotspot:Hotspots)
+ {
+  if(Hotspot.Number==1 || Hotspot.Number==3 || Hotspot.Number==5) {continue;}
+  const float X=ReferenceWidth+ExtraIndex++*286.f;
+  UBorder* Card=WidgetTree->ConstructWidget<UBorder>();
+  const FString Name=Names[Hotspot.Number-1];
+  const FLinearColor Accent(0.16f,0.28f,0.4f,1.f);
+  Card->SetBrush(FSlateRoundedBoxBrush(FLinearColor(0.012f,0.025f,0.045f,0.94f),22.f,Accent,1.f));
+  Card->SetBrushColor(FLinearColor::White); Card->SetVisibility(ESlateVisibility::HitTestInvisible); Place(Strip,Card,X+8,20,270,244);
+  Slice(Strip,Hotspot.Center.X-50,Hotspot.Center.Y-50,100,100,X+93,36);
+  Label(Strip,FString::Printf(TEXT("%d  %s"),Hotspot.Number,*Name),22,X+15,148,255,42);
+  Label(Strip,TEXT("길 안내 시작  ›"),17,X+24,209,237,36);
+  HotButton(Strip,Hotspot.Number,X+8,20,270,244);
+ }
+ // Anchor close to the screen's top-left, independent of the centered artwork.
+ UButton* Back=WidgetTree->ConstructWidget<UButton>(); FButtonStyle BackStyle=TransparentStyle;
+ BackStyle.SetNormal(FSlateRoundedBoxBrush(FLinearColor(0.012f,0.016f,0.023f,0.9f),56.f));
+ BackStyle.SetHovered(FSlateRoundedBoxBrush(FLinearColor(0.035f,0.06f,0.09f,0.95f),56.f));
+ BackStyle.SetPressed(BackStyle.Hovered); Back->SetStyle(BackStyle);
+ UTextBlock* BackText=WidgetTree->ConstructWidget<UTextBlock>(); BackText->SetText(FText::FromString(TEXT("‹")));
+ FSlateFontInfo BackFont=BackText->GetFont(); BackFont.Size=54; BackText->SetFont(BackFont);
+ BackText->SetJustification(ETextJustify::Center); BackText->SetColorAndOpacity(FSlateColor(FLinearColor::White)); Back->SetContent(BackText);
+ Back->SetToolTipText(FText::FromString(TEXT("지도 닫기"))); Back->OnClicked.AddDynamic(this,&UNavFullMapWidget::Close);
+ Place(ScreenCanvas,Back,16,16,112,112);
+ MapStatus=Label(ReferenceCanvas,ReferenceTexture ? TEXT("지도 연결 중…") : TEXT("안내도 이미지를 불러올 수 없습니다"),23,190,1140-TopCrop,570,46);
 }
 
-void UNavFullMapWidget::ApplyState(const FNavGraph& InGraph, const TArray<FVector2D>& InRouteXY,
-	bool bHasPose, const FVector2D& PoseXY, float PoseHeadingDeg, bool bPoseHasHeading,
-	const FString& InDestNodeId)
+void UNavFullMapWidget::NativeTick(const FGeometry& MyGeometry,float InDeltaTime)
 {
-	if (MapView == nullptr)
-	{
-		return;
-	}
-	MapView->Mode = ENavMinimapMode::Full;   // WBP 설정이 빠져도 강제한다.
-	BuildSkinLayout();
-	MapView->SetGraph(InGraph);
-	MapView->SetRouteXY(InRouteXY);
-	MapView->SetDestinationNode(InDestNodeId);
-	if (bHasPose)
-	{
-		MapView->SetCurrentPose(PoseXY.X, PoseXY.Y, PoseHeadingDeg, bPoseHasHeading);
-	}
-	else
-	{
-		MapView->ClearCurrentPose();
-	}
+ Super::NativeTick(MyGeometry,InDeltaTime);
+ if(HeaderLayoutSlot && ReferenceCanvas && MyGeometry.GetLocalSize().GetMin()>0.f)
+ {
+  const FVector2D ViewSize=MyGeometry.GetLocalSize();
+  const float ArtScale=FMath::Min(ViewSize.X/ReferenceWidth,ViewSize.Y/1495.f);
+  const float MapTitleTop=(ViewSize.Y-1495.f*ArtScale)*0.5f+271.f*ArtScale;
+  const float Gap=FMath::Max(0.f,MapTitleTop-128.f);
+  const float HeaderHeight=FMath::Min(220.f,FMath::Max(0.f,Gap-32.f));
+  const float HeaderTop=128.f+(Gap-HeaderHeight)*0.5f;
+  const FMargin Desired(16.f,HeaderTop,16.f,HeaderHeight);
+  if(HeaderLayoutSlot->GetOffsets()!=Desired) {HeaderLayoutSlot->SetOffsets(Desired);}
+  if(HeaderHeight>0.f && HeaderDesignSize && MessageLayoutSlot && MessageTitleSlot && MessageSubtitleSlot)
+  {
+   // Use the entire available width without stretching Lexi or the lettering.
+   const float DesignWidth=FMath::Max(690.f,(ViewSize.X-32.f)*265.f/HeaderHeight);
+   if(!FMath::IsNearlyEqual(HeaderDesignSize->GetWidthOverride(),DesignWidth))
+   {
+    HeaderDesignSize->SetWidthOverride(DesignWidth);
+    MessageLayoutSlot->SetSize(FVector2D(DesignWidth-280.f,265.f));
+    MessageTitleSlot->SetSize(FVector2D(DesignWidth-344.f,64.f));
+    MessageSubtitleSlot->SetSize(FVector2D(DesignWidth-344.f,48.f));
+   }
+  }
+ }
+ if(!MapView || !MapStatus || MapView->HasGraph()) {MapWaitSeconds=0.f; return;}
+ MapWaitSeconds+=InDeltaTime;
+ if(MapWaitSeconds>=10.f && ReferenceTexture) {MapStatus->SetText(FText::FromString(TEXT("지도 연결을 확인해주세요")));}
+}
 
-	BuildDestinationButtons(InGraph);   // 하단 목적지 리스트 버튼(§B-2).
+void UNavFullMapWidget::ApplyState(const FNavGraph& InGraph,const TArray<FVector2D>& InRouteXY,
+ bool bHasPose,const FVector2D& PoseXY,float PoseHeadingDeg,bool bPoseHasHeading,const FString& InDestNodeId)
+{
+ BuildSkinLayout(); if(!MapView) {return;}
+ MapView->Mode=ENavMinimapMode::Full; MapView->SetGraph(InGraph); MapView->SetRouteXY(InRouteXY);
+ MapView->SetDestinationNode(InDestNodeId);
+ if(bHasPose) {MapView->SetCurrentPose(PoseXY.X,PoseXY.Y,PoseHeadingDeg,bPoseHasHeading);} else {MapView->ClearCurrentPose();}
+ RefreshDestinations(InGraph,InDestNodeId);
 }
 
 void UNavFullMapWidget::Close()
 {
-	OnClosed.Broadcast();
-	RemoveFromParent();
+ if(bClosing) {return;} bClosing=true; OnClosed.Broadcast(); RemoveFromParent();
 }
 
-FReply UNavFullMapWidget::NativeOnMouseButtonDown(const FGeometry& InGeometry,
-	const FPointerEvent& InMouseEvent)
+bool UNavFullMapWidget::FindReferenceDestinationAtLocal(const FVector2D& SourceImagePosition,FString& OutNodeId) const
 {
-	const FVector2D Abs = InMouseEvent.GetScreenSpacePosition();
+ OutNodeId.Reset(); if(!UsesReferenceArtwork() || bClosing) {return false;}
+ for(const FReferenceHotspot& Hotspot:Hotspots)
+ {
+  const FVector2D Offset=SourceImagePosition-Hotspot.Center;
+  if(FMath::Abs(Offset.X)<=Hotspot.Size.X*0.5f && FMath::Abs(Offset.Y)<=Hotspot.Size.Y*0.5f)
+  {
+   const FString* NodeId=ReferenceNodeIds.Find(Hotspot.Number);
+   if(NodeId && !NodeId->IsEmpty()) {OutNodeId=*NodeId; return true;}
+  }
+ }
+ return false;
+}
 
-	// **목적지 아이콘**을 눌렀으면 그 노드로 경로를 잡고, 그 밖의 아무 곳이나 눌러도 닫는다.
-	// 노드 터치 목적지 선택은 폐지됐다(D-5) — 아이콘(목적지 노드)만 판정한다(§B-1).
-	// 하단 버튼은 UButton 이 클릭을 먹어 여기까지 오지 않는다.
-	if (MapView != nullptr)
-	{
-		const FVector2D Local = MapView->GetCachedGeometry().AbsoluteToLocal(Abs);
-		FString NodeId;
-		if (MapView->FindDestinationNodeAtLocal(Local, MapView->NodeHitRadiusPx, NodeId))
-		{
-			MapView->SetDestinationNode(NodeId);
-			OnDestinationChosen.Broadcast(NodeId);
-		}
-	}
-
-	Close();
-	return FReply::Handled();
+FReply UNavFullMapWidget::NativeOnMouseButtonDown(const FGeometry& InGeometry,const FPointerEvent& InMouseEvent)
+{
+ // Transparent map/card buttons own selection. Empty background taps stay open.
+ return FReply::Handled();
 }
 
 void UNavFullMapWidget::HandleDestButtonClicked(const FString& NodeId)
 {
-	if (MapView != nullptr)
-	{
-		MapView->SetDestinationNode(NodeId);
-	}
-	OnDestinationChosen.Broadcast(NodeId);
-	Close();   // 목적지를 골랐으니 전체 지도를 닫는다(아이콘 탭과 동작 일치).
+ if(bClosing || !UsesReferenceArtwork() || NodeId.IsEmpty()) {return;}
+ bool bLiveNode=false; for(const TPair<int32,FString>& Entry:ReferenceNodeIds) {if(Entry.Value==NodeId) {bLiveNode=true; break;}}
+ if(!bLiveNode) {return;} if(MapView) {MapView->SetDestinationNode(NodeId);}
+ OnDestinationChosen.Broadcast(NodeId); Close();
+}
+
+void UNavFullMapWidget::RefreshDestinations(const FNavGraph& InGraph,const FString& InDestNodeId)
+{
+ BuildSkinLayout(); ActiveDestination=InDestNodeId; ReferenceNodeIds.Reset();
+ for(const FNavMapNode& Node:InGraph.Nodes)
+ {
+  const int32 Number=FNavDestinations::DisplayNumber(Node.Label);
+  if(Number!=0 && FNavDestinations::IsDestination(Node.NodeType) && !Node.NodeId.IsEmpty())
+  {
+   // Deterministic if malformed data provides duplicate display labels.
+   FString* Existing=ReferenceNodeIds.Find(Number); if(!Existing || Node.NodeId<*Existing) {ReferenceNodeIds.Add(Number,Node.NodeId);}
+  }
+ }
+ BuildDestinationButtons(InGraph);
 }
 
 void UNavFullMapWidget::BuildDestinationButtons(const FNavGraph& InGraph)
 {
-	// 이전 버튼 정리.
-	for (UNavDestButton* B : DestButtons)
-	{
-		if (B != nullptr) { B->RemoveFromParent(); }
-	}
-	DestButtons.Reset();
-
-	if (WidgetTree == nullptr)
-	{
-		return;
-	}
-
-	TArray<int32> Order;
-	FNavDestinations::BuildDestinationOrder(InGraph.Nodes, Order);
-	if (Order.Num() == 0)
-	{
-		return;
-	}
-
-	// 2열 그리드. 위 4칸 전시물, 아래 2칸 화장실·입구(BuildDestinationOrder 가 순서를 정한다).
-	UUniformGridPanel* Grid = WidgetTree->ConstructWidget<UUniformGridPanel>(UUniformGridPanel::StaticClass());
-	if (Grid == nullptr)
-	{
-		return;
-	}
-	Grid->SetSlotPadding(FMargin(10.f, 8.f));
-
-	// 지역변수 이름을 Slot 으로 두면 UWidget::Slot 멤버를 가려 MSVC 에서 C4458(-Werror)로
-	// 컴파일이 막힌다(clang 은 -Wno-error=shadow 라 통과 — 윈도우 팀원만 깨진다). SlotIdx 로 둔다.
-	for (int32 SlotIdx = 0; SlotIdx < Order.Num(); ++SlotIdx)
-	{
-		const FNavMapNode& N = InGraph.Nodes[Order[SlotIdx]];
-		const FLinearColor Accent = FNavDestinations::AccentColor(N.NodeType);
-
-		UNavDestButton* Button = WidgetTree->ConstructWidget<UNavDestButton>(UNavDestButton::StaticClass());
-		if (Button == nullptr) { continue; }
-		Button->NodeId = N.NodeId;
-
-		// 어두운 바탕 + node_type 색 외곽선. 지도가 어두운 화면 위에 뜨는데 흰 바탕은
-		// 너무 튄다. 목업도 어두운 캡슐에 색 테두리만 얇게 두른 모양이다.
-		// 반투명이라 아래 도면이 살짝 비친다.
-		FButtonStyle Style = Button->GetStyle();
-		// FLinearColor 리터럴은 선형 값이라 화면에서 감마 보정되며 밝아진다.
-		// 0.055 를 넣으면 중간 회색으로 뜬다. 앱 배경(#12182B)과 맞추려면
-		// sRGB 값을 변환해서 줘야 한다.
-		const FSlateRoundedBoxBrush Normal(
-			FLinearColor::FromSRGBColor(FColor(18, 24, 43, 235)), 16.f, Accent, 4.f);
-		const FSlateRoundedBoxBrush Hover(
-			FLinearColor::FromSRGBColor(FColor(34, 44, 72, 245)), 16.f, Accent, 6.f);
-		Style.SetNormal(Normal);
-		Style.SetHovered(Hover);
-		Style.SetPressed(Hover);
-		// 버튼 자체 여백을 키워 클릭 영역·시각 크기를 2배 수준으로.
-		if (FNavDestinations::Classify(N.NodeType) == ENavDestKind::Exhibit)
-		{
-			auto SkinBrush = [](const TCHAR* Name, const FSlateBrush& Fallback)
-			{
-				FSlateBrush Brush = Fallback;
-				const FString Path = FString::Printf(TEXT("/Game/UI/Nav/Skin/%s.%s"), Name, Name);
-				if (UTexture2D* Texture = LoadObject<UTexture2D>(nullptr, *Path))
-				{
-					Brush.SetResourceObject(Texture); Brush.DrawAs = ESlateBrushDrawType::Box;
-					Brush.SetUVRegion(FBox2f(FVector2f(0.05f, 0.2f), FVector2f(0.95f, 0.82f)));
-					Brush.Margin = FMargin(0.18f, 0.25f); Brush.TintColor = FSlateColor(FLinearColor::White);
-				}
-				return Brush;
-			};
-			Style.SetNormal(SkinBrush(TEXT("btn_state_normal"), Normal));
-			Style.SetHovered(SkinBrush(TEXT("btn_state_selected"), Hover));
-			Style.SetPressed(Style.Hovered);
-			Style.SetDisabled(SkinBrush(TEXT("btn_state_disabled"), Normal));
-		}
-		Style.SetNormalPadding(FMargin(12.f, 6.f));
-		Style.SetPressedPadding(FMargin(12.f, 7.f, 12.f, 5.f));
-		Button->SetStyle(Style);
-		Button->WireClick();
-		Button->OnDestClicked.AddDynamic(this, &UNavFullMapWidget::HandleDestButtonClicked);
-
-		// 내용: 아이콘(글씨 왼쪽) + label(번호 없음).
-		UHorizontalBox* Row = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
-
-		FString IconPath = FNavDestinations::IconObjectPath(N.NodeType, N.Label);
-		const ENavDestKind Kind = FNavDestinations::Classify(N.NodeType);
-		// The older facility icons are dark artwork; use the supplied white-on-dark POIs.
-		if (Kind == ENavDestKind::Facility)
-			IconPath = TEXT("/Game/UI/Nav/Skin/poi_toilet.poi_toilet");
-		else if (Kind == ENavDestKind::Entrance)
-			IconPath = TEXT("/Game/UI/Nav/Skin/poi_entrance.poi_entrance");
-		if (UTexture2D* Tex = IconPath.IsEmpty() ? nullptr : LoadObject<UTexture2D>(nullptr, *IconPath))
-		{
-			UImage* Icon = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass());
-			Icon->SetBrushFromTexture(Tex);
-			Icon->SetDesiredSizeOverride(FVector2D(54.f, 54.f));
-			if (UHorizontalBoxSlot* IconSlot = Cast<UHorizontalBoxSlot>(Row->AddChild(Icon)))
-			{
-				IconSlot->SetVerticalAlignment(VAlign_Center);
-				IconSlot->SetPadding(FMargin(8.f, 8.f, 14.f, 8.f));
-			}
-		}
-
-		UTextBlock* Label = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-		Label->SetText(FText::FromString(N.Label));
-		Label->SetColorAndOpacity(FSlateColor(FLinearColor(0.96f, 0.97f, 1.f)));
-		Label->SetJustification(ETextJustify::Left);
-		Label->SetAutoWrapText(true);   // "티라노사우루스 렉스"처럼 긴 이름이 버튼 밖으로 안 나가게.
-		{
-			FSlateFontInfo LabelFont = Label->GetFont();
-			LabelFont.Size = 18;
-			Label->SetFont(LabelFont);
-		}
-		if (UHorizontalBoxSlot* TextSlot = Cast<UHorizontalBoxSlot>(Row->AddChild(Label)))
-		{
-			TextSlot->SetVerticalAlignment(VAlign_Center);
-			TextSlot->SetHorizontalAlignment(HAlign_Fill);
-			TextSlot->SetSize(FSlateChildSize(ESlateSizeRule::Fill));   // 남는 폭을 글자가 차지 → 줄바꿈 여유.
-			TextSlot->SetPadding(FMargin(0.f, 8.f, 16.f, 8.f));
-		}
-
-		// 오른쪽 끝 > 표시. "누르면 안내가 시작된다"는 것을 알리는 목업의 장치다.
-		// chevron_right 는 DinoCard 에서 쓰던 것을 그대로 재사용한다.
-		if (UTexture2D* ChevronTex = LoadObject<UTexture2D>(
-				nullptr, TEXT("/Game/UI/DinoCard/Icons/chevron_right.chevron_right")))
-		{
-			UImage* Chevron = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass());
-			Chevron->SetBrushFromTexture(ChevronTex);
-			Chevron->SetDesiredSizeOverride(FVector2D(34.f, 34.f));
-			Chevron->SetColorAndOpacity(FLinearColor(1.f, 1.f, 1.f, 0.55f));
-			if (UHorizontalBoxSlot* ChevSlot = Cast<UHorizontalBoxSlot>(Row->AddChild(Chevron)))
-			{
-				ChevSlot->SetVerticalAlignment(VAlign_Center);
-				ChevSlot->SetPadding(FMargin(0.f, 8.f, 12.f, 8.f));
-			}
-		}
-
-		Button->SetContent(Row);
-
-		if (UUniformGridSlot* GridSlot = Grid->AddChildToUniformGrid(Button, SlotIdx / 2, SlotIdx % 2))
-		{
-			GridSlot->SetHorizontalAlignment(HAlign_Fill);   // 셀 폭을 꽉 채워 버튼을 넓게.
-			GridSlot->SetVerticalAlignment(VAlign_Center);   // 높이는 내용대로(과하게 커지지 않게).
-		}
-		DestButtons.Add(Button);
-	}
-
-	// 그리드를 화면에 붙인다. 전용 호스트가 있으면 거기, 없으면 루트 패널 하단 중앙.
-	if (SkinButtonHost != nullptr)
-	{
-		SkinButtonHost->ClearChildren();
-		if (UOverlaySlot* HostSlot = Cast<UOverlaySlot>(SkinButtonHost->AddChild(Grid)))
-		{
-			HostSlot->SetHorizontalAlignment(HAlign_Fill);
-			HostSlot->SetVerticalAlignment(VAlign_Fill);
-		}
-		return;
-	}
-	if (DestButtonHost != nullptr)
-	{
-		DestButtonHost->ClearChildren();
-		DestButtonHost->AddChild(Grid);
-		UE_LOG(LogNav, Log, TEXT("[fullmap] 목적지 버튼 %d개 → DestButtonHost(%s)."),
-			DestButtons.Num(), *DestButtonHost->GetClass()->GetName());
-		return;
-	}
-
-	UWidget* RootW = (WidgetTree != nullptr) ? WidgetTree->RootWidget : nullptr;
-	UPanelWidget* Root = Cast<UPanelWidget>(RootW);
-
-	// 다자식 패널(Canvas/Overlay 등)이면 바로 붙는다. 단일자식(Border 등)이면 AddChild 가
-	// null 을 돌려주므로 아래에서 기존 자식과 함께 Overlay 로 묶어 재부모한다.
-	UPanelSlot* Added = (Root != nullptr) ? Root->AddChild(Grid) : nullptr;
-
-	if (Added == nullptr)
-	{
-		// 루트가 단일자식 컨테이너(WBP_NavMinimapFull 은 Border 가 루트). 기존 내용(MapView)과
-		// 버튼 그리드를 Overlay 로 묶어 Border 의 유일 자식으로 되꽂는다.
-		UContentWidget* Content = Cast<UContentWidget>(RootW);
-		if (Content == nullptr)
-		{
-			UE_LOG(LogNav, Warning,
-				TEXT("[fullmap] 루트(%s)에 버튼을 붙일 수 없습니다. WBP 에 DestButtonHost(패널)를 두세요."),
-				RootW ? *RootW->GetClass()->GetName() : TEXT("null"));
-			return;
-		}
-		UWidget* Existing = Content->GetContent();
-		// Overlay 로는 세로 위치를 하단/중앙 같은 정렬로만 줄 수 있어 "지도 아래~바닥 중간"을
-		// 못 맞춘다. CanvasPanel 로 묶어 세로 앵커를 분수(0.72)로 지정한다.
-		UCanvasPanel* Canvas = WidgetTree->ConstructWidget<UCanvasPanel>(UCanvasPanel::StaticClass());
-		Content->SetContent(Canvas);
-		if (Existing != nullptr)
-		{
-			if (UCanvasPanelSlot* ES = Cast<UCanvasPanelSlot>(Canvas->AddChild(Existing)))
-			{
-				ES->SetAnchors(FAnchors(0.f, 0.f, 1.f, 1.f));   // 지도는 화면 가득.
-				ES->SetOffsets(FMargin(0.f));
-			}
-		}
-		if (UCanvasPanelSlot* GS = Cast<UCanvasPanelSlot>(Canvas->AddChild(Grid)))
-		{
-			// 가로: 좌우 4~96% 로 넓게 스트레치(버튼이 화면 폭을 크게 차지 → 긴 이름도 여유).
-			// 세로: 0.80 지점 — 예전 하단 배치와 0.72 의 중간쯤(사용자 요청).
-			// 스트레치+포인트 혼합 앵커라 Offsets 는 (좌인셋, 상단Y, 우인셋, 높이) 로 읽힌다.
-			GS->SetAnchors(FAnchors(0.04f, 0.80f, 0.96f, 0.80f));
-			GS->SetAlignment(FVector2D(0.f, 0.5f));   // 0.80 선에 세로 중심을 맞춘다.
-			GS->SetAutoSize(false);
-			GS->SetOffsets(FMargin(0.f, 0.f, 0.f, 380.f));   // 높이(3줄까지 여유).
-		}
-		UE_LOG(LogNav, Log,
-			TEXT("[fullmap] 목적지 버튼 %d개 → 단일자식 루트(%s)를 CanvasPanel 로 재부모해 하단 중간 부착."),
-			DestButtons.Num(), *RootW->GetClass()->GetName());
-		return;
-	}
-
-	// 다자식 패널에 직접 붙은 경우: 세로 0.80(예전 하단과 0.72 의 중간)에 가로로 넓게 배치.
-	if (UCanvasPanelSlot* CanvasSlot = Cast<UCanvasPanelSlot>(Added))
-	{
-		CanvasSlot->SetAnchors(FAnchors(0.04f, 0.80f, 0.96f, 0.80f));
-		CanvasSlot->SetAlignment(FVector2D(0.f, 0.5f));
-		CanvasSlot->SetAutoSize(false);
-		CanvasSlot->SetOffsets(FMargin(0.f, 0.f, 0.f, 380.f));
-	}
-	else if (UOverlaySlot* OverlaySlot = Cast<UOverlaySlot>(Added))
-	{
-		OverlaySlot->SetHorizontalAlignment(HAlign_Fill);
-		OverlaySlot->SetVerticalAlignment(VAlign_Center);
-		OverlaySlot->SetPadding(FMargin(40.f, 0.f, 40.f, 0.f));
-	}
-	UE_LOG(LogNav, Log, TEXT("[fullmap] 목적지 버튼 %d개 → %s 에 직접 부착."),
-		DestButtons.Num(), *Root->GetClass()->GetName());
+ for(int32 Index=0; Index<DestButtons.Num(); ++Index)
+ {
+  UNavDestButton* Button=DestButtons[Index]; if(!Button) {continue;}
+  const FString* NodeId=ReferenceNodeIds.Find(DestinationButtonNumbers[Index]);
+  Button->NodeId=NodeId ? *NodeId : FString(); Button->SetIsEnabled(UsesReferenceArtwork() && NodeId && !bClosing);
+ }
+ if(MapStatus)
+ {
+  MapStatus->SetVisibility(UsesReferenceArtwork() && ReferenceNodeIds.Num()>0 ? ESlateVisibility::Collapsed : ESlateVisibility::HitTestInvisible);
+  if(UsesReferenceArtwork() && InGraph.Nodes.Num()>0 && ReferenceNodeIds.Num()==0)
+   {MapStatus->SetText(FText::FromString(TEXT("이 안내도의 목적지 정보를 확인해주세요")));}
+ }
 }

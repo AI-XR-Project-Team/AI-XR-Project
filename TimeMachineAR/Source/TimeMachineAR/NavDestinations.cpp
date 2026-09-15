@@ -23,6 +23,7 @@ ENavDestKind FNavDestinations::Classify(const FString& NodeType)
 	if (NodeType.Equals(TEXT("exhibit"), ESearchCase::IgnoreCase))  { return ENavDestKind::Exhibit; }
 	if (NodeType.Equals(TEXT("facility"), ESearchCase::IgnoreCase)) { return ENavDestKind::Facility; }
 	if (NodeType.Equals(TEXT("entrance"), ESearchCase::IgnoreCase)) { return ENavDestKind::Entrance; }
+	if (NodeType.Equals(TEXT("exit"), ESearchCase::IgnoreCase)) { return ENavDestKind::Entrance; }
 	return ENavDestKind::None;
 }
 
@@ -48,8 +49,57 @@ int32 FNavDestinations::DinoIndexFromLabel(const FString& Label)
 	return 0;
 }
 
+int32 FNavDestinations::DisplayNumber(const FString& Label)
+{
+	FString Name = Label.TrimStartAndEnd().Replace(TEXT(" "), TEXT(""));
+	const TCHAR* Names[] = { TEXT("자수정"), TEXT("입구"), TEXT("삼엽충"), TEXT("고사리잎"),
+		TEXT("아르켈론"), TEXT("알로사우루스"), TEXT("화석"), TEXT("물고기화석"), TEXT("진주화석"),
+		TEXT("포유류화석"), TEXT("거북이화석"), TEXT("출구"), TEXT("탄생석") };
+	for (int32 Index = 0; Index < UE_ARRAY_COUNT(Names); ++Index)
+	{
+		if (Name == Names[Index]) { return Index + 1; }
+	}
+	return 0;
+}
+
+FLinearColor FNavDestinations::AccentColor(const FString& NodeType, const FString& Label)
+{
+	switch (DisplayNumber(Label))
+	{
+	case 1: case 13: return FLinearColor(0.56f, 0.13f, 1.f);
+	case 2: case 5: case 8: return FLinearColor(0.02f, 0.95f, 1.f);
+	case 4: case 11: return FLinearColor(0.18f, 1.f, 0.38f);
+	case 12: return FLinearColor(1.f, 0.04f, 0.3f);
+	case 3: case 6: case 7: case 9: case 10: return FLinearColor(1.f, 0.43f, 0.08f);
+	default:
+		if (NodeType.Equals(TEXT("exit"), ESearchCase::IgnoreCase)) { return FLinearColor(1.f, 0.04f, 0.3f); }
+		return AccentColor(NodeType);
+	}
+}
+
+FString FNavDestinations::IconGlyph(const FString& Label)
+{
+	switch (DisplayNumber(Label))
+	{
+	case 1: case 13: return TEXT("◇");
+	case 2: return TEXT("⇧");
+	case 3: return TEXT("삼엽충");
+	case 4: return TEXT("잎");
+	case 5: case 11: return TEXT("거북");
+	case 6: return TEXT("두개골");
+	case 7: return TEXT("화석");
+	case 8: return TEXT("물고기");
+	case 9: return TEXT("조개");
+	case 10: return TEXT("포유류");
+	case 12: return TEXT("⇨");
+	default: return TEXT("•");
+	}
+}
+
 FString FNavDestinations::IconObjectPath(const FString& NodeType, const FString& Label)
 {
+	// No matching raster specimen kit is installed. Never substitute old dinosaur artwork.
+	if (DisplayNumber(Label) != 0 || NodeType.Equals(TEXT("exit"), ESearchCase::IgnoreCase)) { return FString(); }
 	switch (Classify(NodeType))
 	{
 	case ENavDestKind::Facility: return AssetObjectPath(IconDir, TEXT("T_Icon_Toilet"));
@@ -227,6 +277,28 @@ FString FNavDestinations::LexiRecognizedText()
 void FNavDestinations::BuildDestinationOrder(const TArray<FNavMapNode>& Nodes, TArray<int32>& OutOrder)
 {
 	OutOrder.Reset();
+	bool bMuseumSpecimens = false;
+	for (const FNavMapNode& Node : Nodes)
+	{
+		const int32 Number = DisplayNumber(Node.Label);
+		if (Number != 0 && Number != 2 && Number != 12) { bMuseumSpecimens = true; break; }
+	}
+	if (bMuseumSpecimens)
+	{
+		for (int32 Index = 0; Index < Nodes.Num(); ++Index)
+		{
+			if (IsDestination(Nodes[Index].NodeType)) { OutOrder.Add(Index); }
+		}
+		OutOrder.Sort([&Nodes](int32 A, int32 B)
+		{
+			const int32 ANumber = DisplayNumber(Nodes[A].Label);
+			const int32 BNumber = DisplayNumber(Nodes[B].Label);
+			const int32 ARank = ANumber == 0 ? MAX_int32 : ANumber;
+			const int32 BRank = BNumber == 0 ? MAX_int32 : BNumber;
+			return ARank != BRank ? ARank < BRank : Nodes[A].NodeId < Nodes[B].NodeId;
+		});
+		return;
+	}
 
 	// 위 4칸: 전시물. 공룡번호(1..4) 순으로 정렬해 항상 같은 자리에 온다.
 	TArray<int32> Exhibits;
