@@ -13,7 +13,15 @@ public class TimeMachineAR : ModuleRules
 		// 거치지 않고 UE5 가 백엔드에 직접 HTTP 로 붙는다.
 		// UMG / Slate : 도슨트 챗봇 위젯. 로직은 C++ 에 두고 WBP 는 배치·스타일만 맡는다.
 		// ApplicationCore : 안드로이드 가상 키보드 표시/숨김 이벤트(FPlatformRect).
-		PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "InputCore", "EnhancedInput", "AugmentedReality", "AndroidPermission", "HTTP", "Json", "JsonUtilities", "UMG", "Slate", "SlateCore", "ApplicationCore" });
+		PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "InputCore", "EnhancedInput", "AugmentedReality", "AndroidPermission", "HTTP", "Json", "JsonUtilities", "UMG", "Slate", "SlateCore", "ApplicationCore",
+			// Niagara : 회중시계 투척 → 시간의 문 연출(NS_WatchOrbit / NS_TimePortal 스폰·User 파라미터).
+			"Niagara" });
+
+		if (Target.bBuildEditor)
+		{
+			// RenderCore : 에디터 오프스크린 프리뷰 테스트(Nav.FloorGuidePreview)의 FlushRenderingCommands.
+			PrivateDependencyModuleNames.AddRange(new string[] { "RenderCore", "RHI" });
+		}
 
 		// ── 11단계 관리자 등록 모드 (D10·D11) ────────────────────────────────────
 		// 이 상수를 true 로 둔 로컬 빌드에서만 Cloud Anchor 등록/호스팅/검증 코드

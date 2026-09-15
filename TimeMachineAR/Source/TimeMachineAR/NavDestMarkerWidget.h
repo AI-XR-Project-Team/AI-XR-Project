@@ -38,6 +38,19 @@ public:
 	/** 남은 거리(cm)를 갱신한다. 미니맵이 매 프레임 `FNavProgress.RemainingCm` 로 부른다. */
 	void SetRemaining(float InRemainingCm) { RemainingCm = InRemainingCm; }
 
+	/** 도착 여부(NavRouteProgress 판정). 도착이면 거리 pill 대신 "도착" 을 띄운다. */
+	void SetArrived(bool bInArrived) { bArrived = bInArrived; }
+
+	/**
+	 * 전방 셰브론 + 거리 배지를 띄울 월드 위치(가장 먼 보이는 바닥 발자국 위, 황금 발자국 시안).
+	 * 발자국이 없으면 bVisible=false 로 불러 지운다. 카메라 뒤/화면 밖이면 그리지 않는다.
+	 */
+	void SetGuideHead(bool bVisible, const FVector& WorldPos)
+	{
+		bHasGuideHead = bVisible;
+		GuideHeadWorld = WorldPos;
+	}
+
 	// ------------------------------------------------------------------ 스타일(ini)
 
 	/** 마름모 중심→꼭짓점(px). 목적지 표시판을 크게(약 4배) — 54→216. */
@@ -58,6 +71,11 @@ public:
 	/** 바닥에서 마름모를 띄우는 높이(cm). final §C-2 = 100cm. */
 	UPROPERTY(Config, EditAnywhere, BlueprintReadWrite, Category = "Nav|DestMarker")
 	float MarkerHeightCm = 100.f;
+
+	/** 전방 셰브론 그림 한 변(px). */
+	UPROPERTY(Config, EditAnywhere, BlueprintReadWrite, Category = "Nav|DestMarker",
+		meta = (ClampMin = "16.0"))
+	float ChevronSizePx = 96.f;
 
 	/** 화면 가장자리 방향 표시 여백(px). 커진 마름모가 화면 끝에서 잘리기 전에 화살표로 넘어가도록 넉넉히. */
 	UPROPERTY(Config, EditAnywhere, BlueprintReadWrite, Category = "Nav|DestMarker",
@@ -80,12 +98,29 @@ private:
 	FString Label;
 	FLinearColor Accent = FLinearColor::Gray;
 	float RemainingCm = 0.f;
+	bool bArrived = false;
+
+	bool bHasGuideHead = false;
+	FVector GuideHeadWorld = FVector::ZeroVector;
 
 	/** 아이콘 브러시(SetDestination 에서 1회 로드). 로드 실패면 마름모만 그린다. */
 	FSlateBrush IconBrush;
 	bool bHasIcon = false;
 
+	/** 전방 셰브론 브러시(NativeConstruct 에서 1회 로드). 없으면 셰브론 없이 거리만. */
+	FSlateBrush ChevronBrush;
+	bool bHasChevron = false;
+
 	void LoadIcon();
+	void LoadChevron();
+
+	/** 전방 셰브론 + 거리 배지를 At(셰브론 중심)에 그린다. */
+	void DrawGuideHead(FSlateWindowElementList& Out, int32 Layer, const FGeometry& Geom,
+		const FVector2D& At) const;
+
+	/** 둥근 검정 pill 에 흰 글자. 배지 공용. 반환: 다음 레이어. */
+	int32 DrawPill(FSlateWindowElementList& Out, int32 Layer, const FGeometry& Geom,
+		const FVector2D& Center, const FString& Text, int32 FontSize) const;
 
 	/** 화면 안 목적지: 마름모 + 아이콘 + 거리 pill 을 At 에 그린다. */
 	void DrawMarker(FSlateWindowElementList& Out, int32 Layer, const FGeometry& Geom,

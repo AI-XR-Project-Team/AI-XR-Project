@@ -113,6 +113,7 @@ void UNavMinimapWidget::ClearRoute()
 	GetRouteProgress()->Reset();
 	bWasOffRoute = false;
 	OffRouteSinceSeconds = -1.f;
+	AutoEnd.Reset();   // §4 도착 자동 종료 타이머도 같이 되감는다 — 다음 경로를 위해.
 	if (FloorGuide != nullptr) { FloorGuide->HideGuide(); }   // §C-1 안내 종료 → 발자국 숨김.
 	if (DestMarker != nullptr) { DestMarker->ClearDestination(); }   // §C-2 마름모 내림.
 	RefreshEmptyHint();
@@ -126,6 +127,7 @@ void UNavMinimapWidget::SetRouteXY(const TArray<FVector2D>& InRouteXY)
 	GetRouteProgress()->SetRoutePoints(RouteXY);
 	bWasOffRoute = false;
 	OffRouteSinceSeconds = -1.f;
+	AutoEnd.Reset();   // §4 도착 자동 종료 타이머도 같이 되감는다 — 다음 경로를 위해.
 	RefreshEmptyHint();
 	if (UNavMinimapWidget* Full = GetOpenFullMapView()) { Full->SetRouteXY(InRouteXY); }
 	Invalidate(EInvalidateWidgetReason::Paint);
@@ -276,22 +278,33 @@ void UNavMinimapWidget::PushDestinationToMarker()
 void UNavMinimapWidget::RefreshArGuides(const FNavProgress& P)
 {
 	// 바닥 발자국: 정적 경로 위, 사용자 앞 구간에 목적지 종류별 발자국/화살표.
+	// 도착 판정(bArrived, 히스테리시스 포함)과 목적지 좌표는 여기서 명시적으로 넘긴다 —
+	// 도착하면 사용자 앞 창에 발자국이 남지 않으므로 액터가 혼자서는 링을 그릴 수 없다.
+	bool bGuideHead = false;
+	FVector GuideHeadWorld = FVector::ZeroVector;
 	if (FloorGuide != nullptr)
 	{
 		if (RouteXY.Num() >= 2 && bHasCurrent)
 		{
+			FNavFloorArrival Arrival;
+			Arrival.bArrived = P.bValid && P.bArrived;
+			Arrival.bHasDestination = GetNodePos(DestinationNodeId, Arrival.DestMapXY);
 			FloorGuide->UpdateGuide(RouteXY, CurrentXY,
-				GetNodeType(DestinationNodeId), GetNodeLabel(DestinationNodeId));
+				GetNodeType(DestinationNodeId), GetNodeLabel(DestinationNodeId), Arrival);
+			bGuideHead = FloorGuide->GetGuideHeadWorld(GuideHeadWorld);
 		}
 		else
 		{
 			FloorGuide->HideGuide();
 		}
 	}
-	// 목적지 마름모: 남은 거리(경로거리)를 매 프레임 갱신(월드 투영은 위젯이 스스로).
+	// 목적지 마름모: 남은 거리(경로거리)·도착 여부를 매 프레임 갱신(월드 투영은 위젯이 스스로).
+	// 전방 셰브론 + 거리 배지는 가장 먼 보이는 발자국 위에 투영한다(시안 1·2 상태).
 	if (DestMarker != nullptr && P.bValid)
 	{
 		DestMarker->SetRemaining(P.RemainingCm);
+		DestMarker->SetArrived(P.bArrived);
+		DestMarker->SetGuideHead(bGuideHead, GuideHeadWorld);
 	}
 }
 
@@ -324,6 +337,37 @@ void UNavMinimapWidget::SetCurrentPose(float PosXCm, float PosYCm, float Heading
 			EvaluateAutoReroute(P);                            // 5-B3
 			OnGuidanceUpdated.Broadcast(Progress->GetGuidance());  // 5-D
 			RefreshArGuides(P);                               // 9단계 §C — 바닥 발자국·목적지 마름모
+
+			// §4 도착 후 자동 종료. 실시간 델타로 잰다(GetDeltaSeconds 는 타임스케일에 영향
+			// 받고, SetCurrentPose 호출 간격은 프레임과 다르다). 일시정지 복귀 등으로 간격이
+			// 튀는 것을 막기 위해 0.25s 로 clamp — 첫 호출은 기준 시각만 잡고 진행은 안 한다.
+			AutoEnd.DwellSec = ArriveAutoEndDwellSec;
+			AutoEnd.EndMessageSec = ArriveEndMessageSec;
+			const double NowReal = (GetWorld() != nullptr) ? GetWorld()->GetRealTimeSeconds() : 0.0;
+			float AutoEndDeltaSec = 0.f;
+			if (LastAutoEndRealTimeSeconds >= 0.0)
+			{
+				AutoEndDeltaSec = FMath::Clamp(
+					static_cast<float>(NowReal - LastAutoEndRealTimeSeconds), 0.f, 0.25f);
+			}
+			LastAutoEndRealTimeSeconds = NowReal;
+
+			switch (AutoEnd.Update(P.bArrived, AutoEndDeltaSec))
+			{
+			case FNavArrivalAutoEnd::EEvent::Ended:
+				OnNavigationEnded.Broadcast();   // 안내 로그: 마무리 문구로. 발자국/링은 그대로.
+				break;
+			case FNavArrivalAutoEnd::EEvent::Closed:
+				// ClearRoute()가 AutoEnd.Reset()도 함께 부른다 — Progress->HasRoute() 를 이미
+				// 위에서 검사했으므로(진입 조건) 이 호출로 재귀 위험은 없다.
+				ClearRoute();
+				SetDestinationNode(TEXT(""));
+				OnNavigationClosed.Broadcast();
+				break;
+			case FNavArrivalAutoEnd::EEvent::None:
+			default:
+				break;
+			}
 		}
 	}
 

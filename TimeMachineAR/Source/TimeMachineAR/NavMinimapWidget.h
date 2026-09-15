@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "Blueprint/UserWidget.h"
 #include "Styling/SlateBrush.h"   // FSlateBrush(목적지 아이콘 브러시 캐시)
+#include "NavArrivalAutoEnd.h"    // 도착 후 자동 종료 타이머(§4)
 #include "NavTypes.h"
 #include "NavMinimapWidget.generated.h"
 
@@ -22,6 +23,12 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnNavFullMapOpenChanged, bool, bOpe
 
 /** 매 틱 갱신되는 턴바이턴 안내(5-D). BP 가 WBP_NavStatus 배너로 잇는다. */
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnNavGuidanceUpdated, const FNavGuidance&, Guidance);
+
+/** 도착 Dwell 이 다 찼을 때(§4). 안내 로그가 마무리 문구로 바꾼다. Follow 인스턴스만 방송. */
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnNavArrivalEnded);
+
+/** 마무리 문구까지 다 보여 준 뒤 경로/목적지를 정리했을 때(§4). 도슨트가 스캔 탭으로 되돌린다. */
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnNavArrivalClosed);
 
 /** 미니맵 표시 모드. */
 UENUM(BlueprintType)
@@ -181,6 +188,22 @@ public:
 	 */
 	UPROPERTY(BlueprintAssignable, Category = "Nav|Minimap")
 	FOnNavGuidanceUpdated OnGuidanceUpdated;
+
+	/** 도착 후 자동 종료(§4) — Dwell 이 다 찼을 때. 안내 로그가 마무리 문구로 바꾼다. */
+	UPROPERTY(BlueprintAssignable, Category = "Nav|Minimap")
+	FOnNavArrivalEnded OnNavigationEnded;
+
+	/** 도착 후 자동 종료(§4) — 정리(ClearRoute+SetDestinationNode(""))까지 끝났을 때. 도슨트가 구독. */
+	UPROPERTY(BlueprintAssignable, Category = "Nav|Minimap")
+	FOnNavArrivalClosed OnNavigationClosed;
+
+	/** 도착 문구를 보여 주는 시간(초). ArrivalAutoEnd.DwellSec 의 ini 노출. */
+	UPROPERTY(Config, EditAnywhere, BlueprintReadWrite, Category = "Nav|Minimap|ArrivalAutoEnd")
+	float ArriveAutoEndDwellSec = 2.f;
+
+	/** 마무리 문구를 보여 주는 시간(초). ArrivalAutoEnd.EndMessageSec 의 ini 노출. */
+	UPROPERTY(Config, EditAnywhere, BlueprintReadWrite, Category = "Nav|Minimap|ArrivalAutoEnd")
+	float ArriveEndMessageSec = 1.5f;
 
 	/** 전체 지도 위젯 클래스(WBP_NavMinimapFull). Follow 인스턴스의 WBP 기본값으로 지정. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Nav|Minimap")
@@ -453,6 +476,19 @@ private:
 
 	/** 직전 프레임 이탈 상태(전환 시에만 로그). */
 	bool bWasOffRoute = false;
+
+	// --------------------------------------------------------------- 도착 후 자동 종료(§4, Follow 전용)
+
+	/** 도착 Dwell → 마무리 → 정리 타이머(순수 상태 헬퍼). SetCurrentPose 가 매 pose 실시간 델타로 먹인다. */
+	FNavArrivalAutoEnd AutoEnd;
+
+	/**
+	 * AutoEnd.Update 에 넘길 실시간 델타를 직접 잰다. GetWorld()->GetDeltaSeconds() 는 게임
+	 * 타임스케일에 영향을 받고(§4 는 실제 시계 기준 4초여야 한다), SetCurrentPose 호출 간격이
+	 * pose 갱신 주기라 프레임 델타와도 다르다. 그래서 GetRealTimeSeconds() 두 시각의 차로
+	 * 직접 잰다. 첫 호출(<0)이거나 비정상적으로 큰 간격(예: 일시정지 복귀)은 0.25s 로 clamp.
+	 */
+	double LastAutoEndRealTimeSeconds = -1.0;
 
 	// --------------------------------------------------------------- 자동 reroute(5-B3, Follow 전용)
 	//

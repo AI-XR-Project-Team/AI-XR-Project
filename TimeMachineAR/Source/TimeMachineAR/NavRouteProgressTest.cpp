@@ -79,6 +79,18 @@ bool FNavRouteProgressTest::RunTest(const FString& Parameters)
 		TestTrue(TEXT("bArrived 선다"), R.bArrived);
 	}
 
+	// (6) 도착 히스테리시스 — 문턱(80)을 살짝 넘는 100 으로 물러나도 도착 유지, 120(80+40) 을 넘으면 해제.
+	{
+		FNavProgress R = P->UpdatePose(FVector2D(400, 1000));   // 남은 100 — 도착 유지(히스테리시스).
+		TestTrue(TEXT("남은 100: 도착 유지"), R.bArrived);
+		R = P->UpdatePose(FVector2D(370, 1000));                // 남은 130 > 120 — 해제.
+		TestFalse(TEXT("남은 130: 도착 해제"), R.bArrived);
+		R = P->UpdatePose(FVector2D(400, 1000));                // 다시 100 — 해제 상태에선 문턱(80) 못 넘음.
+		TestFalse(TEXT("해제 후 남은 100: 아직 도착 아님"), R.bArrived);
+		R = P->UpdatePose(FVector2D(430, 1000));                // 남은 70 ≤ 80 — 도착.
+		TestTrue(TEXT("남은 70: 도착"), R.bArrived);
+	}
+
 	return true;
 }
 

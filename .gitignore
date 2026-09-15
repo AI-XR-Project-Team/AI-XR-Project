@@ -43,3 +43,6 @@ Thumbs.db
 TimeMachineAR/Plugins/_MetaXR_Disabled/
 TimeMachineAR/Asset/
 Documents/개발결과보고서_초안.docx
+
+# Clock-reveal audit imports (raw 2M-tri FBX imports, 86MB each) - never commit or package
+TimeMachineAR/Content/TimeReveal/Audit/

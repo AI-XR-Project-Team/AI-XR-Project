@@ -34,6 +34,14 @@ struct FDinoStat
 	/** 제목 위 아이콘. 비우면 그 칸이 접힌다. 예: straighten(자) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Dino")
 	TObjectPtr<UTexture2D> Icon;
+
+	/**
+	 * 아이콘 색. 흰 마스크 아이콘에 입힌다(아르켈론 시안: 소개·서식·발견은 주황, 특징은 청록).
+	 *
+	 * 기존 WBP 타일은 이 값을 무시한다(UDinoStatTile::bApplyIconTint). 바다 스킨 타일만 쓴다.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Dino")
+	FLinearColor IconTint = FLinearColor::White;
 };
 
 /**
@@ -72,6 +80,36 @@ struct FDinoTab
 	/** 본문 위 사진. 없으면 이미지 칸이 통째로 접힌다. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Dino")
 	TObjectPtr<UTexture2D> Image;
+
+	/**
+	 * 이 탭에서만 보여 줄 요약 타일. 비우면 종 공통 UDinoInfoData::Stats 를 쓴다.
+	 *
+	 * 아르켈론 시안은 탭마다 네 칸이 다르다(소개: 몸길이·몸무게·식성·시대, 특징: 앞지느러미·
+	 * 등딱지·부리·이동 …). 예전 DA 는 이 배열이 비어 있으므로 그대로 공통 타일이 나온다.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Dino")
+	TArray<FDinoStat> Stats;
+
+	/**
+	 * 도슨트 CTA 의 아랫줄 문구. 예: 아르켈론의 특징을 더 자세히 알아보세요.
+	 * 비우면 종 공통 UDinoInfoData::DocentPrompt 를 쓴다.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Dino")
+	FText DocentPrompt;
+};
+
+/** 정보 카드의 외형. 종마다 고를 수 있다. */
+UENUM(BlueprintType)
+enum class EDinoCardSkin : uint8
+{
+	/** WBP_DinoInfoCard 에 잡아 둔 기존 카드(티라노 등). */
+	Default,
+	/**
+	 * 아르켈론 시안의 세로 전체 화면(짙은 남색 해양 배경, 큰 대표 이미지, 청록 발광 패널,
+	 * 탭별 요약 타일, 렉시 CTA, 하단 바). WBP 는 두고 C++ 이 레이아웃을 새로 짠다
+	 * (UDinoInfoCardWidget::BuildOceanSkin).
+	 */
+	Ocean
 };
 
 /**
@@ -89,6 +127,26 @@ class TIMEMACHINEAR_API UDinoInfoData : public UPrimaryDataAsset
 	GENERATED_BODY()
 
 public:
+	/** 카드 외형. 기본은 기존 WBP 카드. 아르켈론만 Ocean 을 쓴다. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Dino|스킨")
+	EDinoCardSkin CardSkin = EDinoCardSkin::Default;
+
+	/** 화면 전체 배경(Ocean 스킨). 비우면 단색 남색. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Dino|스킨")
+	TObjectPtr<UTexture2D> Background;
+
+	/** 상단 위치 배지 윗줄(Ocean 스킨). 예: 아르켈론 전시존. 비우면 "<NameKo> 전시존". */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Dino|스킨")
+	FText ZoneName;
+
+	/** 상단 위치 배지 아랫줄(Ocean 스킨). 예: 고대 바다의 거대 거북. 비우면 배지가 한 줄이 된다. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Dino|스킨")
+	FText ZoneSub;
+
+	/** 도슨트 CTA 아랫줄의 종 공통 문구. 탭에 DocentPrompt 가 있으면 그것이 우선한다. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Dino|도슨트")
+	FText DocentPrompt;
+
 	/** 카드 왼쪽 위 번호. 전시 순번이라 자릿수를 맞춰 적는다. 예: 01 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Dino|이름")
 	FText DisplayNumber;
@@ -207,4 +265,16 @@ public:
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Dino|오버레이")
 	FTransform MeshTransform;
+
+	/** 
+	 * 커스텀 오버레이 블루프린트 클래스.
+	 * 비워두면 ARTrackingManager 의 기본 오버레이 액터 클래스를 사용합니다.
+	 * 아르켈론처럼 특수한 이펙트가 포함된 별도의 블루프린트가 있다면 이 곳에 지정합니다.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Dino|오버레이")
+	TSubclassOf<class ADinoOverlayActor> CustomOverlayClass;
+
+	/** Optional entrance sequence. Null preserves the existing species behavior. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Dino|Reveal")
+	TObjectPtr<class UTimeRevealProfile> TimeRevealProfile;
 };

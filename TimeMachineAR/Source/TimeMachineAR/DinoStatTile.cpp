@@ -23,6 +23,10 @@ void UDinoStatTile::Apply()
 		if (Stat.Icon != nullptr)
 		{
 			StatIcon->SetBrushFromTexture(Stat.Icon);
+			if (bApplyIconTint)
+			{
+				StatIcon->SetColorAndOpacity(Stat.IconTint);
+			}
 			StatIcon->SetVisibility(ESlateVisibility::HitTestInvisible);
 		}
 		else

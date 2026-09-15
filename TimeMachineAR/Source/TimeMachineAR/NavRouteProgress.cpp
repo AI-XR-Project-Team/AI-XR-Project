@@ -165,7 +165,10 @@ FNavProgress UNavRouteProgress::UpdatePose(const FVector2D& CurrentXY)
 	Out.RemainingCm = FMath::Max(0.f, Total - Travelled);
 	Out.LateralOffsetCm = BestLateral;
 	Out.bOffRoute = BestLateral > OffRouteThresholdCm;
-	Out.bArrived = Out.RemainingCm <= ArriveThresholdCm;
+	// 도착은 문턱 아래로 들어오면 서고, 한 번 서면 문턱+히스테리시스를 넘어야 풀린다(경계 떨림 방지).
+	const float ExitCm = ArriveThresholdCm + ArriveExitHysteresisCm;
+	Out.bArrived = (Out.RemainingCm <= ArriveThresholdCm)
+		|| (LastProgress.bValid && LastProgress.bArrived && Out.RemainingCm <= ExitCm);
 
 	LastProgress = Out;
 	return Out;
@@ -229,6 +232,7 @@ FNavGuidance UNavRouteProgress::GetGuidance() const
 	G.StepRemainingCm = FMath::Max(0.f, StepEndCm[Cur] - Travelled);
 	G.RemainingCm = LastProgress.RemainingCm;
 	G.bArrived = LastProgress.bArrived;
+	G.bOffRoute = LastProgress.bOffRoute;   // 안내 로그의 OffRoute 단계(§3)가 본다.
 
 	// 다음에 올 회전/도착(곧 있을 안내 미리보기).
 	for (int32 j = Cur + 1; j < Steps.Num(); ++j)

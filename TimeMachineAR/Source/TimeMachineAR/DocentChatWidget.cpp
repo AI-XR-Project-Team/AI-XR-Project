@@ -3,6 +3,7 @@
 #include "DocentChatBubble.h"
 #include "DocentQuickChip.h"
 #include "ARTrackingManager.h"
+#include "NavMinimapWidget.h"   // OnNavigationClosed(§4 도착 자동 종료) 구독용
 #include "Components/Button.h"
 #include "Components/EditableTextBox.h"
 #include "Blueprint/WidgetLayoutLibrary.h"
@@ -123,6 +124,20 @@ void UDocentChatWidget::NativeConstruct()
 	for (const FName N : {FName(TEXT("ScanCloseButton")), FName(TEXT("NabButton"))})
 		if (UButton* B = Cast<UButton>(GetWidgetFromName(N))) B->OnClicked.AddUniqueDynamic(this, &UDocentChatWidget::HandleReferenceExit);
 
+	// 탭 배타 표시. 이 위젯이 유일한 소유자다(ApplyHudTab). WBP 의 자체 그래프가
+	// 같은 버튼에서 패널을 따로 만지더라도, 여기서 다시 강제한다.
+	if (UButton* B = Cast<UButton>(GetWidgetFromName(TEXT("ScanButton")))) B->OnClicked.AddUniqueDynamic(this, &UDocentChatWidget::HandleScanTabClicked);
+	if (UButton* B = Cast<UButton>(GetWidgetFromName(TEXT("NabButton")))) B->OnClicked.AddUniqueDynamic(this, &UDocentChatWidget::HandleNavTabClicked);
+	if (UButton* B = Cast<UButton>(GetWidgetFromName(TEXT("NavCloseButton")))) B->OnClicked.AddUniqueDynamic(this, &UDocentChatWidget::HandleScanTabClicked);
+	if (UButton* B = Cast<UButton>(GetWidgetFromName(TEXT("ScanCloseButton")))) B->OnClicked.AddUniqueDynamic(this, &UDocentChatWidget::HandleScanTabClicked);
+
+	// 내비 도착 후 자동 종료(§4) — 정리가 끝나면 스캔 탭으로 돌아간다. NavPanel 안의
+	// WBP_NavMinimap(UNavMinimapWidget 자식)을 찾아 한 번만 구독한다.
+	if (UNavMinimapWidget* Minimap = Cast<UNavMinimapWidget>(GetWidgetFromName(TEXT("WBP_NavMinimap"))))
+	{
+		Minimap->OnNavigationClosed.AddUniqueDynamic(this, &UDocentChatWidget::HandleNavClosedByAutoEnd);
+	}
+
 	if (DocentNameText != nullptr)
 	{
 		DocentNameText->SetText(DocentName);
@@ -215,7 +230,10 @@ void UDocentChatWidget::NativeConstruct()
 		UE_LOG(LogDocentChat, Warning,
 			TEXT("OpenButton 이 없어 닫힌 채로 시작할 수 없습니다. 열린 상태로 진행합니다."));
 	}
-	ApplyOpenState(bStartOpen || !bCanReopen);
+	// 의도한 첫 화면은 스캔 탭이다(카메라 + "AR 스캔을 눌러 시작해주세요" 힌트, 스캔은 꺼진 채).
+	// bStartOpen(주로 WBP 기본값 false)이 서 있거나 다시 열 방법이 없을 때만 도슨트로 시작한다.
+	// 어느 쪽이든 스캔을 자동으로 켜지는 않는다 — ApplyHudTab 은 표시만 맡는다.
+	SetHudTab((bStartOpen || !bCanReopen) ? EDocentHudTab::Docent : EDocentHudTab::Scan);
 
 	// 마커로 공룡을 고르기 전에는 특정 전시물을 상정하지 않는다. 클래스
 	// 기본값의 ExhibitKey 는 마커가 없던 시절의 시험용이라 여기서 버린다.
@@ -279,6 +297,14 @@ void UDocentChatWidget::NativeDestruct()
 	}
 	for (const FName N : {FName(TEXT("ScanCloseButton")), FName(TEXT("NabButton"))})
 		if (UButton* B = Cast<UButton>(GetWidgetFromName(N))) B->OnClicked.RemoveDynamic(this, &UDocentChatWidget::HandleReferenceExit);
+	if (UButton* B = Cast<UButton>(GetWidgetFromName(TEXT("ScanButton")))) B->OnClicked.RemoveDynamic(this, &UDocentChatWidget::HandleScanTabClicked);
+	if (UButton* B = Cast<UButton>(GetWidgetFromName(TEXT("NabButton")))) B->OnClicked.RemoveDynamic(this, &UDocentChatWidget::HandleNavTabClicked);
+	if (UButton* B = Cast<UButton>(GetWidgetFromName(TEXT("NavCloseButton")))) B->OnClicked.RemoveDynamic(this, &UDocentChatWidget::HandleScanTabClicked);
+	if (UButton* B = Cast<UButton>(GetWidgetFromName(TEXT("ScanCloseButton")))) B->OnClicked.RemoveDynamic(this, &UDocentChatWidget::HandleScanTabClicked);
+	if (UNavMinimapWidget* Minimap = Cast<UNavMinimapWidget>(GetWidgetFromName(TEXT("WBP_NavMinimap"))))
+	{
+		Minimap->OnNavigationClosed.RemoveDynamic(this, &UDocentChatWidget::HandleNavClosedByAutoEnd);
+	}
 	// 서브시스템은 위젯보다 오래 산다. 언바인드하지 않으면 죽은 위젯으로
 	// 브로드캐스트가 계속 날아간다.
 	if (Client != nullptr)
@@ -338,6 +364,15 @@ void UDocentChatWidget::NativeDestruct()
 	}
 
 	Super::NativeDestruct();
+}
+
+void UDocentChatWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
+{
+	Super::NativeTick(MyGeometry, InDeltaTime);
+
+	// WBP 이벤트 그래프가 우리 클릭 핸들러보다 먼저 돌면서 같은 패널을 건드릴 수 있다.
+	// 매 틱 다시 강제한다. ApplyHudTab 은 값이 다를 때만 SetVisibility 해서 가볍다.
+	ApplyHudTab();
 }
 
 void UDocentChatWidget::OpenChat(const FString& InExhibitId)
@@ -419,17 +454,82 @@ void UDocentChatWidget::ClearMessages()
 
 void UDocentChatWidget::ShowChat()
 {
-	ApplyOpenState(true);
+	// 도슨트 탭으로 넘어간다. ApplyHudTab 이 스캔/내비 패널을 접고 채팅을 연다.
+	SetHudTab(EDocentHudTab::Docent);
 }
 
 void UDocentChatWidget::HideChat()
 {
-	ApplyOpenState(false);
+	// 도슨트 탭에서 닫는 거면 스캔 탭으로 돌아간다(목업의 기본 화면). 다른 탭에서
+	// (드물게) 불렸으면 그 탭의 배타 표시는 건드리지 않고 채팅만 접는다.
+	if (ActiveTab == EDocentHudTab::Docent)
+	{
+		SetHudTab(EDocentHudTab::Scan);
+	}
+	else
+	{
+		ApplyOpenState(false);
+	}
 }
 
 void UDocentChatWidget::ToggleChat()
 {
 	ApplyOpenState(!bIsOpen);
+}
+
+void UDocentChatWidget::SetHudTab(EDocentHudTab Tab)
+{
+	ActiveTab = Tab;
+	ApplyHudTab(/*bForceRefresh=*/true);
+}
+
+void UDocentChatWidget::ApplyHudTab(bool bForceRefresh)
+{
+	// 매 틱 불리므로 실제로 바뀐 게 있을 때만 RefreshReferenceUI(브러시/텍스트 재설정)까지 간다.
+	bool bChanged = false;
+	auto SetVis = [&bChanged](UWidget* W, ESlateVisibility Vis)
+	{
+		if (W != nullptr && W->GetVisibility() != Vis)
+		{
+			W->SetVisibility(Vis);
+			bChanged = true;
+		}
+	};
+
+	UWidget* ScanPanel = GetWidgetFromName(TEXT("ScanPanel"));
+	UWidget* NavPanel = GetWidgetFromName(TEXT("NavPanel"));
+
+	switch (ActiveTab)
+	{
+	case EDocentHudTab::Scan:
+		if (bIsOpen) { ApplyOpenState(false); bChanged = true; }
+		SetVis(ScanPanel, ESlateVisibility::SelfHitTestInvisible);
+		SetVis(NavPanel, ESlateVisibility::Collapsed);
+		SetVis(BottomBar, ESlateVisibility::Visible);
+		SetVis(Btn_CloseAR, bReferenceRecognized ? ESlateVisibility::Visible : ESlateVisibility::Hidden);
+		break;
+
+	case EDocentHudTab::Nav:
+		if (bIsOpen) { ApplyOpenState(false); bChanged = true; }
+		SetVis(NavPanel, ESlateVisibility::Visible);
+		SetVis(ScanPanel, ESlateVisibility::Collapsed);
+		// 내비는 전체화면이고 자체 NavCloseButton 으로 돌아간다. 하단 바는 접어 둔다.
+		SetVis(BottomBar, ESlateVisibility::Collapsed);
+		SetVis(Btn_CloseAR, ESlateVisibility::Hidden);
+		break;
+
+	case EDocentHudTab::Docent:
+		if (!bIsOpen) { ApplyOpenState(true); bChanged = true; }
+		SetVis(ScanPanel, ESlateVisibility::Collapsed);
+		SetVis(NavPanel, ESlateVisibility::Collapsed);
+		SetVis(Btn_CloseAR, ESlateVisibility::Hidden);
+		break;
+	}
+
+	if (bChanged || bForceRefresh)
+	{
+		RefreshReferenceUI();
+	}
 }
 
 void UDocentChatWidget::ApplyOpenState(bool bOpen)
@@ -482,6 +582,7 @@ void UDocentChatWidget::ApplyOpenState(bool bOpen)
 	}
 
 	OnChatOpenChanged(bOpen);
+	OnOpenStateChanged.Broadcast(bOpen);
 }
 
 void UDocentChatWidget::PollInputFocus()
@@ -571,7 +672,31 @@ void UDocentChatWidget::HandleCloseClicked()
 
 void UDocentChatWidget::HandleOpenClicked()
 {
-	ShowChat();
+	SetHudTab(EDocentHudTab::Docent);
+}
+
+void UDocentChatWidget::HandleScanTabClicked()
+{
+	SetHudTab(EDocentHudTab::Scan);
+}
+
+void UDocentChatWidget::HandleNavTabClicked()
+{
+	SetHudTab(EDocentHudTab::Nav);
+	// 내비 탭에 들어오자마자 전체 지도를 띄운다. 예전엔 우측 상단 미니맵(사각형)을 한 번 더
+	// 눌러야 목적지를 고를 수 있었다. 이미 떠 있으면 OpenFullMap 이 알아서 무시한다.
+	if (UNavMinimapWidget* Minimap = Cast<UNavMinimapWidget>(GetWidgetFromName(TEXT("WBP_NavMinimap"))))
+	{
+		Minimap->OpenFullMap();
+	}
+}
+
+void UDocentChatWidget::HandleNavClosedByAutoEnd()
+{
+	// 도착 뒤 마무리 문구까지 다 보여 주고 경로를 정리한 시점(§4). 다음 할 일은 보통
+	// AR 스캔이므로 스캔 탭으로 되돌린다. 문구는 ApplyHudTab 이 손대지 않으므로 기존
+	// 스캔 힌트("AR 스캔을 눌러 시작해주세요…")가 그대로 보인다.
+	SetHudTab(EDocentHudTab::Scan);
 }
 
 void UDocentChatWidget::HandleCloseARClicked()
@@ -595,14 +720,19 @@ void UDocentChatWidget::HandleMarkerFound(UARPin* Pin, const FTransform& MarkerP
 			if (UDinoInfoData* Info = M->DinoRegistry->FindByMarker(MarkerCode))
 				SetLocationChip(Info->NameKo.ToString() + TEXT(" 전시존"), TEXT("현재 위치"), FLinearColor(0.23f, 0.9f, 0.44f, 1.f));
 	// Existing Blueprint delegates hide the scan panel on recognition. Restore only
-	// its nonblocking presentation after that broadcast has finished.
+	// its nonblocking presentation after that broadcast has finished, and only while
+	// the scan tab is still the active one — ApplyHudTab is the single owner now.
 	if (UWorld* World = GetWorld())
 		World->GetTimerManager().SetTimerForNextTick(FTimerDelegate::CreateWeakLambda(this, [this]()
 		{
-			UWidget* Nav = GetWidgetFromName(TEXT("NavPanel"));
-			if (bReferenceRecognized && !bIsOpen && (!Nav || Nav->GetVisibility() == ESlateVisibility::Collapsed))
-				if (UWidget* Scan = GetWidgetFromName(TEXT("ScanPanel"))) Scan->SetVisibility(ESlateVisibility::SelfHitTestInvisible);
-			RefreshReferenceUI();
+			if (ActiveTab == EDocentHudTab::Scan)
+			{
+				ApplyHudTab();
+			}
+			else
+			{
+				RefreshReferenceUI();
+			}
 		}));
 	if (Btn_CloseAR != nullptr)
 	{
@@ -812,11 +942,9 @@ void UDocentChatWidget::HandleReferenceRescan()
 	{
 		SetLocationChip(TEXT("전시존 탐색 중"), TEXT("현재 위치 확인 중"), FLinearColor(0.6f, 0.6f, 0.65f, 1.f));
 	}
-	HideChat();
-	if (UWidget* Nav = GetWidgetFromName(TEXT("NavPanel"))) Nav->SetVisibility(ESlateVisibility::Collapsed);
-	if (UWidget* Scan = GetWidgetFromName(TEXT("ScanPanel"))) Scan->SetVisibility(ESlateVisibility::SelfHitTestInvisible);
+	// 스캔 탭으로 되돌린다. ApplyHudTab 이 채팅을 닫고 내비를 접고 스캔 패널을 다시 보인다.
+	SetHudTab(EDocentHudTab::Scan);
 	if (AARTrackingManager* Manager = AARTrackingManager::GetARTrackingManager(this)) Manager->StartScan();
-	RefreshReferenceUI();
 }
 
 void UDocentChatWidget::HandleReferenceCapture()
@@ -900,6 +1028,12 @@ void UDocentChatWidget::HandleReferenceExit()
 	bReferenceRecognized = false;
 }
 
+void UDocentChatWidget::SetRevealHint(const FText& InHint)
+{
+	RevealHint = InHint;
+	RefreshReferenceUI();
+}
+
 void UDocentChatWidget::RefreshReferenceUI()
 {
 	const AARTrackingManager* Manager = AARTrackingManager::GetARTrackingManager(this);
@@ -927,6 +1061,7 @@ void UDocentChatWidget::RefreshReferenceUI()
 			(FPlatformTime::Seconds() < CaptureToastUntil) ? *CaptureToast :
 			bFrontCamera ?
 			TEXT("셀카 모드예요!\n전환 버튼을 다시 누르면 후면 카메라로 돌아가요.") :
+			(bReferenceRecognized && !RevealHint.IsEmpty()) ? *RevealHint.ToString() :   // 회중시계 연출 단계 문구(SetRevealHint)
 			bReferenceRecognized ?
 			TEXT("대상을 인식했어요!\n공룡을 터치하면 정보를 볼 수 있어요.") :
 			(bScanning ? TEXT("공룡 마커를 화면 중앙에 맞춰주세요\n더 선명하게 인식할 수 있어요!") :
@@ -1203,32 +1338,61 @@ void UDocentChatWidget::ApplyChatSkin()
 	// ---- 배경: 사진 위 어두운 반투명 막. 목업의 유리 느낌은 이 한 겹이 만든다.
 	if (UImage* Backdrop = Cast<UImage>(ChatBackdrop))
 	{
-		Backdrop->SetColorAndOpacity(FLinearColor::FromSRGBColor(FColor(10, 13, 20, 200)));
+		Backdrop->SetBrush(FSlateRoundedBoxBrush(FLinearColor(0.015f, 0.02f, 0.025f, 0.66f), 28.f, Outline, 1.f));
+		Backdrop->SetColorAndOpacity(FLinearColor::White);
+	}
+	// Replace the legacy opaque blue surfaces as well as the foreground icons.
+	if (UImage* Header = Cast<UImage>(GetWidgetFromName(TEXT("HeaderBG"))))
+	{
+		Header->SetBrush(FSlateRoundedBoxBrush(FLinearColor(0.02f, 0.025f, 0.03f, 0.3f), 0.f));
+		Header->SetColorAndOpacity(FLinearColor::White);
+	}
+	if (UImage* Input = Cast<UImage>(GetWidgetFromName(TEXT("InputBG"))))
+	{
+		Input->SetBrush(FSlateRoundedBoxBrush(Glass, 64.f, Outline, 1.5f));
+		Input->SetColorAndOpacity(FLinearColor::White);
 	}
 
 	// ---- 상단 바: 원형 뒤로가기 / 제목 / 원형 더보기
 	// 실기기에서 92px 은 손가락보다 작아 보였다 - 1.7 배(156).
-	MakeRoundIconButton(CloseButton, TEXT("/Game/UI/Docent/arrow_back.arrow_back"), 156.f, 82.f);
+	MakeRoundIconButton(CloseButton, TEXT("/Game/UI/Docent/arrow_back.arrow_back"), 104.f, 54.f);
 	MakeRoundIconButton(Cast<UButton>(GetWidgetFromName(TEXT("MenuButton"))),
-		TEXT("/Game/UI/Docent/more_vert.more_vert"), 156.f, 82.f);
+		TEXT("/Game/UI/Docent/more_vert.more_vert"), 104.f, 54.f);
 	if (DocentNameText != nullptr)
 	{
 		FSlateFontInfo Font = DocentNameText->GetFont();
 		Font.Size = 40;
 		DocentNameText->SetFont(Font);
 		DocentNameText->SetColorAndOpacity(FSlateColor(TextMain));
-		DocentNameText->SetJustification(ETextJustify::Center);
+		DocentNameText->SetJustification(ETextJustify::Left);
+		if (UHorizontalBoxSlot* S = Cast<UHorizontalBoxSlot>(DocentNameText->Slot))
+		{
+			S->SetPadding(FMargin(50.f, 0.f, 0.f, 0.f));
+		}
 	}
 
 	// ---- 시작 화면: 링 안의 렉시 + 인사말
 	if (UImage* Hero = Cast<UImage>(GetWidgetFromName(TEXT("Avatar"))))
 	{
-		if (UTexture2D* Halo = DocentSkinTexture(TEXT("lexi_halo")))
+		if (UTexture2D* Halo = DocentSkinTexture(TEXT("lexi_idle")))
 		{
-			Hero->SetBrushFromTexture(Halo);
-			Hero->SetDesiredSizeOverride(FVector2D(420.f, 450.f));
+			FSlateBrush Brush;
+			Brush.SetResourceObject(Halo);
+			Brush.ImageSize = FVector2D(400.f, 480.f);
+			Hero->SetBrush(Brush);
+			Hero->SetDesiredSizeOverride(Brush.ImageSize);
 			Hero->SetVisibility(ESlateVisibility::HitTestInvisible);
 		}
+	}
+	if (UWidget* Glow = GetWidgetFromName(TEXT("Glow"))) Glow->SetVisibility(ESlateVisibility::Collapsed);
+	if (UImage* Ring = Cast<UImage>(GetWidgetFromName(TEXT("Ring"))))
+	{
+		FSlateBrush Brush = Ring->GetBrush();
+		Brush.ImageSize = FVector2D(440.f, 90.f);
+		Ring->SetBrush(Brush);
+		Ring->SetColorAndOpacity(FLinearColor(0.2f, 0.8f, 1.f, 0.85f));
+		Ring->SetVisibility(ESlateVisibility::HitTestInvisible);
+		if (UOverlaySlot* S = Cast<UOverlaySlot>(Ring->Slot)) S->SetVerticalAlignment(VAlign_Bottom);
 	}
 	// 시작 화면 덩어리(렉시 + 인사말)를 추천 질문 바로 위에 붙인다. 가운데 정렬로 두면
 	// 남는 공간이 인사말과 추천 질문 사이에 끼어 목업과 달리 둘이 멀어진다.
@@ -1236,7 +1400,7 @@ void UDocentChatWidget::ApplyChatSkin()
 	{
 		if (UOverlaySlot* S = Cast<UOverlaySlot>(EmptyStateBox->Slot))
 		{
-			S->SetVerticalAlignment(VAlign_Bottom);
+			S->SetVerticalAlignment(VAlign_Center);
 			S->SetHorizontalAlignment(HAlign_Fill);
 			S->SetPadding(FMargin(0.f, 0.f, 0.f, 36.f));
 		}
@@ -1249,6 +1413,7 @@ void UDocentChatWidget::ApplyChatSkin()
 		GreetingLabel->SetColorAndOpacity(FSlateColor(TextMain));
 		GreetingLabel->SetJustification(ETextJustify::Center);
 		GreetingLabel->SetLineHeightPercentage(1.35f);
+		GreetingLabel->SetText(FText::FromString(TEXT("안녕하세요!\n저는 AI 도슨트 ‘렉시’예요.\n공룡에 대해 궁금한 것을 물어보세요!")));
 	}
 
 	// ---- 입력창: 유리 캡슐 + 원형 보내기

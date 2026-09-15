@@ -67,19 +67,73 @@ struct TIMEMACHINEAR_API FNavDestinations
 	 */
 	static FString FloorTextureObjectPath(const FString& NodeType, const FString& Label);
 
-	// ---- 안내 로그 문구(final §D 표). 안내 수단이 node_type 으로 갈린다 ----
+	/**
+	 * 바닥 안내 스타일(황금 발자국). 액터가 목적지가 바뀔 때 한 번 조회한다.
+	 *
+	 *  - exhibit : `/Game/UI/Nav/Floor/Golden/T_Footprint_Left`·`_Right` 한 쌍을 좌우 교대로 깐다.
+	 *              시안(02 시트)이 발자국 한 종만 주므로 공룡 4종이 같은 황금 발자국을 쓴다 —
+	 *              공룡별 텍스처 분기(`FloorTextureObjectPath`)는 남겨 두었고 공룡별 황금 쌍이
+	 *              생기면 여기서만 갈라 주면 된다.
+	 *  - facility·entrance : 기존 공용 화살표(`FloorTextureObjectPath`) 한 장을 좌우 없이 경로 위에.
+	 *  - 목적지 아님 : 텍스처 경로 비움(액터는 숨긴다).
+	 * 도착 링은 종류에 관계없이 `T_NavArrivalRing`.
+	 */
+	struct FFloorStyle
+	{
+		FString LeftTexturePath;
+		FString RightTexturePath;
+		FString ArrivalRingTexturePath;
+		/** true 면 StepIndex 짝/홀로 좌우 텍스처를 번갈아 쓰고 가로 오프셋을 건다. */
+		bool bAlternate = false;
+		bool IsValid() const { return !LeftTexturePath.IsEmpty() && !RightTexturePath.IsEmpty(); }
+	};
+	static FFloorStyle FloorStyle(const FString& NodeType, const FString& Label);
 
-	/** 안내 중 문구. exhibit → 발자국, facility·entrance → 화살표. */
-	static FString GuidingText(const FString& NodeType);
+	/** HUD 전방 셰브론(거리 배지 옆) 텍스처 오브젝트 경로. */
+	static FString ForwardChevronObjectPath();
 
-	/** 도착 문구. exhibit 는 "(공룡) 앞에 도착…", 그 밖은 "목적지에 도착하였습니다". */
-	static FString ArrivalText(const FString& NodeType, const FString& Label);
+	// ---- 조사(助詞) 헬퍼. 받침 유무로 자연스러운 한국어 문구를 만든다 ----
+
+	/**
+	 * 받침 유무로 "으로/로" 를 고른다(ㄹ 받침·받침 없음 → "로", 그 밖 받침 → "으로").
+	 * 한글이 아니면 "(으)로". 안내 로그 문구("{목적지}로 안내할게요!")에 쓴다.
+	 */
+	static FString ToParticle(const FString& Word);
+
+	/**
+	 * 받침 유무로 "이/가" 를 고른다. 한글이 아니면 "이(가)".
+	 * (TimeRevealComponent.cpp 의 익명 함수를 여기로 옮겼다 — 회중시계 연출 문구도 같은 규칙을 쓴다.)
+	 */
+	static FString SubjectParticle(const FString& Word);
+
+	// ---- 안내 로그 문구(렉시 말풍선). 안내 수단이 node_type 으로 갈린다 ----
+	//
+	// 전부 "렉시가 하는 말"로 통일한다(nav-lexi-guide-design.md §2). Label 이 비면
+	// exhibit 은 "전시물", 그 밖은 "목적지"로 채운다.
+
+	/** 네비 켬, 아직 측위 전. */
+	static FString LexiNavOnText();
+
+	/** 측위 성립, 목적지 미정. */
+	static FString LexiLocalizedText();
+
+	/**
+	 * 안내 중. RemainingCm ≤ 500 이면 "조금만 더 가면" 문구로 갈아탄다.
+	 * 2줄은 서버 원문(Instruction)이 있으면 그걸, 없으면 발자국/화살표 문구로 채운다.
+	 */
+	static FString LexiGuidingText(const FString& NodeType, const FString& Label, const FNavGuidance& Guidance);
+
+	/** 경로 이탈(§3 OffRoute 단계). */
+	static FString LexiOffRouteText();
+
+	/** 목적지 도착. exhibit/facility/entrance 로 마무리 문구가 갈린다. */
+	static FString LexiArrivedText(const FString& NodeType, const FString& Label);
+
+	/** 도착 후 잠깐의 마무리 문구(§4 자동 종료의 Ended 단계). */
+	static FString LexiEndedText(const FString& NodeType);
 
 	/** 전시물 마커 인식 완료(초록). */
-	static FString RecognizedText()
-	{
-		return TEXT("인식이 완료되었습니다. 이제 공룡을 관찰해주세요");
-	}
+	static FString LexiRecognizedText();
 
 	/**
 	 * 그래프 노드 중 목적지 6종을 **버튼 배치 순서**로 골라 인덱스를 준다.
