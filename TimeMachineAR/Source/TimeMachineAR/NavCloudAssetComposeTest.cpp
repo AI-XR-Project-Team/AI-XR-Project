@@ -8,6 +8,8 @@
 
 #include "Misc/AutomationTest.h"
 #include "NavCloudAssetSpawner.h"
+#include "DinoInfoData.h"
+#include "DinoOverlayActor.h"
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FNavCloudAssetComposeTest, "TimeMachineAR.Nav.AssetCompose",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
@@ -36,6 +38,16 @@ bool FNavCloudAssetComposeTest::RunTest(const FString& Parameters)
 		const FTransform T = UNavCloudAssetSpawner::ComposeAssetTransform(Anchor, FVector::ZeroVector, 30.f, 1.5f, 15.f, 0.f, 2.f);
 		TestEqual(TEXT("③ yaw = 90 + 15 + 30"), FRotator::NormalizeAxis(T.Rotator().Yaw), 135.0, Tol);
 		TestEqual(TEXT("③ 배율 = 2 × 1.5"), T.GetScale3D().X, 3.0, Tol);
+	}
+
+	// ④ 종 전용 오버레이 선택 — 마커 흐름(ARTrackingManager)처럼 CustomOverlayClass 가 있으면 그것, 없으면 nullptr(ini 폴백).
+	{
+		TestNull(TEXT("④ 종 데이터 없음"), UNavCloudAssetSpawner::GetSpeciesOverlayClass(nullptr));
+		UDinoInfoData* Info = NewObject<UDinoInfoData>();
+		TestNull(TEXT("④ 전용 오버레이 미지정"), UNavCloudAssetSpawner::GetSpeciesOverlayClass(Info));
+		Info->CustomOverlayClass = ADinoOverlayActor::StaticClass();
+		TestTrue(TEXT("④ 전용 오버레이 지정 → 그 클래스"),
+			UNavCloudAssetSpawner::GetSpeciesOverlayClass(Info) == ADinoOverlayActor::StaticClass());
 	}
 	return true;
 }

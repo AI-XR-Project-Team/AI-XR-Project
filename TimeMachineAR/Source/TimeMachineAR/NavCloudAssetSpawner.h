@@ -9,6 +9,7 @@
 class AARTrackingManager;
 class UARPin;
 class UDinoInfoData;
+class UTimeRevealProfile;
 
 // 13-1 §C-1 — 하단 바의 「AR 스캔」 을 누르면 label 이 `asset*` 인 Cloud Anchor 를 리졸브해
 // 그 앵커 **바로 위에 에셋(Archelon)을 띄운다**. 시연영상 촬영이 목적이다.
@@ -51,6 +52,9 @@ class UDinoInfoData;
 //   (`ComposeAssetTransform` — 테스트 앱과 같은 식). 조정 패드 UI 는 이식하지 않는다(공지 트리거 3) — 값은 테스트 앱에서 맞춘다.
 // - **에셋 지도 분리**(`AssetMapId`): 에셋 앵커를 네비 지도(`DefaultMapId`)와 **다른 지도**에서 받는다. 비우면 예전처럼 네비 지도.
 //   네비 리졸버는 이 값을 모른다 — 측위·길 안내와 독립이고, 마커(증강 이미지) 인식에도 기대지 않는다.
+// - **전용 오버레이 · 회중시계**(2026-09-15 저녁 — QR 마커 폐기로 앵커가 공룡을 띄우는 유일한 경로): 종 데이터의
+//   `CustomOverlayClass`(아르켈론 전용 BP · 물·거품 이펙트)를 띄우고 `TimeRevealProfile` 로 회중시계 연출
+//   (`UTimeRevealComponent::AttachTo`)을 붙인다 — `ARTrackingManager` 마커 흐름과 같은 조립이다.
 //
 // ## 빌드 분리
 // 플러그인(GoogleARCoreServices) 호출은 전부 `#if NAV_CLOUD_RESOLVE` 안이다. Mac 에디터
@@ -117,6 +121,8 @@ public:
 	 */
 	static FTransform ComposeAssetTransform(const FTransform& AnchorXf, const FVector& OffLoc, float OffYaw, float OffScale,
 		float IniYawDeg, float IniZCm, float IniScale);
+	/** 종 데이터가 지정한 전용 오버레이 BP(`CustomOverlayClass`). 없으면 nullptr — 마커 흐름과 같은 선택(자동화 `Nav.AssetCompose`). */
+	static UClass* GetSpeciesOverlayClass(const UDinoInfoData* Info);
 
 private:
 	/** 「AR 스캔」 버튼이 매니저를 통해 알려 준다. 매니저는 고치지 않는다(D22). */
@@ -147,7 +153,12 @@ private:
 	UClass* LoadAssetClass();
 	/** (선택) `AssetDinoInfoPath` 의 종 데이터. 비었거나 못 읽으면 nullptr — BP 기본값대로 뜬다. */
 	UDinoInfoData* LoadDinoInfo();
-	/** 12단계 리졸버의 토스트 HUD 를 **같이 쓴다**(각자 띄우면 같은 자리에 두 장이 겹친다). */
+	/**
+	 * (선택) `AssetTimeRevealProfilePath` 의 회중시계 연출 설정. 종 데이터에 `TimeRevealProfile` 이 비어 있을 때만 쓴다.
+	 * 2026-09-15 develop 의 DA_Dino_Archelon 이 `32315b9`("측위")에서 이 참조를 잃었다 — DA 가 고쳐지면 ini 줄을 지운다.
+	 */
+	UTimeRevealProfile* LoadTimeRevealProfile();
+	/** 12단계 리졸버의 토스트 HUD 를 **같이 쓴다**(각자 띄우면 같은 자리에 두 장이 겹친다). 진단 문구라 개발모드에서만 뜬다(NavAppMode). */
 	void Toast(const FString& Message);
 
 	/** 매니저는 레벨 소유라 약참조로 든다. */
@@ -183,6 +194,9 @@ private:
 	/** (선택) 스폰 전에 SetDinoInfo 로 넣을 종 데이터 — `/Game/UI/DinoCard/DA_Dino_Archelon.DA_Dino_Archelon`. */
 	FString AssetDinoInfoPath;
 	bool bDinoInfoResolved = false;
+	/** (선택) 종 데이터에 회중시계 설정이 없을 때 쓸 `UTimeRevealProfile` — `/Game/TimeReveal/DA_TimeReveal_Archelon.DA_TimeReveal_Archelon`. */
+	FString AssetTimeRevealProfilePath;
+	bool bTimeRevealProfileResolved = false;
 	/**
 	 * DA 의 MeshTransform **위치**까지 쓸지. 기본 false — 그 값은 마커 기준 오프셋이라
 	 * (DA_Dino_Archelon 은 T-Rex 값 X=125.6cm 를 물려받았다) 앵커 흐름에선 앵커 자리가 곧 위치다.
@@ -195,6 +209,9 @@ private:
 
 	UPROPERTY(Transient)
 	TObjectPtr<UDinoInfoData> DinoInfoAsset = nullptr;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UTimeRevealProfile> TimeRevealProfileAsset = nullptr;
 
 	UPROPERTY(Transient)
 	TArray<FNavAssetAnchorEntry> Entries;

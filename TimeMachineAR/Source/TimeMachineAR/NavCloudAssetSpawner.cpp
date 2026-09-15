@@ -4,13 +4,16 @@
 
 #include "Engine/Engine.h"
 #include "Engine/World.h"
+#include "DinoInfoData.h"                                // GetSpeciesOverlayClass(순수 · 플러그인 비의존)
+#include "DinoOverlayActor.h"                            // TSubclassOf<ADinoOverlayActor> 비교에 완전한 타입이 필요하다(Mac 빌드 포함)
 
 // ARCore Cloud Anchors 는 Android 전용이라 GoogleARCoreServices 의존도 Android 타깃에만 걸린다
 // (TimeMachineAR.Build.cs). NAV_CLOUD_RESOLVE 는 그 조건과 1:1 로 붙어 있는 정의다.
 #if NAV_CLOUD_RESOLVE
 #include "ARTrackingManager.h"                           // 스캔 델리게이트 — **바인딩만** 한다
 #include "DinoOverlayActor.h"                            // 공개 함수(SetDinoInfo·StartReveal)만 부른다 — 수정 0
-#include "DinoInfoData.h"
+#include "TimeRevealComponent.h"                         // 회중시계 연출 — 공개 AttachTo 만 부른다(수정 0)
+#include "TimeRevealProfile.h"
 #include "Components/StaticMeshComponent.h"
 #include "NavCloudResolver.h"                            // 라벨 규약 + 토스트 HUD 공유
 #include "NavCloudResolveHud.h"
@@ -124,6 +127,12 @@ FTransform UNavCloudAssetSpawner::ComposeAssetTransform(const FTransform& Anchor
 	return FTransform(Rot, Loc, FVector(IniScale * OffScale));
 }
 
+UClass* UNavCloudAssetSpawner::GetSpeciesOverlayClass(const UDinoInfoData* Info)
+{
+	// 마커 흐름(ARTrackingManager.cpp CheckForTrackedImages)과 같은 선택 — 종이 지정한 전용 오버레이가 있으면 그것.
+	return (Info != nullptr && Info->CustomOverlayClass != nullptr) ? Info->CustomOverlayClass.Get() : nullptr;
+}
+
 bool UNavCloudAssetSpawner::ShouldCreateSubsystem(UObject* Outer) const
 {
 	if (!Super::ShouldCreateSubsystem(Outer))
@@ -152,10 +161,11 @@ void UNavCloudAssetSpawner::Initialize(FSubsystemCollectionBase& Collection)
 #if NAV_CLOUD_RESOLVE
 	LoadSpawnConfig();
 	UE_LOG(LogNavAssetSpawn, Log,
-		TEXT("[NavAssetSpawn] 에셋 스포너 시작(13-1) — 에셋='%s' 종='%s' DA위치=%s yaw=%.1f° z=%.0fcm scale=%.2f · 에셋지도=%s"),
+		TEXT("[NavAssetSpawn] 에셋 스포너 시작(13-1) — 에셋='%s' 종='%s' DA위치=%s yaw=%.1f° z=%.0fcm scale=%.2f · 에셋지도=%s · 회중시계 보충=%s"),
 		*AssetClassPath, AssetDinoInfoPath.IsEmpty() ? TEXT("(BP 기본값)") : *AssetDinoInfoPath,
 		bApplyDinoInfoLocation ? TEXT("적용") : TEXT("무시"), SpawnYawOffsetDeg, SpawnZOffsetCm, SpawnScale,
-		AssetMapId.IsEmpty() ? TEXT("(네비 지도와 같음)") : *AssetMapId);
+		AssetMapId.IsEmpty() ? TEXT("(네비 지도와 같음)") : *AssetMapId,
+		AssetTimeRevealProfilePath.IsEmpty() ? TEXT("(없음 — 종 데이터만)") : *AssetTimeRevealProfilePath);
 #endif
 }
 
@@ -353,10 +363,12 @@ void UNavCloudAssetSpawner::LoadSpawnConfig()
 		GConfig->GetString(kConfigSection, TEXT("AssetDinoInfoPath"), AssetDinoInfoPath, GGameIni);
 		GConfig->GetBool(kConfigSection, TEXT("bApplyDinoInfoLocation"), bApplyDinoInfoLocation, GGameIni);
 		GConfig->GetString(kConfigSection, TEXT("AssetMapId"), AssetMapId, GGameIni);
+		GConfig->GetString(kConfigSection, TEXT("AssetTimeRevealProfilePath"), AssetTimeRevealProfilePath, GGameIni);
 	}
 	AssetClassPath.TrimStartAndEndInline();
 	AssetDinoInfoPath.TrimStartAndEndInline();
 	AssetMapId.TrimStartAndEndInline();
+	AssetTimeRevealProfilePath.TrimStartAndEndInline();
 	if (AssetClassPath.IsEmpty())
 	{
 		AssetClassPath = kFallbackAssetClassPath;
@@ -417,6 +429,27 @@ UDinoInfoData* UNavCloudAssetSpawner::LoadDinoInfo()
 		Toast(TEXT("종 데이터(DA)를 못 찾음 — BP 기본값으로 표시"));
 	}
 	return DinoInfoAsset;
+}
+
+UTimeRevealProfile* UNavCloudAssetSpawner::LoadTimeRevealProfile()
+{
+	if (bTimeRevealProfileResolved)
+	{
+		return TimeRevealProfileAsset;
+	}
+	bTimeRevealProfileResolved = true;
+	LoadSpawnConfig();
+	if (AssetTimeRevealProfilePath.IsEmpty())
+	{
+		return nullptr; // 종 데이터에도 ini 에도 없으면 회중시계 없이 띄운다.
+	}
+	TimeRevealProfileAsset = LoadObject<UTimeRevealProfile>(nullptr, *AssetTimeRevealProfilePath);
+	if (TimeRevealProfileAsset == nullptr)
+	{
+		UE_LOG(LogNavAssetSpawn, Error,
+			TEXT("[NavAssetSpawn] 회중시계 설정 로드 실패 '%s' — 경로·쿡 확인. 회중시계 없이 띄운다"), *AssetTimeRevealProfilePath);
+	}
+	return TimeRevealProfileAsset;
 }
 
 void UNavCloudAssetSpawner::OnFetchFailed(const FString& Url, int32 Code)
@@ -711,7 +744,14 @@ void UNavCloudAssetSpawner::SpawnOrFollow(FNavAssetAnchorEntry& Entry)
 		return;
 	}
 
-	UClass* Class = LoadAssetClass();
+	// 종이 전용 오버레이 BP(CustomOverlayClass)를 지정하면 그걸 띄운다 — 마커 흐름(ARTrackingManager.cpp
+	// CheckForTrackedImages)과 같은 선택. 없으면 ini 의 AssetClassPath(기본 T-Rex 오버레이 + 종 데이터).
+	UDinoInfoData* Info = LoadDinoInfo();
+	UClass* Class = GetSpeciesOverlayClass(Info);
+	if (Class == nullptr)
+	{
+		Class = LoadAssetClass();
+	}
 	if (Class == nullptr)
 	{
 		Entry.bGaveUp = true; // 스폰할 것이 없다 — 리졸브를 더 돌려도 의미가 없다.
@@ -726,12 +766,11 @@ void UNavCloudAssetSpawner::SpawnOrFollow(FNavAssetAnchorEntry& Entry)
 	if (Spawned == nullptr)
 	{
 		UE_LOG(LogNavAssetSpawn, Error, TEXT("[NavAssetSpawn] #%d 스폰 실패 (%s)"),
-			Entry.PointNo, *AssetClassPath);
+			Entry.PointNo, *Class->GetPathName());
 		Entry.bGaveUp = true;
 		return;
 	}
 	ADinoOverlayActor* Overlay = Cast<ADinoOverlayActor>(Spawned);
-	UDinoInfoData* Info = LoadDinoInfo();
 	if (Overlay != nullptr && Info != nullptr)
 	{
 		Overlay->SetDinoInfo(Info);
@@ -739,7 +778,7 @@ void UNavCloudAssetSpawner::SpawnOrFollow(FNavAssetAnchorEntry& Entry)
 	else if (Overlay == nullptr && Info != nullptr)
 	{
 		UE_LOG(LogNavAssetSpawn, Warning,
-			TEXT("[NavAssetSpawn] '%s' 는 DinoOverlayActor 가 아니라 종 데이터를 넣지 않는다"), *AssetClassPath);
+			TEXT("[NavAssetSpawn] '%s' 는 DinoOverlayActor 가 아니라 종 데이터를 넣지 않는다"), *Class->GetPathName());
 	}
 	Spawned->FinishSpawning(Target);
 
@@ -767,11 +806,24 @@ void UNavCloudAssetSpawner::SpawnOrFollow(FNavAssetAnchorEntry& Entry)
 	{
 		Overlay->StartReveal();
 	}
+
+	// 회중시계 연출(TimeReveal) — 마커 흐름(ARTrackingManager.cpp)과 같이 종의 TimeRevealProfile 로 붙인다.
+	// 붙으면 공룡을 숨기고 시계를 띄워, 위로 던지면 시간의 문이 열리며 나타난다. 추적 핀은 이 클라우드 앵커다
+	// (2초 넘게 안 보이면 연출이 취소되고 공룡이 바로 보인다). 위의 StartReveal 은 연출이 끝나 원래 머티리얼로
+	// 돌아왔을 때 살점 알파가 0 에 남지 않게 먼저 걸어 둔다(연출 중엔 메시가 숨겨져 화면에 영향 없음).
+	// 종 데이터에 설정이 없으면 ini AssetTimeRevealProfilePath 로 보충한다(develop DA 가 참조를 잃은 동안의 임시 경로 — 헤더 주석).
+	UTimeRevealProfile* RevealProfile = (Info != nullptr && Info->TimeRevealProfile != nullptr)
+		? Info->TimeRevealProfile.Get() : LoadTimeRevealProfile();
+	bool bTimeReveal = false;
+	if (Overlay != nullptr && RevealProfile != nullptr)
+	{
+		bTimeReveal = UTimeRevealComponent::AttachTo(Overlay, RevealProfile, Pin) != nullptr;
+	}
 	Entry.SpawnedActor = Spawned;
 	UE_LOG(LogNavAssetSpawn, Log,
-		TEXT("[NavAssetSpawn] #%d '%s' 스폰(종=%s, 살점표시=%d, DA위치무시=%d) — 월드(%.0f, %.0f, %.0f) yaw=%.1f° scale=%.2f"),
-		Entry.PointNo, *AssetClassPath, Info != nullptr ? *Info->GetPathName() : TEXT("BP 기본값"),
-		Overlay != nullptr ? 1 : 0, bZeroedLocation ? 1 : 0, Loc.X, Loc.Y, Loc.Z, Rot.Yaw, Target.GetScale3D().X);
+		TEXT("[NavAssetSpawn] #%d '%s' 스폰(클래스=%s, 종=%s, 살점표시=%d, DA위치무시=%d, 회중시계=%d) — 월드(%.0f, %.0f, %.0f) yaw=%.1f° scale=%.2f"),
+		Entry.PointNo, *Entry.Label, *Class->GetPathName(), Info != nullptr ? *Info->GetPathName() : TEXT("BP 기본값"),
+		Overlay != nullptr ? 1 : 0, bZeroedLocation ? 1 : 0, bTimeReveal ? 1 : 0, Loc.X, Loc.Y, Loc.Z, Rot.Yaw, Target.GetScale3D().X);
 }
 
 void UNavCloudAssetSpawner::ClearAll()
@@ -813,6 +865,7 @@ bool UNavCloudAssetSpawner::ResolveServerConfig() { return false; }
 void UNavCloudAssetSpawner::LoadSpawnConfig() {}
 UClass* UNavCloudAssetSpawner::LoadAssetClass() { return nullptr; }
 UDinoInfoData* UNavCloudAssetSpawner::LoadDinoInfo() { return nullptr; }
+UTimeRevealProfile* UNavCloudAssetSpawner::LoadTimeRevealProfile() { return nullptr; }
 void UNavCloudAssetSpawner::OnFetchFailed(const FString& /*Url*/, int32 /*Code*/) {}
 void UNavCloudAssetSpawner::FetchAssetAnchors() {}
 void UNavCloudAssetSpawner::ApplyAnchorsJson(const FString& /*Body*/) {}
