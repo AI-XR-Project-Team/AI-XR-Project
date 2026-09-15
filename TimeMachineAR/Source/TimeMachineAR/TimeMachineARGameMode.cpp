@@ -7,7 +7,8 @@
 ATimeMachineARGameMode::ATimeMachineARGameMode()
 	: Super()
 {
-	// DefaultPawnClass set in Blueprint or use default
-	DefaultPawnClass = APawn::StaticClass();
+	// set default pawn class to our Blueprinted character
+	static ConstructorHelpers::FClassFinder<APawn> PlayerPawnClassFinder(TEXT("/Game/FirstPerson/Blueprints/BP_FirstPersonCharacter"));
+	DefaultPawnClass = PlayerPawnClassFinder.Class;
 
 }
