@@ -232,6 +232,7 @@ FNavGuidance UNavRouteProgress::GetGuidance() const
 	G.StepRemainingCm = FMath::Max(0.f, StepEndCm[Cur] - Travelled);
 	G.RemainingCm = LastProgress.RemainingCm;
 	G.bArrived = LastProgress.bArrived;
+	G.bOffRoute = LastProgress.bOffRoute;   // 안내 로그의 OffRoute 단계(§3)가 본다.
 
 	// 다음에 올 회전/도착(곧 있을 안내 미리보기).
 	for (int32 j = Cur + 1; j < Steps.Num(); ++j)

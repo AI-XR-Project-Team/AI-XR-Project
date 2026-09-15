@@ -106,6 +106,7 @@ void ADinoOverlayActor::Tick(float DeltaTime)
 
 void ADinoOverlayActor::StartReveal()
 {
+	if (bRevealLocked) return;
 	if (!bIsRevealing && !bHasRevealed)
 	{
 		bIsRevealing = true;
@@ -129,7 +130,7 @@ void ADinoOverlayActor::NotifyActorOnInputTouchBegin(const ETouchIndex::Type Fin
 
 void ADinoOverlayActor::HandleTapped()
 {
-	if (!bClickable)
+	if (!bClickable || bRevealLocked)
 	{
 		return;
 	}
