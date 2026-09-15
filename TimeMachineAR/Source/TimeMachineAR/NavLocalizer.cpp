@@ -557,6 +557,16 @@ void UNavLocalizer::SolveTransform(const FTransform& MarkerWorld)
 	bSolvedSinceMonitor = true;
 }
 
+void UNavLocalizer::ApplyCloudBlendTransform(const FTransform& NewMapToWorld)
+{
+	// 13-3 D74 — 앵커 측위의 정상 상태에서만. 재측위(Relocalizing)·복구 표시(Recovered) 중엔 13-4 흐름이 변환을 쥔다.
+	if (!bLocalized || !bAnchorFromCloud || LocState != ENavLocState::Localized)
+	{
+		return;
+	}
+	MapToWorldXf = NewMapToWorld;
+}
+
 void UNavLocalizer::UpdateCurrentPose()
 {
 	// 13-4 — 재측위 중엔 위치를 갱신·방송하지 않는다(마지막 정상 pose 유지 → 미니맵이 저절로 멈춘다).
