@@ -7,8 +7,11 @@
 #include "NavCloudAssetSpawner.generated.h"
 
 class AARTrackingManager;
+class FJsonValue;
 class UARPin;
+class UARTrackedImage;
 class UDinoInfoData;
+class UTimeRevealProfile;
 
 // 13-1 §C-1 — 하단 바의 「AR 스캔」 을 누르면 label 이 `asset*` 인 Cloud Anchor 를 리졸브해
 // 그 앵커 **바로 위에 에셋(Archelon)을 띄운다**. 시연영상 촬영이 목적이다.
@@ -51,6 +54,23 @@ class UDinoInfoData;
 //   (`ComposeAssetTransform` — 테스트 앱과 같은 식). 조정 패드 UI 는 이식하지 않는다(공지 트리거 3) — 값은 테스트 앱에서 맞춘다.
 // - **에셋 지도 분리**(`AssetMapId`): 에셋 앵커를 네비 지도(`DefaultMapId`)와 **다른 지도**에서 받는다. 비우면 예전처럼 네비 지도.
 //   네비 리졸버는 이 값을 모른다 — 측위·길 안내와 독립이고, 마커(증강 이미지) 인식에도 기대지 않는다.
+// - **전용 오버레이 · 회중시계**(2026-09-15 저녁 — QR 마커 폐기로 앵커가 공룡을 띄우는 유일한 경로): 종 데이터의
+//   `CustomOverlayClass`(아르켈론 전용 BP · 물·거품 이펙트)를 띄우고 `TimeRevealProfile` 로 회중시계 연출
+//   (`UTimeRevealComponent::AttachTo`)을 붙인다 — `ARTrackingManager` 마커 흐름과 같은 조립이다.
+//
+// ## 마커 트리거 (2026-09-15 밤 — 앵커가 없는 집에서 하는 에셋 작업)
+// Cloud Anchor 는 등록한 현장에서만 잡힌다. 그래서 **등록된 마커 전부(`DA_ARSession` 후보 이미지)를 앵커 #203 과 같은
+// 트리거로** 쓴다. 마커가 잡히면 그 자리를 #203 앵커 자리로 보고 **#203 과 똑같은 조립**으로 띄운다 — 같은 `SpawnOrFollow`
+// (종 데이터·전용 오버레이·회중시계·DA 위치 0) + #203 의 서버 `asset_offset` + ini 보정. 그래서 마커로 보며 고친 에셋
+// (BP·DA 회전/배율·이펙트·연출)은 따로 옮기지 않아도 **#203 에서 그대로** 보인다.
+// - 본뜨는 번호는 ini `MarkerTemplatePointNo`(기본 203). 저장값은 에셋 지도 목록에서 받고, 서버에 못 닿으면(팀원 집)
+//   코드 스냅샷(2026-09-15 서버값)을 쓴다. 서버값이 스냅샷과 다르면 로그로 알린다.
+// - 마커 pose 는 앵커처럼 세운다(`GravityAlignMarkerTransform` — yaw 만). 모니터에 띄운 마커여도 공룡이 눕지 않는다.
+// - 대응표(`DA_DinoRegistry`)에 있는 마커는 매니저가 먼저 종별 공룡을 띄우고 `OnMarkerFound` 를 방송한다 → **바인딩만** 해서
+//   공개 `ClearOverlay()` 로 걷고 #203 조립으로 바꿔 띄운다(매니저 수정 0 · 월드 서브시스템 틱은 액터 틱보다 늦어 늘 이 순서).
+//   대응표에 없는 마커(MARK-NEUTI4-START 등)는 매니저가 무시하므로 이 틱이 직접 찾는다. 스캔 회차당 하나.
+// - Cloud Anchor 모드가 꺼 버리는 마커 인식은 `NavArCoreConfig` 가 되돌린다. ini `bMarkerTriggers=False` 면 둘 다 끈다
+//   (12단계 이후 develop 과 같다 — Cloud Anchor 모드에선 마커가 아예 안 잡힌다 · 13-3 현장 빌드와 같은 부하).
 //
 // ## 빌드 분리
 // 플러그인(GoogleARCoreServices) 호출은 전부 `#if NAV_CLOUD_RESOLVE` 안이다. Mac 에디터
@@ -67,6 +87,12 @@ struct FNavAssetAnchorEntry
 	UPROPERTY() FString CloudId;
 	UPROPERTY() FString Label;
 	UPROPERTY() TObjectPtr<UARPin> Pin = nullptr;
+
+	/**
+	 * 마커 트리거면 그 마커 이름(증강 이미지 FriendlyName). 비어 있으면 Cloud Anchor 항목이다.
+	 * 마커 항목의 Pin 은 이미지에 붙인 **일반 핀**이고, PointNo·Label·보정은 본뜬 앵커(#203) 것이다.
+	 */
+	UPROPERTY() FString MarkerName;
 
 	/** 이 앵커 위에 띄운 에셋. **우리가 만든 것만** 우리가 지운다(매니저 오버레이와 무관). */
 	UPROPERTY() TObjectPtr<AActor> SpawnedActor = nullptr;
@@ -117,15 +143,27 @@ public:
 	 */
 	static FTransform ComposeAssetTransform(const FTransform& AnchorXf, const FVector& OffLoc, float OffYaw, float OffScale,
 		float IniYawDeg, float IniZCm, float IniScale);
+	/** 종 데이터가 지정한 전용 오버레이 BP(`CustomOverlayClass`). 없으면 nullptr — 마커 흐름과 같은 선택(자동화 `Nav.AssetCompose`). */
+	static UClass* GetSpeciesOverlayClass(const UDinoInfoData* Info);
+	/**
+	 * 마커(증강 이미지) pose → 앵커처럼 **중력에 세운** pose(위치 그대로 · yaw 만). 순수 계산(자동화 `Nav.AssetCompose` ⑤).
+	 * 이미지 축(UE): X = 인쇄물 위쪽 · Z = 인쇄면 법선. 앞 = (X − Z) 를 수평면에 투영한 방향 —
+	 * 바닥·책상에 눕히면 인쇄물 위쪽, 모니터·벽에 세우면 보는 사람이 바라보는 쪽이 앞이고 그 사이 기울기에서도 튀지 않는다.
+	 */
+	static FTransform GravityAlignMarkerTransform(const FTransform& MarkerXf);
 
 private:
 	/** 「AR 스캔」 버튼이 매니저를 통해 알려 준다. 매니저는 고치지 않는다(D22). */
 	UFUNCTION()
 	void HandleScanStateChanged(bool bScanning);
 
+	/** 매니저가 대응표 마커로 종별 공룡을 띄웠다 — 걷고 #203 조립으로 다시 띄운다(마커 트리거). 매니저는 고치지 않는다. */
+	UFUNCTION()
+	void HandleMarkerFound(UARPin* Pin, const FTransform& MarkerPose, const FString& MarkerCode);
+
 	/** 레벨의 매니저를 찾을 때까지 매 틱 두드린다(레벨이 늦게 뜰 수 있다). 찾으면 델리게이트에 붙는다. */
 	void TryBindTrackingManager();
-	/** ARPinCloudMode=Enabled. 성공할 때까지 매 틱 재시도. */
+	/** ARPinCloudMode=Enabled + 플러그인이 버린 마커 이미지 DB 복원(`NavArCoreConfig`). 성공할 때까지 매 틱 재시도. */
 	void TryConfigureCloudMode();
 	/** ini(NavClient 섹션)와 NavClient 서브시스템에서 서버 주소·맵 id 를 읽는다. NavClient 는 수정하지 않는다. */
 	bool ResolveServerConfig();
@@ -139,16 +177,32 @@ private:
 	void StartResolve(FNavAssetAnchorEntry& Entry);
 	/** 진행 중인 리졸브를 훑어 스폰/타임아웃을 처리하고, 뜬 에셋을 앵커에 붙여 둔다. */
 	void PollResolves();
-	/** 인식된 앵커 위에 에셋을 올리고(최초 1회) 매 틱 앵커를 따라가게 한다. */
+	/** 인식된 앵커(또는 마커 트리거) 위에 에셋을 올리고(최초 1회) 매 틱 핀을 따라가게 한다. */
 	void SpawnOrFollow(FNavAssetAnchorEntry& Entry);
-	/** 스캔 ON 때 호출 — 이전 회차의 에셋·핀을 전부 걷어낸다(중복 방지). */
+	/** 스캔 ON 때 호출 — 이전 회차의 에셋·핀(마커 트리거 포함)을 전부 걷어낸다(중복 방지). */
 	void ClearAll();
 	/** ini 의 BP 를 로드한다. 실패하면 T-Rex 폴백(파이프라인만이라도 검증되게 — D25). */
 	UClass* LoadAssetClass();
-	/** (선택) `AssetDinoInfoPath` 의 종 데이터. 비었거나 못 읽으면 nullptr — BP 기본값대로 뜬다. */
+	/** 종 데이터(`AssetDinoInfoPath` — 키가 없으면 아르켈론). 빈 값이거나 못 읽으면 nullptr — BP 기본값대로 뜬다. */
 	UDinoInfoData* LoadDinoInfo();
-	/** 12단계 리졸버의 토스트 HUD 를 **같이 쓴다**(각자 띄우면 같은 자리에 두 장이 겹친다). */
+	/**
+	 * (선택) `AssetTimeRevealProfilePath` 의 회중시계 연출 설정. 종 데이터에 `TimeRevealProfile` 이 비어 있을 때만 쓴다.
+	 * 2026-09-15 develop 의 DA_Dino_Archelon 이 `32315b9`("측위")에서 이 참조를 잃었다 — DA 가 고쳐지면 ini 줄을 지운다.
+	 */
+	UTimeRevealProfile* LoadTimeRevealProfile();
+	/** 12단계 리졸버의 토스트 HUD 를 **같이 쓴다**(각자 띄우면 같은 자리에 두 장이 겹친다). 진단 문구라 개발모드에서만 뜬다(NavAppMode). */
 	void Toast(const FString& Message);
+
+	/** 스캔 중 보이는 등록 마커를 #203 조립으로 띄운다(회차당 하나). 대응표에 없는 마커는 매니저가 무시하므로 여기서 잡는다. */
+	void PollMarkerTriggers();
+	/** Tracking 중인 증강 이미지. 이름이 비면 아무 마커나. */
+	UARTrackedImage* FindTrackedMarker(const FString& MarkerCode) const;
+	/** 이미지에 핀을 붙이고 본뜬 앵커(#203)의 보정으로 띄운다. 핀을 못 만들면 false. */
+	bool SpawnMarkerTrigger(UARTrackedImage* Image);
+	/** 본뜬 앵커(#203)의 번호·라벨·배치 보정을 마커 항목에 넣는다. */
+	void ApplyTemplateOffset(FNavAssetAnchorEntry& Entry) const;
+	/** 에셋 지도 목록에서 본뜬 앵커(#203)의 저장값을 받는다 — 스캔이 꺼졌어도(매니저가 마커를 잡아 StopScan) 받는다. */
+	void CaptureTemplateOffset(const TArray<TSharedPtr<FJsonValue>>& Rows);
 
 	/** 매니저는 레벨 소유라 약참조로 든다. */
 	TWeakObjectPtr<AARTrackingManager> TrackingManager;
@@ -180,15 +234,33 @@ private:
 	float SpawnYawOffsetDeg = 0.f;
 	float SpawnZOffsetCm = 0.f;
 	float SpawnScale = 1.f;
-	/** (선택) 스폰 전에 SetDinoInfo 로 넣을 종 데이터 — `/Game/UI/DinoCard/DA_Dino_Archelon.DA_Dino_Archelon`. */
+	/**
+	 * 스폰 전에 SetDinoInfo 로 넣을 종 데이터. ini 키가 없으면 `/Game/UI/DinoCard/DA_Dino_Archelon.DA_Dino_Archelon` —
+	 * 팀원 빌드엔 로컬 ini 섹션이 없어도 마커 트리거가 #203 과 같은 종을 띄우게. 빈 값을 적으면 BP 기본값.
+	 */
 	FString AssetDinoInfoPath;
 	bool bDinoInfoResolved = false;
+	/** (선택) 종 데이터에 회중시계 설정이 없을 때 쓸 `UTimeRevealProfile` — `/Game/TimeReveal/DA_TimeReveal_Archelon.DA_TimeReveal_Archelon`. */
+	FString AssetTimeRevealProfilePath;
+	bool bTimeRevealProfileResolved = false;
 	/**
 	 * DA 의 MeshTransform **위치**까지 쓸지. 기본 false — 그 값은 마커 기준 오프셋이라
 	 * (DA_Dino_Archelon 은 T-Rex 값 X=125.6cm 를 물려받았다) 앵커 흐름에선 앵커 자리가 곧 위치다.
-	 * 회전·배율은 메시 보정이라 항상 DA 값을 쓴다.
+	 * 회전·배율은 메시 보정이라 항상 DA 값을 쓴다. 마커 트리거도 같은 값을 따른다(#203 과 같은 조립).
 	 */
 	bool bApplyDinoInfoLocation = false;
+
+	/** 마커 트리거를 쓰나(ini `bMarkerTriggers` — `NavArCoreConfig::AreMarkerTriggersEnabled`). */
+	bool bMarkerTriggers = true;
+	/** 마커가 본뜨는 에셋 앵커 번호(ini `MarkerTemplatePointNo`, 기본 203). */
+	int32 MarkerTemplatePointNo = 0;
+	/** 본뜬 앵커의 라벨·배치 보정. 서버 목록을 받기 전엔 코드 스냅샷(#203)이다. */
+	FString TemplateLabel;
+	FVector TemplateOffLoc = FVector::ZeroVector;
+	float TemplateOffYaw = 0.f;
+	float TemplateOffScale = 1.f;
+	/** 본뜬 앵커의 저장값을 서버에서 받았나(아니면 스냅샷). */
+	bool bTemplateFromServer = false;
 
 	UPROPERTY(Transient)
 	TObjectPtr<UClass> AssetClass = nullptr;
@@ -197,5 +269,12 @@ private:
 	TObjectPtr<UDinoInfoData> DinoInfoAsset = nullptr;
 
 	UPROPERTY(Transient)
+	TObjectPtr<UTimeRevealProfile> TimeRevealProfileAsset = nullptr;
+
+	UPROPERTY(Transient)
 	TArray<FNavAssetAnchorEntry> Entries;
+
+	/** 마커 트리거로 띄운 것(스캔 회차당 하나). 앵커 목록(`Entries`)과 나눠 둔다 — 목록 조회·"앵커 없음" 판정에 섞이지 않게. */
+	UPROPERTY(Transient)
+	TArray<FNavAssetAnchorEntry> MarkerEntries;
 };

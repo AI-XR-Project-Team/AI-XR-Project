@@ -2,6 +2,7 @@
 
 #include "NavCloudResolveHud.h"
 
+#include "NavAppMode.h"
 #include "TimerManager.h"
 #include "Engine/World.h"
 #include "Blueprint/WidgetTree.h"
@@ -81,6 +82,23 @@ void UNavCloudResolveHud::ShowLocalized(int32 PointNo, float Seconds)
 }
 
 void UNavCloudResolveHud::ShowMessage(const FString& Message)
+{
+	// 사용자모드 — 진단 토스트(앵커 번호·지연·설정 오류)는 띄우지 않는다. logcat 로그는 모드와 무관하다.
+	if (!NavAppMode::IsDevMode())
+	{
+		return;
+	}
+	Enqueue(Message);
+}
+
+void UNavCloudResolveHud::ShowRecovered(int32 PointNo)
+{
+	Enqueue(NavAppMode::IsDevMode()
+		? FString::Printf(TEXT("위치를 다시 잡았습니다 (#%d)"), PointNo)
+		: FString(TEXT("위치를 다시 잡았습니다")));
+}
+
+void UNavCloudResolveHud::Enqueue(const FString& Message)
 {
 	// 같은 문구가 이미 큐에 있으면 중복으로 쌓지 않는다.
 	if (Pending.Contains(Message))

@@ -364,6 +364,7 @@ public:
 	/**
 	 * true 면 노드 점·엣지 선을 다시 그린다(디버그). 기본 false — 사용자 화면에는 도면·구조물·
 	 * 목적지 아이콘·경로선만 남긴다(final §D-7). 경로가 이상할 때 ini 로 켜서 원인을 본다.
+	 * **개발모드**(`NavAppMode`)에서만 효과가 있다 — 사용자모드면 켜 둬도 그리지 않는다.
 	 */
 	UPROPERTY(Config, EditAnywhere, BlueprintReadWrite, Category = "Nav|Minimap|Full")
 	bool bDrawGraphDebug = false;

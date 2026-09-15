@@ -10,6 +10,8 @@
 // 타깃에선 아래 기능 코드가 전부 빠지고 클래스 껍데기만 남는다(ShouldCreateSubsystem=false).
 #if NAV_CLOUD_RESOLVE
 #include "NavCloudResolveHud.h"
+#include "NavAppMode.h"                                  // 시작 로그에 모드 표시
+#include "NavArCoreConfig.h"                             // Cloud Anchor 모드 + 마커 이미지 DB 복원
 #include "NavClient.h"                                   // ServerBaseUrl
 #include "NavLocalizer.h"                                // 앵커로 측위 세우기
 #include "NavTypes.h"                                    // FNavMarker
@@ -302,6 +304,9 @@ void UNavCloudResolverSubsystem::Initialize(FSubsystemCollectionBase& Collection
 		TEXT("[NavBlend] 근접 앵커 가중 보정 %s — 최대 %d개 · 반경 %.0fcm · 게이트 %.0fcm · 평활 %.2f초 · 최소거리 %.0fcm · 인식 후 %.1f초"),
 		bBlendNearbyAnchors ? TEXT("ON") : TEXT("OFF"), BlendMaxAnchors, BlendRadiusCm, BlendGateCm,
 		BlendSmoothSeconds, BlendMinDistanceCm, BlendMinTrackSeconds);
+	UE_LOG(LogNavCloudResolve, Log, TEXT("[NavAppMode] %s"), NavAppMode::IsDevMode()
+		? TEXT("개발모드 — 앵커 토스트 · AR 지도 겹쳐보기(ini 로 켠 것)를 보인다")
+		: TEXT("사용자모드 — 앵커 토스트 · AR 지도 겹쳐보기를 끈다"));
 #endif
 }
 
@@ -386,9 +391,8 @@ void UNavCloudResolverSubsystem::TryConfigureCloudMode()
 	{
 		return;
 	}
-	FGoogleARCoreServicesConfig Config;
-	Config.ARPinCloudMode = EARPinCloudMode::Enabled;
-	if (UGoogleARCoreServicesFunctionLibrary::ConfigGoogleARCoreServices(Config))
+	// 플러그인이 이때 버리는 마커 이미지 DB 는 NavArCoreConfig 가 되돌린다(스포너 마커 트리거가 쓴다 — 헤더 흐름 1).
+	if (NavArCoreConfig::EnableCloudAnchorMode(TEXT("NavCloudResolve")))
 	{
 		bCloudConfigured = true;
 		UE_LOG(LogNavCloudResolve, Log, TEXT("[NavCloudResolve] Cloud Anchor 모드 ON"));
@@ -1323,7 +1327,7 @@ bool UNavCloudResolverSubsystem::PassJumpGate(int32 CandidatePointNo, const FVec
 			EnsureHud();
 			if (Hud != nullptr)
 			{
-				Hud->ShowMessage(FString::Printf(TEXT("위치를 다시 잡았습니다 (#%d)"), CandidatePointNo));
+				Hud->ShowRecovered(CandidatePointNo);
 			}
 			return true;
 		}
@@ -1343,7 +1347,7 @@ bool UNavCloudResolverSubsystem::PassJumpGate(int32 CandidatePointNo, const FVec
 			EnsureHud();
 			if (Hud != nullptr)
 			{
-				Hud->ShowMessage(FString::Printf(TEXT("위치를 다시 잡았습니다 (#%d)"), CandidatePointNo));
+				Hud->ShowRecovered(CandidatePointNo);
 			}
 			return true;
 		}

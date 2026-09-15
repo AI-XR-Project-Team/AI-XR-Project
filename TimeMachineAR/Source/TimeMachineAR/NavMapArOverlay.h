@@ -71,7 +71,7 @@ public:
 	virtual void Tick(float DeltaTime) override;
 	virtual TStatId GetStatId() const override;
 
-	/** 켜기 스위치. 기본 꺼짐 — 현장 검증 빌드의 ini 에서만 켠다. */
+	/** 켜기 스위치. 기본 꺼짐 — 현장 검증 빌드의 ini 에서만 켠다. **개발모드**(`NavAppMode`)가 아니면 켜 둬도 돌지 않는다. */
 	UPROPERTY(Config)
 	bool bEnabled = false;
 
