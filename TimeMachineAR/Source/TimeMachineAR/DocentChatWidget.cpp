@@ -711,7 +711,7 @@ void UDocentChatWidget::HandleCloseARClicked()
 	bReferenceRecognized = false;
 	if (AARTrackingManager* TrackingManager = AARTrackingManager::GetARTrackingManager(this))
 	{
-		TrackingManager->ClearOverlay();
+		TrackingManager->StartScan();
 	}
 	if (Btn_CloseAR != nullptr)
 	{
