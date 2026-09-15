@@ -37,7 +37,7 @@
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWatchAssemblyTest, "TimeMachineAR.Reveal.WatchAssembly",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-namespace
+namespace WatchAssemblyTestLocal
 {
 	UWorld* FindEditorWorld()
 	{
@@ -91,11 +91,12 @@ namespace
 		TEXT("T_Watch_HandHour_BaseColor"), TEXT("T_Watch_HandHour_Normal"), TEXT("T_Watch_HandHour_MR"),
 		TEXT("T_Watch_HandMinute_BaseColor"), TEXT("T_Watch_HandMinute_Normal"), TEXT("T_Watch_HandMinute_MR"),
 	};
-}
+} // namespace WatchAssemblyTestLocal
+using namespace WatchAssemblyTestLocal;
 
 bool FWatchAssemblyTest::RunTest(const FString& Parameters)
 {
-	UWorld* World = FindEditorWorld();
+	UWorld* World = WatchAssemblyTestLocal::FindEditorWorld();
 	if (World == nullptr || GUsingNullRHI)
 	{
 		AddWarning(TEXT("에디터 월드/RHI 없음 — -RenderOffscreen 으로 실행하라(건너뜀)."));
@@ -228,10 +229,10 @@ bool FWatchAssemblyTest::RunTest(const FString& Parameters)
 	// ---------------------------------------------------------------- 렌더 검수
 	// 액터 전체(190cm 안팎) 기준 거리 — ClockAuditTest 와 동일한 카메라 배치 관례.
 	const float Extent = 300.f;
-	TestTrue(TEXT("Capture front"), Capture(World, Origin + FVector(600.f, 0, 0), FRotator(0.f, 180.f, 0.f), Extent, TEXT("WatchAssembly_front.png")));
-	TestTrue(TEXT("Capture side"), Capture(World, Origin + FVector(0, 600.f, 0), FRotator(0.f, -90.f, 0.f), Extent, TEXT("WatchAssembly_side.png")));
-	TestTrue(TEXT("Capture back"), Capture(World, Origin + FVector(-600.f, 0, 0), FRotator(0.f, 0.f, 0.f), Extent, TEXT("WatchAssembly_back.png")));
-	TestTrue(TEXT("Capture 3/4"), Capture(World, Origin + FVector(400.f, 550.f, 250.f), FRotator(-20.f, -125.f, 0.f), Extent, TEXT("WatchAssembly_persp34.png")));
+	TestTrue(TEXT("Capture front"), WatchAssemblyTestLocal::Capture(World, Origin + FVector(600.f, 0, 0), FRotator(0.f, 180.f, 0.f), Extent, TEXT("WatchAssembly_front.png")));
+	TestTrue(TEXT("Capture side"), WatchAssemblyTestLocal::Capture(World, Origin + FVector(0, 600.f, 0), FRotator(0.f, -90.f, 0.f), Extent, TEXT("WatchAssembly_side.png")));
+	TestTrue(TEXT("Capture back"), WatchAssemblyTestLocal::Capture(World, Origin + FVector(-600.f, 0, 0), FRotator(0.f, 0.f, 0.f), Extent, TEXT("WatchAssembly_back.png")));
+	TestTrue(TEXT("Capture 3/4"), WatchAssemblyTestLocal::Capture(World, Origin + FVector(400.f, 550.f, 250.f), FRotator(-20.f, -125.f, 0.f), Extent, TEXT("WatchAssembly_persp34.png")));
 
 	// 바늘 4각도 — 정면 카메라 고정, 허브가 흔들리지 않는지 확인용(design.md §3.2 합격 기준).
 	const float HandAngles[] = { 0.f, 90.f, 180.f, 270.f };
@@ -240,13 +241,13 @@ bool FWatchAssemblyTest::RunTest(const FString& Parameters)
 		Watch->SetHandsAngle(A, A + 45.f);
 		TestTrue(FString::Printf(TEXT("Hour hand angle %.0f"), A), Watch->HourPivot->GetRelativeRotation().Equals(FRotator(0,0,A)));
 		TestTrue(FString::Printf(TEXT("Minute hand angle %.0f"), A), Watch->MinutePivot->GetRelativeRotation().Equals(FRotator(0,0,A+45.f)));
-		TestTrue(FString::Printf(TEXT("Capture hands %.0f"), A), Capture(World, Origin + FVector(600.f, 0, 0), FRotator(0.f, 180.f, 0.f), Extent,
+		TestTrue(FString::Printf(TEXT("Capture hands %.0f"), A), WatchAssemblyTestLocal::Capture(World, Origin + FVector(600.f, 0, 0), FRotator(0.f, 180.f, 0.f), Extent,
 			FString::Printf(TEXT("WatchAssembly_hands_%d.png"), FMath::RoundToInt(A))));
 	}
 	Watch->SetHandsAngle(0.f, 0.f);   // 기본 12시로 복귀 후 허브 클로즈업.
 
 	// 허브 클로즈업 — 문자판 중앙(Root 원점) 주변 ~40cm 만 크게.
-	TestTrue(TEXT("Capture hub close-up"), Capture(World, Origin + FVector(600.f, 0, 0), FRotator(0.f, 180.f, 0.f), 40.f, TEXT("WatchAssembly_hub_closeup.png")));
+	TestTrue(TEXT("Capture hub close-up"), WatchAssemblyTestLocal::Capture(World, Origin + FVector(600.f, 0, 0), FRotator(0.f, 180.f, 0.f), 40.f, TEXT("WatchAssembly_hub_closeup.png")));
 
 	Watch->Destroy();
 	Light->Destroy();

@@ -32,7 +32,7 @@
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FClockAuditTest, "TimeMachineAR.Reveal.ClockAudit",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-namespace
+namespace ClockAuditTestLocal
 {
 	UWorld* FindEditorWorld()
 	{
@@ -186,11 +186,12 @@ namespace
 		{ TEXT("fromTop"),    FVector( 0, 0, 1), FRotator(-90.f, 0.f, 0.f) },
 		{ TEXT("fromBottom"), FVector( 0, 0,-1), FRotator(90.f, 0.f, 0.f) },
 	};
-}
+} // namespace ClockAuditTestLocal
+using namespace ClockAuditTestLocal;
 
 bool FClockAuditTest::RunTest(const FString& Parameters)
 {
-	UWorld* World = FindEditorWorld();
+	UWorld* World = ClockAuditTestLocal::FindEditorWorld();
 	if (World == nullptr || GUsingNullRHI)
 	{
 		AddWarning(TEXT("에디터 월드/RHI 없음 — -RenderOffscreen 으로 실행하라(건너뜀)."));
@@ -235,14 +236,14 @@ bool FClockAuditTest::RunTest(const FString& Parameters)
 		A->GetStaticMeshComponent()->SetStaticMesh(Mesh);
 		for (const FView& V : Views)
 		{
-			Capture(World, Origin + V.Dir * 600.f, V.Rot, Extent, FString::Printf(TEXT("ClockAudit_%s_%s.png"), Part, V.Name));
+			ClockAuditTestLocal::Capture(World, Origin + V.Dir * 600.f, V.Rot, Extent, FString::Printf(TEXT("ClockAudit_%s_%s.png"), Part, V.Name));
 		}
 		if (FString(Part) == TEXT("Body"))
 		{
 			// 케이스(Y<-25)와 앞 원판(Y>20) 사이에 카메라를 두고 각각만 본다 + 3/4 원근.
-			Capture(World, Origin + FVector(0, 5.f, 0), FRotator(0.f, -90.f, 0.f), Extent, TEXT("ClockAudit_Body_dialOnly_camY5_lookMinusY.png"));
-			Capture(World, Origin + FVector(0, 5.f, 0), FRotator(0.f, 90.f, 0.f), Extent, TEXT("ClockAudit_Body_frontDiscInner_camY5_lookPlusY.png"));
-			Capture(World, Origin + FVector(250.f, 350.f, 150.f), FRotator(-20.f, -125.f, 0.f), Extent, TEXT("ClockAudit_Body_persp34.png"));
+			ClockAuditTestLocal::Capture(World, Origin + FVector(0, 5.f, 0), FRotator(0.f, -90.f, 0.f), Extent, TEXT("ClockAudit_Body_dialOnly_camY5_lookMinusY.png"));
+			ClockAuditTestLocal::Capture(World, Origin + FVector(0, 5.f, 0), FRotator(0.f, 90.f, 0.f), Extent, TEXT("ClockAudit_Body_frontDiscInner_camY5_lookPlusY.png"));
+			ClockAuditTestLocal::Capture(World, Origin + FVector(250.f, 350.f, 150.f), FRotator(-20.f, -125.f, 0.f), Extent, TEXT("ClockAudit_Body_persp34.png"));
 		}
 		A->Destroy();
 	}

@@ -43,7 +43,7 @@
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FNiagaraAuditTest, "TimeMachineAR.Reveal.NiagaraAudit",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-namespace
+namespace NiagaraAuditTestLocal
 {
 	const TCHAR* Systems[] = {
 		TEXT("/Game/FreeNiagaraPack/Effects/NS_ActiveAtom.NS_ActiveAtom"),
@@ -167,11 +167,12 @@ namespace
 		FImageUtils::PNGCompressImageArray(768, 768, Pixels, Png);
 		return FFileHelper::SaveArrayToFile(Png, *(FPaths::ProjectSavedDir() / File));
 	}
-}
+} // namespace NiagaraAuditTestLocal
+using namespace NiagaraAuditTestLocal;
 
 bool FNiagaraAuditTest::RunTest(const FString& Parameters)
 {
-	UWorld* World = FindEditorWorld();
+	UWorld* World = NiagaraAuditTestLocal::FindEditorWorld();
 	const bool bCanRender = World != nullptr && !GUsingNullRHI;
 	const FVector Origin(30000.f, 30000.f, 0.f);
 
@@ -218,7 +219,7 @@ bool FNiagaraAuditTest::RunTest(const FString& Parameters)
 		{
 			Comp->AdvanceSimulationByTime(T - Simulated, 1.f / 30.f);
 			Simulated = T;
-			Capture(World, Origin + FVector(-320.f, 0.f, 40.f), FRotator(-5.f, 0.f, 0.f),
+			NiagaraAuditTestLocal::Capture(World, Origin + FVector(-320.f, 0.f, 40.f), FRotator(-5.f, 0.f, 0.f),
 				FString::Printf(TEXT("NiagaraAudit_%s_%.1fs.png"), *Short, T));
 		}
 		Comp->DestroyComponent();
