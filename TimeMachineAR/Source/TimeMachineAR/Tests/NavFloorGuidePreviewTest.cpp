@@ -38,7 +38,7 @@
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FNavFloorGuidePreviewTest, "TimeMachineAR.Nav.FloorGuidePreview",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-namespace
+namespace NavFloorGuidePreviewTestLocal
 {
 	UWorld* FindEditorWorld()
 	{
@@ -128,11 +128,12 @@ namespace
 		for (const FVector2D& P : Pts) { Out.Add(P + FVector2D(SceneOrigin.X, SceneOrigin.Y)); }
 		return Out;
 	}
-}
+} // namespace NavFloorGuidePreviewTestLocal
+using namespace NavFloorGuidePreviewTestLocal;
 
 bool FNavFloorGuidePreviewTest::RunTest(const FString& Parameters)
 {
-	UWorld* World = FindEditorWorld();
+	UWorld* World = NavFloorGuidePreviewTestLocal::FindEditorWorld();
 	if (World == nullptr)
 	{
 		AddError(TEXT("에디터 월드가 없다."));
@@ -160,9 +161,9 @@ bool FNavFloorGuidePreviewTest::RunTest(const FString& Parameters)
 	Guide->UpdateGuidePreview(Offset({ FVector2D(0, 0), FVector2D(500, 0), FVector2D(500, 600) }),
 		FVector2D(SceneOrigin.X, SceneOrigin.Y), Ex, Label);
 	// 첫 캡처는 머티리얼 셰이더가 아직 안 올라와 발자국이 빠질 수 있다 — 버리는 캡처 한 장.
-	Capture(World, SceneOrigin + FVector(300, 250, 900), FRotator(-90.f, 0.f, 0.f), 60.f, TEXT("NavFloorGuidePreview_Warmup.png"), Err);
-	bOk &= Capture(World, SceneOrigin + FVector(300, 250, 900), FRotator(-90.f, 0.f, 0.f), 60.f, TEXT("NavFloorGuidePreview_Top.png"), Err);
-	bOk &= Capture(World, SceneOrigin + FVector(-60, 0, 140), FRotator(-30.f, 0.f, 0.f), 70.f, TEXT("NavFloorGuidePreview_Walk.png"), Err);
+	NavFloorGuidePreviewTestLocal::Capture(World, SceneOrigin + FVector(300, 250, 900), FRotator(-90.f, 0.f, 0.f), 60.f, TEXT("NavFloorGuidePreview_Warmup.png"), Err);
+	bOk &= NavFloorGuidePreviewTestLocal::Capture(World, SceneOrigin + FVector(300, 250, 900), FRotator(-90.f, 0.f, 0.f), 60.f, TEXT("NavFloorGuidePreview_Top.png"), Err);
+	bOk &= NavFloorGuidePreviewTestLocal::Capture(World, SceneOrigin + FVector(-60, 0, 140), FRotator(-30.f, 0.f, 0.f), 70.f, TEXT("NavFloorGuidePreview_Walk.png"), Err);
 
 	// (2) 네 방향 직선 — 한 액터에 하나씩만 낼 수 있으니 액터 4개.
 	{
@@ -175,7 +176,7 @@ bool FNavFloorGuidePreviewTest::RunTest(const FString& Parameters)
 			Dirs.Add(A);
 		}
 		Guide->HideGuide();
-		bOk &= Capture(World, SceneOrigin + FVector(0, 0, 1000), FRotator(-90.f, 0.f, 0.f), 60.f, TEXT("NavFloorGuidePreview_Dirs.png"), Err);
+		bOk &= NavFloorGuidePreviewTestLocal::Capture(World, SceneOrigin + FVector(0, 0, 1000), FRotator(-90.f, 0.f, 0.f), 60.f, TEXT("NavFloorGuidePreview_Dirs.png"), Err);
 		for (ANavFloorGuideActor* A : Dirs) { A->Destroy(); }
 	}
 
@@ -187,7 +188,7 @@ bool FNavFloorGuidePreviewTest::RunTest(const FString& Parameters)
 		Arr.DestMapXY = FVector2D(SceneOrigin.X + 500, SceneOrigin.Y + 600);
 		Guide->UpdateGuidePreview(Offset({ FVector2D(0, 0), FVector2D(500, 0), FVector2D(500, 600) }),
 			FVector2D(SceneOrigin.X + 500, SceneOrigin.Y + 560), Ex, Label, Arr);
-		bOk &= Capture(World, SceneOrigin + FVector(500, 380, 140), FRotator(-35.f, 90.f, 0.f), 70.f, TEXT("NavFloorGuidePreview_Arrival.png"), Err);
+		bOk &= NavFloorGuidePreviewTestLocal::Capture(World, SceneOrigin + FVector(500, 380, 140), FRotator(-35.f, 90.f, 0.f), 70.f, TEXT("NavFloorGuidePreview_Arrival.png"), Err);
 	}
 
 	// (4) 어두운 바닥에서 Walk.
@@ -196,7 +197,7 @@ bool FNavFloorGuidePreviewTest::RunTest(const FString& Parameters)
 		Floor = SpawnFloor(World, FLinearColor(0.06f, 0.06f, 0.07f));
 		Guide->UpdateGuidePreview(Offset({ FVector2D(0, 0), FVector2D(500, 0), FVector2D(500, 600) }),
 			FVector2D(SceneOrigin.X, SceneOrigin.Y), Ex, Label);
-		bOk &= Capture(World, SceneOrigin + FVector(-60, 0, 140), FRotator(-30.f, 0.f, 0.f), 70.f, TEXT("NavFloorGuidePreview_Dark.png"), Err);
+		bOk &= NavFloorGuidePreviewTestLocal::Capture(World, SceneOrigin + FVector(-60, 0, 140), FRotator(-30.f, 0.f, 0.f), 70.f, TEXT("NavFloorGuidePreview_Dark.png"), Err);
 	}
 
 	Guide->Destroy();

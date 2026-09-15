@@ -24,7 +24,7 @@ DEFINE_LOG_CATEGORY_STATIC(LogNavMapOverlay, Log, All);
 namespace
 {
 	/** 조회 실패 시 재시도 간격(초). */
-	constexpr double kFetchRetrySeconds = 10.0;
+	constexpr double kMapFetchRetrySeconds = 10.0;
 	/** 앵커 목록 재조회 주기(초) — 서버 보정이 앱 재시작 없이도 들어오게. */
 	constexpr double kAnchorRefreshSeconds = 60.0;
 	/** 그리기 주기(초). 선 수명은 이보다 조금 길게 잡아 깜빡이지 않게 한다. */
@@ -201,9 +201,9 @@ void UNavMapArOverlaySubsystem::FetchGraph()
 			}
 			if (!bHttpOk || !Root.IsValid())
 			{
-				Self->NextGraphFetch = Now + kFetchRetrySeconds;
+				Self->NextGraphFetch = Now + kMapFetchRetrySeconds;
 				UE_LOG(LogNavMapOverlay, Warning, TEXT("[NavMapOverlay] GET graph 실패 code=%d — %.0f초 뒤 재시도"),
-					Resp.IsValid() ? Resp->GetResponseCode() : -1, kFetchRetrySeconds);
+					Resp.IsValid() ? Resp->GetResponseCode() : -1, kMapFetchRetrySeconds);
 				return;
 			}
 
@@ -278,7 +278,7 @@ void UNavMapArOverlaySubsystem::FetchGraph()
 				}
 			}
 			Self->bGraphLoaded = Self->Outline.Num() >= 3;
-			Self->NextGraphFetch = Now + (Self->bGraphLoaded ? static_cast<double>(Self->GraphRefreshSeconds) : kFetchRetrySeconds);
+			Self->NextGraphFetch = Now + (Self->bGraphLoaded ? static_cast<double>(Self->GraphRefreshSeconds) : kMapFetchRetrySeconds);
 
 			// 같은 그래프를 20초마다 받으니, 바뀌었을 때만 로그를 남긴다(현장 보정이 들어왔는지 확인용).
 			uint32 Hash = HashCombine(GetTypeHash(Self->Outline.Num()), GetTypeHash(Self->GraphEdges.Num()));
@@ -329,7 +329,7 @@ void UNavMapArOverlaySubsystem::FetchAnchors()
 			}
 			if (!bHttpOk)
 			{
-				Self->NextAnchorFetch = Now + kFetchRetrySeconds;
+				Self->NextAnchorFetch = Now + kMapFetchRetrySeconds;
 				return;
 			}
 			Self->NextAnchorFetch = Now + kAnchorRefreshSeconds;

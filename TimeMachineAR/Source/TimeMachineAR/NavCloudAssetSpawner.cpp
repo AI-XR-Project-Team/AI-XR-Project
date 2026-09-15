@@ -35,17 +35,18 @@
 DEFINE_LOG_CATEGORY_STATIC(LogNavAssetSpawn, Log, All);
 
 #if NAV_CLOUD_RESOLVE
+// 익명 네임스페이스라도 유니티 빌드에선 NavCloudResolver.cpp 와 한 TU 에 묶이므로 이름을 Spawn* 으로 구분한다.
 namespace
 {
 	/** 한 시도를 포기하고 다시 요청하기까지의 시간(초). 12단계 리졸버와 같은 값. */
-	constexpr double kAttemptTimeoutSeconds = 12.0;
+	constexpr double kSpawnAttemptTimeoutSeconds = 12.0;
 	/** 목록 조회 실패 시 재시도 간격(초). */
-	constexpr double kFetchRetrySeconds = 5.0;
+	constexpr double kSpawnFetchRetrySeconds = 5.0;
 	/**
 	 * 한 앵커에 허용할 최대 시도 횟수. 촬영은 앵커 앞에 서서 하므로 12단계(60회=12분)처럼
 	 * 길게 붙들 이유가 없다 — 12초×10 ≈ 2분이면 안 잡히는 것이고, 스캔을 다시 누르면 리셋된다.
 	 */
-	constexpr int32 kMaxAttempts = 10;
+	constexpr int32 kSpawnMaxAttempts = 10;
 
 	/** ini 를 못 읽었을 때 쓰는 폴백. Archelon 이 아직 없어도 §C~§G 파이프라인은 돌아야 한다(D25). */
 	const TCHAR* kFallbackAssetClassPath =
@@ -56,9 +57,9 @@ namespace
 	/** 서버 주소 폴백 — 폰을 USB 로 맥에 꽂고 `adb reverse tcp:8000 tcp:8000` 하면 이 주소가 맥 서버에 닿는다. */
 	const TCHAR* kUsbServerBaseUrl = TEXT("http://127.0.0.1:8000");
 
-	FString CloudStateName(ECloudARPinCloudState State) { return UEnum::GetValueAsString(State); }
-	FString TaskResultName(EARPinCloudTaskResult Result) { return UEnum::GetValueAsString(Result); }
-	FString QualityReasonName(EARTrackingQualityReason Reason) { return UEnum::GetValueAsString(Reason); }
+	FString SpawnCloudStateName(ECloudARPinCloudState State) { return UEnum::GetValueAsString(State); }
+	FString SpawnTaskResultName(EARPinCloudTaskResult Result) { return UEnum::GetValueAsString(Result); }
+	FString SpawnQualityReasonName(EARTrackingQualityReason Reason) { return UEnum::GetValueAsString(Reason); }
 
 	/**
 	 * 핀을 놓는다 — 리졸브가 진행 중이면 **취소까지**(RemoveCloudARPin 만으로는 안 끊겨 ARCore 작업이 쌓인다).
@@ -77,7 +78,7 @@ namespace
 	}
 
 	/** 이 상태면 이번 시도는 끝났다(성공 못 함) — 다시 요청해야 한다. */
-	bool IsCloudError(ECloudARPinCloudState State)
+	bool SpawnIsCloudError(ECloudARPinCloudState State)
 	{
 		return State == ECloudARPinCloudState::ErrorInternalError
 			|| State == ECloudARPinCloudState::ErrorLocalizationFailure
@@ -410,7 +411,7 @@ void UNavCloudAssetSpawner::FetchAssetAnchors()
 		return;
 	}
 	bFetchInFlight = true;
-	NextFetchTime = Now + kFetchRetrySeconds;
+	NextFetchTime = Now + kSpawnFetchRetrySeconds;
 
 	const FString Url = FString::Printf(
 		TEXT("%s/maps/%s/cloud-anchors?state=bound"), *ServerBaseUrl, *MapId);
@@ -545,7 +546,7 @@ void UNavCloudAssetSpawner::StartResolve(FNavAssetAnchorEntry& Entry)
 	{
 		Entry.Pin = nullptr; // 다음 틱이 다시 시도한다.
 		UE_LOG(LogNavAssetSpawn, Warning, TEXT("[NavAssetSpawn] #%d 리졸브 시작 실패: %s"),
-			Entry.PointNo, *TaskResultName(Result));
+			Entry.PointNo, *SpawnTaskResultName(Result));
 	}
 }
 
@@ -575,7 +576,7 @@ void UNavCloudAssetSpawner::PollResolves()
 		if (Pin == nullptr)
 		{
 			// 시작 자체가 실패했던 건 — 스캔이 살아 있을 때만 간격을 지켜 다시 요청한다.
-			if (bScanArmed && E.Attempts < kMaxAttempts && Now - E.AttemptStart > kAttemptTimeoutSeconds)
+			if (bScanArmed && E.Attempts < kSpawnMaxAttempts && Now - E.AttemptStart > kSpawnAttemptTimeoutSeconds)
 			{
 				StartResolve(E);
 			}
@@ -602,22 +603,22 @@ void UNavCloudAssetSpawner::PollResolves()
 		}
 
 		// 실패/타임아웃이면 이번 시도를 버리고 다시 요청한다.
-		const bool bTimedOut = (Now - E.AttemptStart > kAttemptTimeoutSeconds);
-		if (IsCloudError(CState) || bTimedOut)
+		const bool bTimedOut = (Now - E.AttemptStart > kSpawnAttemptTimeoutSeconds);
+		if (SpawnIsCloudError(CState) || bTimedOut)
 		{
 			UE_LOG(LogNavAssetSpawn, Warning,
 				TEXT("[NavAssetSpawn] #%d 시도 %d 실패 — state=%s tracking=%d 이유=%s%s"),
-				E.PointNo, E.Attempts, *CloudStateName(CState), bTracking ? 1 : 0,
-				*QualityReasonName(UARBlueprintLibrary::GetTrackingQualityReason()),
+				E.PointNo, E.Attempts, *SpawnCloudStateName(CState), bTracking ? 1 : 0,
+				*SpawnQualityReasonName(UARBlueprintLibrary::GetTrackingQualityReason()),
 				bTimedOut ? TEXT(" (타임아웃)") : TEXT(""));
 
 			ReleaseCloudPin(World, Pin); // 타임아웃이면 아직 진행 중이다 — 취소까지 해야 끊긴다
 			E.Pin = nullptr;
-			if (bScanArmed && E.Attempts < kMaxAttempts)
+			if (bScanArmed && E.Attempts < kSpawnMaxAttempts)
 			{
 				StartResolve(E);
 			}
-			else if (E.Attempts >= kMaxAttempts)
+			else if (E.Attempts >= kSpawnMaxAttempts)
 			{
 				E.bGaveUp = true;
 				UE_LOG(LogNavAssetSpawn, Error,

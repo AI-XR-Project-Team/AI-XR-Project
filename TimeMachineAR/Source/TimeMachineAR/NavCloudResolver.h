@@ -116,6 +116,8 @@ struct FNavCloudResolveEntry
 	UPROPERTY() int32 Attempts = 0;
 	/** 인식 확정되어 토스트를 띄웠나(같은 앵커 재표시 억제). */
 	UPROPERTY() bool bRecognized = false;
+	/** 13-3 D74 — 인식이 확정된 월드 시각. 가중 보정은 인식 직후 pose 를 BlendMinTrackSeconds 동안 넣지 않는다. */
+	UPROPERTY() double RecognizedTime = 0.0;
 	/** 이 핀이 마지막으로 Tracking 이던 월드 시각. 재관측(gap) 판정에 쓴다. */
 	UPROPERTY() double LastTrackedTime = 0.0;
 	/** 가장 최근 재관측 공백(초). 측량 로그가 한 번 싣고 0 으로 돌린다. */
@@ -151,6 +153,17 @@ struct FNavCloudAnchorWorldPose
 {
 	int32 PointNo = 0;
 	FTransform World = FTransform::Identity;
+};
+
+/** 13-3 D74 — 근접 앵커 가중 보정의 입력 1건(순수 계산 · 리플렉션 불필요). */
+struct FNavBlendSample
+{
+	/** 이 앵커 하나로 세운 변환에서 본 카메라의 맵 좌표(cm). */
+	FVector ImpliedCameraMap = FVector::ZeroVector;
+	/** 이 앵커 하나로 세운 변환의 yaw(도) — SolveTransform 의 YawOffsetDeg(= 핀 yaw + heading). */
+	double TransformYawDeg = 0.0;
+	/** 카메라 ↔ 핀 월드 2D 거리(cm). 가중 = 1/max(d, BlendMinDistanceCm)². */
+	double DistanceCm = 0.0;
 };
 
 /** StartResolve 결과. 세션 전역 원인은 앵커 탓이 아니라 벌점을 매기지 않는다. */
@@ -256,6 +269,64 @@ public:
 	UPROPERTY(Config, meta = (ClampMin = "50.0"))
 	float JumpGateCm = 300.0f;
 
+	// ── 13-3 D74 근접 앵커 가중 보정 (ini 같은 섹션 · nav-stage13-3-결과.md §10.10) ─────────────
+	//
+	// 기준 앵커 하나로 지도를 세우면(D45) 그 앵커의 heading 오차가 거리만큼 커지고(1° × 10m = 17cm), 기준을 바꿀 때
+	// 한꺼번에 튄다. 켜면 매 틱, 가까운 인식 앵커 몇 개가 함의하는 (내 맵 위치·지도 회전)을 1/max(d, 최소)² 로 평균해
+	// 부드럽게 따라간다. 기준 앵커 선택(D45)·점프 게이트(D46)·재측위(13-4)는 그대로 돌고, 이 보정은 그 위에서만 움직인다.
+
+	/**
+	 * 켜면 근접 앵커 가중 보정을 한다. **기본 꺼짐** — 팀 빌드 동작은 그대로다(2026-09-15 현장 확인 후에도 기본값은 끈 채 둔다).
+	 * 켜려면 로컬 DefaultGame.ini 의 이 섹션에 bBlendNearbyAnchors=True.
+	 */
+	UPROPERTY(Config)
+	bool bBlendNearbyAnchors = false;
+
+	/** 가중에 넣을 최대 앵커 수(가까운 순). */
+	UPROPERTY(Config, meta = (ClampMin = "1"))
+	int32 BlendMaxAnchors = 3;
+
+	/** 이 반경(cm, 카메라↔핀 월드 2D) 밖 앵커는 넣지 않는다. */
+	UPROPERTY(Config, meta = (ClampMin = "100.0"))
+	float BlendRadiusCm = 1000.0f;
+
+	/**
+	 * D45 기준 핀이 함의하는 내 위치(기준 핀이 안 보이면 지금 그려진 위치)에서 이만큼(cm) 넘게 다른 곳을 함의하는 앵커는 뺀다
+	 * (틀린 pose — D46·13-4 몫). 그려진 위치에서 재면 옛 기준이 틀렸을 때 새 기준을 빼고 D45 전환을 덮는다(결과 §10.10).
+	 */
+	UPROPERTY(Config, meta = (ClampMin = "10.0"))
+	float BlendGateCm = 50.0f;
+
+	/** 지수 평활 시간 상수(초). 0.8 = 목표와의 차를 0.8초에 63% 줄인다. */
+	UPROPERTY(Config, meta = (ClampMin = "0.05"))
+	float BlendSmoothSeconds = 0.8f;
+
+	/** 가중 1/max(d, 이 값)² 의 거리 하한(cm) — 핀 바로 옆에서 한 앵커가 가중을 독차지하지 않게. */
+	UPROPERTY(Config, meta = (ClampMin = "10.0"))
+	float BlendMinDistanceCm = 150.0f;
+
+	/** 인식된 지 이만큼(초) 지난 핀만 넣는다(인식 직후 pose 가 자주 틀린다 — rebuild-0915 ev-survey). */
+	UPROPERTY(Config, meta = (ClampMin = "0.0"))
+	float BlendMinTrackSeconds = 1.0f;
+
+	// ── 13-3 D74 순수 계산 (에디터 자동화 테스트 NavCloudBlendTest 대상 · 플러그인 비의존) ──
+
+	/** 앵커 하나(핀 월드 pose + 맵 좌표·heading)로 세운 맵→월드 변환. NavLocalizer::SolveTransform 과 같은 식. */
+	static FTransform MakeAnchorMapToWorld(const FTransform& AnchorWorld, const FVector& AnchorMap, double HeadingDeg);
+	/** 변환에서 본 카메라의 맵 좌표. NavLocalizer::WorldToMap 과 같은 식. */
+	static FVector CameraMapFromTransform(const FTransform& MapToWorld, const FVector& CameraWorld);
+	/** 카메라가 맵 CameraMap 에 보이고 yaw 가 YawDeg 인 맵→월드 변환. */
+	static FTransform MakeMapToWorldFromCamera(double YawDeg, const FVector& CameraWorld, const FVector& CameraMap);
+	/** 앵커별 함의(카메라 맵 좌표·변환 yaw)의 1/max(d, MinDistanceCm)² 가중 평균(yaw 는 원형 평균). 입력이 비면 false. */
+	static bool BlendImpliedPoses(const TArray<FNavBlendSample>& Samples, double MinDistanceCm,
+		FVector& OutCameraMap, double& OutYawDeg);
+	/** 지수 평활 한 걸음: Alpha = 1 − exp(−dt/τ). yaw 는 짧은 쪽으로 돈다. */
+	static void SmoothToward(FVector& InOutCameraMap, double& InOutYawDeg, const FVector& TargetCameraMap,
+		double TargetYawDeg, double DeltaSeconds, double SmoothSeconds);
+	/** 가까운 순으로 정렬된 입력의 앞 MaxAnchors(≥1) 개 중 함의 위치가 GateCenter 에서 GateCm 안인 것의 인덱스(오름차순). */
+	static void SelectBlendIndices(const TArray<FNavBlendSample>& SortedByDistance, const FVector2D& GateCenter,
+		double GateCm, int32 MaxAnchors, TArray<int32>& OutIndices);
+
 private:
 	/** ARPinCloudMode=Enabled. 성공할 때까지 매 틱 재시도(세션이 늦게 뜰 수 있다). */
 	void TryConfigureCloudMode();
@@ -346,6 +417,23 @@ private:
 
 	/** 30초마다 스케줄러 상태 한 줄(§4 검증: 동시 ≤6 · 분당 요청 ≤60). */
 	void LogSchedulerSummaryIfDue(double Now);
+
+	/**
+	 * D74 — 근접 앵커 가중 보정 한 걸음(매 틱, 기준 전환 뒤). 앵커 측위·정상 상태에서만 돈다.
+	 * 후보 = 인식·Tracking · 인식 후 BlendMinTrackSeconds · 반경 안 · 가까운 BlendMaxAnchors 개 중 D45 기준 핀 함의 위치(안 보이면 지금 위치)에서 BlendGateCm 안.
+	 * 후보가 없으면 쉰다(그때 변환은 D45·D46·13-4 가 세운 그대로). 쉬었다 다시 켜질 땐 그 변환에서 시작한다.
+	 */
+	void TickBlend(double Now, float DeltaTime);
+	/** D74 — 마지막으로 넣은 가중 변환(평활 기점). 기준 전환·재래치가 변환을 한 앵커로 되돌려도 여기서 이어 간다. */
+	FTransform BlendXf = FTransform::Identity;
+	/** D74 — 지난 틱에 가중 보정을 넣었나. false 면 다음 틱은 Localizer 의 지금 변환에서 시작한다. */
+	bool bBlendActive = false;
+	/** D74 — 5초 요약 로그 집계(적용·쉼 틱 수 · 한 틱 최대 이동 · 마지막 가중). */
+	double NextBlendLogTime = 0.0;
+	int32 BlendAppliedTicks = 0;
+	int32 BlendIdleTicks = 0;
+	double BlendMaxStepCm = 0.0;
+	FString BlendLastUsed;
 
 	bool bCloudConfigured = false;
 	bool bConfigResolved = false;
