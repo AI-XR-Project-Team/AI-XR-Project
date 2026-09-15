@@ -1,4 +1,4 @@
-﻿#if WITH_DEV_AUTOMATION_TESTS && WITH_EDITOR
+#if WITH_DEV_AUTOMATION_TESTS && WITH_EDITOR
 #include "Misc/AutomationTest.h"
 #include "NiagaraSystem.h"
 #include "NiagaraEmitter.h"
@@ -16,14 +16,14 @@ bool FBuildTimeRevealFXTest::RunTest(const FString&)
  auto* Mat=LoadObject<UMaterialInterface>(nullptr,TEXT("/Game/TimeReveal/FX/M_TimeFX_Sprite.M_TimeFX_Sprite"));
  if (!TestNotNull(TEXT("Generated sprite material"),Mat)) return false;
  const TCHAR* Sources[]={TEXT("/Game/FreeNiagaraPack/Effects/NS_ActiveAtom.NS_ActiveAtom"),TEXT("/Game/FreeNiagaraPack/Effects/NS_Worm-Hole.NS_Worm-Hole")};
- const TCHAR* Names[]={TEXT("NS_WatchOrbit"),TEXT("NS_TimePortal")};
+ const TCHAR* SystemNames[]={TEXT("NS_WatchOrbit"),TEXT("NS_TimePortal")};
  for (int32 I=0;I<2;++I) {
   auto* Src=LoadObject<UNiagaraSystem>(nullptr,Sources[I]);
   if (!TestNotNull(TEXT("Source effect"),Src)) return false;
-  const FString PackageName=FString(TEXT("/Game/TimeReveal/FX/"))+Names[I];
+  const FString PackageName=FString(TEXT("/Game/TimeReveal/FX/"))+SystemNames[I];
   UPackage* Package=CreatePackage(*PackageName);
   Package->FullyLoad();
-  auto* Sys=Cast<UNiagaraSystem>(StaticDuplicateObject(Src,Package,FName(Names[I])));
+  auto* Sys=Cast<UNiagaraSystem>(StaticDuplicateObject(Src,Package,FName(SystemNames[I])));
   if (!TestNotNull(TEXT("Duplicate effect"),Sys)) return false;
   Sys->SetFlags(RF_Public|RF_Standalone);
   Sys->bFixedBounds=true;
