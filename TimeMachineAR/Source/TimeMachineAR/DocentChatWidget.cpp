@@ -511,7 +511,10 @@ void UDocentChatWidget::ApplyHudTab(bool bForceRefresh)
 
 	case EDocentHudTab::Nav:
 		if (bIsOpen) { ApplyOpenState(false); bChanged = true; }
-		SetVis(NavPanel, ESlateVisibility::Visible);
+		{
+			const UNavMinimapWidget* Minimap = Cast<UNavMinimapWidget>(GetWidgetFromName(TEXT("WBP_NavMinimap")));
+			SetVis(NavPanel, Minimap && Minimap->IsFullMapOpen() ? ESlateVisibility::Hidden : ESlateVisibility::Visible);
+		}
 		SetVis(ScanPanel, ESlateVisibility::Collapsed);
 		// 내비는 전체화면이고 자체 NavCloseButton 으로 돌아간다. 하단 바는 접어 둔다.
 		SetVis(BottomBar, ESlateVisibility::Collapsed);
@@ -688,6 +691,10 @@ void UDocentChatWidget::HandleNavTabClicked()
 	if (UNavMinimapWidget* Minimap = Cast<UNavMinimapWidget>(GetWidgetFromName(TEXT("WBP_NavMinimap"))))
 	{
 		Minimap->OpenFullMap();
+	}
+	else
+	{
+		UE_LOG(LogDocentChat, Warning, TEXT("Navigation tab has no WBP_NavMinimap widget to open."));
 	}
 }
 

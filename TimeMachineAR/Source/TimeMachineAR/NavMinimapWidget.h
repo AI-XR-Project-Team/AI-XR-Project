@@ -174,6 +174,9 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Nav|Minimap")
 	void OpenFullMap();
 
+	/** True while the destination picker owns the navigation screen. */
+	bool IsFullMapOpen() const;
+
 	/** 전체 지도에서 목적지를 골랐을 때 재방송. BP 가 NavClient.RequestRoute 로 잇는다. */
 	UPROPERTY(BlueprintAssignable, Category = "Nav|Minimap")
 	FOnNavDestinationChosen OnDestinationChosen;
@@ -529,6 +532,12 @@ private:
 
 	/** 열려 있는 전체 지도의 MapView(Full). 없으면 nullptr. Follow 가 상태를 흘려보낼 대상. */
 	UNavMinimapWidget* GetOpenFullMapView() const;
+
+	/** Keeps full-map destination cards in sync when graph data arrives asynchronously. */
+	void RefreshOpenFullMapDestinations();
+
+	/** Uses the Blueprint default when configured and the shipped full-map Blueprint otherwise. */
+	TSubclassOf<UNavFullMapWidget> ResolveFullMapWidgetClass() const;
 
 	/** 전체 지도가 목적지를 방송하면 받아 재방송(+목적지 노드 강조). 바인드 대상. */
 	UFUNCTION()

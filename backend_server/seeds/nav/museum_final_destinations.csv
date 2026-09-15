@@ -1,0 +1,14 @@
+display_order,node_key,pos_x_cm,pos_y_cm,pos_z_cm,node_type,label,placement_status
+1,mu-x-amseok,5100,2400,120,exhibit,자수정,existing-gallery-approach
+2,mu-e-blue-s,4545,3260,120,entrance,입구,existing-gallery-approach
+3,mu-j-go-s,6410,2200,120,exhibit,삼엽충,existing-gallery-approach
+4,mu-x-gosaeng,6900,2230,120,exhibit,고사리잎,existing-gallery-approach
+5,mu-x-jungsaeng,7220,3400,120,exhibit,아르켈론,existing-gallery-approach
+6,mu-x-jung-north,7200,4530,120,exhibit,알로사우루스,existing-gallery-approach
+7,mu-n-jung-s,6850,3200,120,exhibit,화석,existing-gallery-approach
+8,mu-n-ante,5600,2400,120,exhibit,물고기화석,existing-gallery-approach
+9,mu-x-trickart,6040,2950,120,exhibit,진주화석,existing-gallery-approach
+10,mu-x-sinsaeng,5550,3350,120,exhibit,포유류 화석,existing-gallery-approach
+11,mu-j-sin-door,5630,3030,120,exhibit,거북이 화석,existing-gallery-approach
+12,mu-e-blue-n,4545,3430,120,entrance,출구,existing-gallery-approach
+13,mu-j-amseok,4700,2450,120,exhibit,탄생석,existing-gallery-approach

@@ -42,28 +42,6 @@ namespace
 		return C.CopyWithNewOpacity(C.A * GRouteOpacity);
 	}
 
-	FString SkinPath(const TCHAR* Name)
-	{
-		return FString::Printf(TEXT("/Game/UI/Nav/Skin/%s.%s"), Name, Name);
-	}
-	const TCHAR* PoiSkin(const FNavMapNode& Node)
-	{
-		switch (FNavDestinations::Classify(Node.NodeType))
-		{
-		case ENavDestKind::Facility: return TEXT("poi_toilet");
-		case ENavDestKind::Entrance: return TEXT("poi_entrance");
-		case ENavDestKind::Exhibit:
-			switch (FNavDestinations::DinoIndexFromLabel(Node.Label))
-			{
-			case 1: return TEXT("poi_triceratops");
-			case 2: return TEXT("poi_brachiosaurus");
-			case 3: return TEXT("poi_trex");
-			// The supplied ankylosaurus POI depicts a triceratops. Keep the existing correct icon.
-			default: return nullptr;
-			}
-		default: return nullptr;
-		}
-	}
 }
 
 // ---------------------------------------------------------------------- 데이터
@@ -97,6 +75,7 @@ void UNavMinimapWidget::SetGraph(const FNavGraph& InGraph)
 	Graph = InGraph;
 	RebuildIconBrushes();   // 목적지 아이콘 텍스처를 미리 로드(paint 중 로드 금지).
 	if (UNavMinimapWidget* Full = GetOpenFullMapView()) { Full->SetGraph(InGraph); }
+	RefreshOpenFullMapDestinations();
 	Invalidate(EInvalidateWidgetReason::Paint);
 }
 
@@ -105,6 +84,7 @@ void UNavMinimapWidget::SetDestinationNode(const FString& NodeId)
 	DestinationNodeId = NodeId;
 	PushDestinationToMarker();   // §C-2 목적지 마름모 갱신.
 	if (UNavMinimapWidget* Full = GetOpenFullMapView()) { Full->SetDestinationNode(NodeId); }
+	RefreshOpenFullMapDestinations();
 	Invalidate(EInvalidateWidgetReason::Paint);
 }
 
@@ -143,24 +123,35 @@ UNavRouteProgress* UNavMinimapWidget::GetRouteProgress()
 	return RouteProgress;
 }
 
+bool UNavMinimapWidget::IsFullMapOpen() const
+{
+	return FullMapInstance.IsValid() && FullMapInstance->IsInViewport();
+}
+
 void UNavMinimapWidget::OpenFullMap()
 {
-	if (FullMapWidgetClass == nullptr)
+	if (FullMapInstance.IsValid() && FullMapInstance->IsInViewport())
+	{
+		return;
+	}
+
+	FullMapInstance.Reset();
+	const TSubclassOf<UNavFullMapWidget> FullMapClass = ResolveFullMapWidgetClass();
+	if (FullMapClass == nullptr)
 	{
 		UE_LOG(LogNav, Warning,
 			TEXT("[minimap] OpenFullMap: FullMapWidgetClass 가 비어 있습니다. WBP_NavMinimap 의 ")
 			TEXT("FullMapWidgetClass 를 WBP_NavMinimapFull 로 지정하세요."));
 		return;
 	}
-	// 이미 화면에 떠 있으면 중복 오픈 방지. 단 RemoveFromParent 로 닫힌 위젯은
-	// UObject 가 바로 파괴되지 않아 IsValid 만으론 "닫힘"을 구분 못 한다(닫아도 계속
-	// valid → 재오픈이 막힘). 그래서 IsInViewport 로 실제 표시 여부를 본다.
-	if (FullMapInstance.IsValid() && FullMapInstance->IsInViewport())
+	UWorld* World = GetWorld();
+	if (World == nullptr)
 	{
-		return;   // 이미 떠 있다.
+		UE_LOG(LogNav, Warning, TEXT("[minimap] OpenFullMap: widget has no world."));
+		return;
 	}
 
-	UNavFullMapWidget* W = CreateWidget<UNavFullMapWidget>(GetWorld(), FullMapWidgetClass);
+	UNavFullMapWidget* W = CreateWidget<UNavFullMapWidget>(World, FullMapClass);
 	if (W == nullptr)
 	{
 		return;
@@ -174,6 +165,19 @@ void UNavMinimapWidget::OpenFullMap()
 	FullMapInstance = W;
 
 	OnFullMapOpenChanged.Broadcast(true);   // §D 안내 로그: "확대 지도" 상태.
+	// A previous startup request may have failed while the server was unavailable.
+	// Opening the picker must actively request missing graph data again.
+	if (!HasGraph())
+	{
+		if (UGameInstance* GI = World->GetGameInstance())
+		{
+			if (UNavClient* Client = GI->GetSubsystem<UNavClient>())
+			{
+				Client->OnGraphReceived.AddUniqueDynamic(this, &UNavMinimapWidget::SetGraph);
+				Client->GetGraph(FString());
+			}
+		}
+	}
 }
 
 void UNavMinimapWidget::HandleDestinationChosen(const FString& NodeId)
@@ -186,7 +190,27 @@ void UNavMinimapWidget::HandleDestinationChosen(const FString& NodeId)
 
 void UNavMinimapWidget::HandleFullMapClosed()
 {
+	FullMapInstance.Reset();
 	OnFullMapOpenChanged.Broadcast(false);
+}
+
+TSubclassOf<UNavFullMapWidget> UNavMinimapWidget::ResolveFullMapWidgetClass() const
+{
+	if (FullMapWidgetClass != nullptr)
+	{
+		return FullMapWidgetClass;
+	}
+
+	return LoadClass<UNavFullMapWidget>(nullptr,
+		TEXT("/Game/UI/Nav/WBP_NavMinimapFull.WBP_NavMinimapFull_C"));
+}
+
+void UNavMinimapWidget::RefreshOpenFullMapDestinations()
+{
+	if (FullMapInstance.IsValid() && FullMapInstance->IsInViewport())
+	{
+		FullMapInstance->RefreshDestinations(Graph, DestinationNodeId);
+	}
 }
 
 void UNavMinimapWidget::EnsureGuideLog()
@@ -486,6 +510,21 @@ void UNavMinimapWidget::NativeConstruct()
 
 void UNavMinimapWidget::NativeDestruct()
 {
+	if (UGameInstance* GI = GetGameInstance())
+	{
+		if (UNavClient* Client = GI->GetSubsystem<UNavClient>())
+		{
+			Client->OnGraphReceived.RemoveDynamic(this, &UNavMinimapWidget::SetGraph);
+		}
+	}
+	if (FullMapInstance.IsValid())
+	{
+		FullMapInstance->OnDestinationChosen.RemoveDynamic(this, &UNavMinimapWidget::HandleDestinationChosen);
+		FullMapInstance->OnClosed.RemoveDynamic(this, &UNavMinimapWidget::HandleFullMapClosed);
+		FullMapInstance->RemoveFromParent();
+		FullMapInstance.Reset();
+	}
+
 	// 우리가 만든 안내 로그도 함께 화면에서 내린다.
 	if (GuideLog != nullptr)
 	{
@@ -768,7 +807,7 @@ int32 UNavMinimapWidget::NativePaint(const FPaintArgs& Args, const FGeometry& Al
 			}
 			Crossings.Sort();
 			const bool bGrout = FMath::Fmod(Y - Top, 48.f) < 2.f;
-			const FLinearColor Floor = FLinearColor::FromSRGBColor(bGrout ? FColor(97, 91, 79) : FColor(64, 60, 52));
+			const FLinearColor Floor = bGrout ? FLinearColor(0.015f, 0.16f, 0.27f, 0.6f) : FLinearColor(0.008f, 0.06f, 0.13f, 0.72f);
 			for (int32 I = 0; I + 1 < Crossings.Num(); I += 2)
 			{
 				TArray<FVector2D> Span = { FVector2D(Crossings[I], Y), FVector2D(Crossings[I + 1], Y) };
@@ -783,19 +822,6 @@ int32 UNavMinimapWidget::NativePaint(const FPaintArgs& Args, const FGeometry& Al
 	if (Graph.Nodes.Num() > 0)
 	{
 		PaintFullMapBase(OutDrawElements, Layer, Geom);
-		if (bFull)
-		{
-			if (const FSlateBrush* Stairs = ResolveIconBrush(SkinPath(TEXT("prop_stairs"))))
-			{
-				for (const FNavObstacle& O : Graph.Obstacles)
-				{
-					const FVector2D A = WorldToLocal(FVector2D(O.X0, O.Y1));
-					const FVector2D B = WorldToLocal(FVector2D(O.X1, O.Y0));
-					FSlateDrawElement::MakeBox(OutDrawElements, ++Layer,
-						AllottedGeometry.ToPaintGeometry(B - A, FSlateLayoutTransform(A)), Stairs);
-				}
-			}
-		}
 		// 목적지 아이콘(마름모+그림)은 도면 위에 얹는다. Full·Follow 공통(§B-1·D-8).
 		PaintDestinationIcons(OutDrawElements, Layer, AllottedGeometry);
 	}
@@ -1058,6 +1084,15 @@ void UNavMinimapWidget::PaintFullMapBase(FSlateWindowElementList& Out, int32& La
 				Poly.Add(WorldToLocal(V));
 			}
 			Poly.Add(WorldToLocal(Graph.Outline[0]));   // 닫는다
+			if (Mode == ENavMinimapMode::Full)
+			{
+				// Trace the actual server outline with layered cyan bloom.
+				FSlateDrawElement::MakeLines(Out, Layer, Geom, Poly,
+					ESlateDrawEffect::None, WallColor.CopyWithNewOpacity(0.08f), true, WallThicknessPx + 17.f);
+				FSlateDrawElement::MakeLines(Out, ++Layer, Geom, Poly,
+					ESlateDrawEffect::None, WallColor.CopyWithNewOpacity(0.22f), true, WallThicknessPx + 8.f);
+				++Layer;
+			}
 			FSlateDrawElement::MakeLines(Out, Layer, Geom, Poly,
 				ESlateDrawEffect::None, WallColor, true, WallThicknessPx);
 		}
@@ -1118,26 +1153,18 @@ void UNavMinimapWidget::RebuildIconBrushes()
 {
 	IconBrushCache.Reset();
 	LoadedIconTextures.Reset();
-	if (Mode == ENavMinimapMode::Full)
-	{
-		const TCHAR* Names[] = { TEXT("prop_stairs"), TEXT("dot_orange"), TEXT("dot_blue"), TEXT("dot_green"),
-			TEXT("poi_triceratops"), TEXT("poi_brachiosaurus"), TEXT("poi_trex"), TEXT("poi_toilet"), TEXT("poi_entrance") };
-		for (const TCHAR* Name : Names)
-		{
-			if (UTexture2D* Texture = LoadObject<UTexture2D>(nullptr, *SkinPath(Name)))
-			{
-				LoadedIconTextures.Add(Texture);
-				TSharedPtr<FSlateBrush> Brush = MakeShared<FSlateBrush>();
-				Brush->SetResourceObject(Texture); Brush->DrawAs = ESlateBrushDrawType::Image;
-				IconBrushCache.Add(SkinPath(Name), Brush);
-			}
-		}
-	}
 
 	// 하단 버튼과 동일한 목적지 집합(중복 entrance 제거 등)만 지도에 그린다.
 	IconNodeIds.Reset();
 	TArray<int32> Order;
 	FNavDestinations::BuildDestinationOrder(Graph.Nodes, Order);
+	for (int32 Index = 0; Index < Graph.Nodes.Num(); ++Index)
+	{
+		if (FNavDestinations::Classify(Graph.Nodes[Index].NodeType) != ENavDestKind::None)
+		{
+			Order.AddUnique(Index);
+		}
+	}
 	for (int32 Idx : Order)
 	{
 		IconNodeIds.Add(Graph.Nodes[Idx].NodeId);
@@ -1190,6 +1217,15 @@ void UNavMinimapWidget::PaintDestinationIcons(FSlateWindowElementList& Out, int3
 	const bool bCull = (Mode == ENavMinimapMode::Follow);
 	const float CullMargin = DestDiamondHalfPx + DestIconSizePx;
 	const FPaintGeometry LineGeom = AllottedGeometry.ToPaintGeometry();
+	TArray<int32> MarkerOrder;
+	if (!bCull)
+	{
+		FNavDestinations::BuildDestinationOrder(Graph.Nodes, MarkerOrder);
+		for (int32 Index = 0; Index < Graph.Nodes.Num(); ++Index)
+		{
+			if (FNavDestinations::Classify(Graph.Nodes[Index].NodeType) != ENavDestKind::None) { MarkerOrder.AddUnique(Index); }
+		}
+	}
 
 	++Layer;
 	for (const FNavMapNode& N : Graph.Nodes)
@@ -1205,43 +1241,74 @@ void UNavMinimapWidget::PaintDestinationIcons(FSlateWindowElementList& Out, int3
 		}
 
 		const bool bActive = !DestinationNodeId.IsEmpty() && N.NodeId == DestinationNodeId;
-		const FLinearColor Accent = FNavDestinations::AccentColor(N.NodeType);
+		const FLinearColor Accent = FNavDestinations::AccentColor(N.NodeType, N.Label);
 		if (Mode == ENavMinimapMode::Full)
 		{
-			const ENavDestKind Kind = FNavDestinations::Classify(N.NodeType);
-			const TCHAR* Dot = Kind == ENavDestKind::Facility ? TEXT("dot_blue") :
-				Kind == ENavDestKind::Entrance ? TEXT("dot_green") : TEXT("dot_orange");
-			bool bDotClear = true;
+			const FLinearColor Neon = Accent;
+			const float Radius = bActive ? 43.f : 35.f;
+			PaintRing(Out, ++Layer, LineGeom, C, Radius + 3.f, 17.f, Neon.CopyWithNewOpacity(0.08f));
+			PaintRing(Out, ++Layer, LineGeom, C, Radius, 8.f, Neon.CopyWithNewOpacity(0.25f));
+			PaintRing(Out, ++Layer, LineGeom, C, Radius, 2.5f, Neon);
+			// Compact multiline labels avoid covering adjacent markers on dense graph areas.
+			FString MarkerLabelText;
+			for (int32 Character = 0; Character < N.Label.Len(); ++Character)
+			{
+				if (Character > 0 && Character % 8 == 0) { MarkerLabelText += TEXT("\n"); }
+				MarkerLabelText.AppendChar(N.Label[Character]);
+			}
+			FSlateFontInfo LabelFont = FCoreStyle::GetDefaultFontStyle("Regular", 15);
+			const FVector2D TextSize = FSlateApplication::Get().GetRenderer()->GetFontMeasureService()->Measure(MarkerLabelText, LabelFont);
+			const FVector2D LabelSize = TextSize + FVector2D(16, 8);
+			FVector2D LabelPos(FMath::Clamp(C.X - LabelSize.X * 0.5, 4.0,
+				FMath::Max(4.0, CachedLocalSize.X - LabelSize.X - 4)),
+				FMath::Clamp(C.Y + Radius + 5, 4.0, FMath::Max(4.0, CachedLocalSize.Y - LabelSize.Y - 4)));
+			// A lower neighbouring POI must not be covered by this marker's label.
 			for (const FNavMapNode& Other : Graph.Nodes)
 			{
-				if (Other.NodeId != N.NodeId && IconNodeIds.Contains(Other.NodeId) &&
-					FVector2D::Distance(C + FVector2D(0, 95), WorldToLocal(FVector2D(Other.PosXCm, Other.PosYCm))) < 68)
-				{ bDotClear = false; break; }
+				if (Other.NodeId == N.NodeId || !IconNodeIds.Contains(Other.NodeId)) { continue; }
+				const FVector2D OtherCenter = WorldToLocal(FVector2D(Other.PosXCm, Other.PosYCm));
+				if (OtherCenter.X + 48 > LabelPos.X && OtherCenter.X - 48 < LabelPos.X + LabelSize.X &&
+					OtherCenter.Y + 48 > LabelPos.Y && OtherCenter.Y - 48 < LabelPos.Y + LabelSize.Y)
+				{
+					LabelPos.Y = FMath::Max(4.0, C.Y - Radius - LabelSize.Y - 8);
+					break;
+				}
 			}
-			if (const FSlateBrush* Glow = bDotClear ? ResolveIconBrush(SkinPath(Dot)) : nullptr)
-			{
-				FSlateDrawElement::MakeBox(Out, ++Layer, AllottedGeometry.ToPaintGeometry(
-					FVector2D(44, 44), FSlateLayoutTransform(C + FVector2D(-22, 73))), Glow);
-			}
-			FSlateFontInfo LabelFont = FCoreStyle::GetDefaultFontStyle("Regular", 14);
-			const FVector2D TextSize = FSlateApplication::Get().GetRenderer()->GetFontMeasureService()->Measure(N.Label, LabelFont);
-			const FVector2D LabelSize = TextSize + FVector2D(16, 8);
-			const FVector2D LabelPos(FMath::Clamp(C.X - LabelSize.X * 0.5, 4.0,
-				FMath::Max(4.0, CachedLocalSize.X - LabelSize.X - 4)), C.Y + 46);
 			FSlateDrawElement::MakeBox(Out, ++Layer, AllottedGeometry.ToPaintGeometry(
 				LabelSize, FSlateLayoutTransform(LabelPos)), FCoreStyle::Get().GetBrush("WhiteBrush"),
-				ESlateDrawEffect::None, FLinearColor(0.008f, 0.009f, 0.01f, 0.9f));
+				ESlateDrawEffect::None, FLinearColor(0.003f, 0.018f, 0.045f, 0.85f));
 			FSlateDrawElement::MakeText(Out, ++Layer, AllottedGeometry.ToPaintGeometry(
-				LabelSize, FSlateLayoutTransform(LabelPos + FVector2D(8, 3))), N.Label, LabelFont,
+				LabelSize, FSlateLayoutTransform(LabelPos + FVector2D(8, 3))), MarkerLabelText, LabelFont,
 				ESlateDrawEffect::None, FLinearColor::White);
-			const TCHAR* Poi = PoiSkin(N);
-			if (const FSlateBrush* Sprite = Poi ? ResolveIconBrush(SkinPath(Poi)) : nullptr)
+			const FString NativeIconPath = FNavDestinations::IconObjectPath(N.NodeType, N.Label);
+			if (const FSlateBrush* Sprite = ResolveIconBrush(NativeIconPath))
 			{
-				const float Extent = bActive ? 108.f : 98.f;
+				const float Extent = Radius * 1.45f;
 				FSlateDrawElement::MakeBox(Out, ++Layer, AllottedGeometry.ToPaintGeometry(
 					FVector2D(Extent), FSlateLayoutTransform(C - FVector2D(Extent * 0.5f))), Sprite);
-				continue;
 			}
+			else
+			{
+				// Native specimen/entry glyphs never pretend an old dinosaur icon is a match.
+				const FString Glyph = FNavDestinations::IconGlyph(N.Label);
+				FSlateFontInfo GlyphFont = FCoreStyle::GetDefaultFontStyle("Bold", Glyph.Len() > 1 ? 16 : 30);
+				const FVector2D GlyphSize = FSlateApplication::Get().GetRenderer()->GetFontMeasureService()->Measure(Glyph, GlyphFont);
+				FSlateDrawElement::MakeText(Out, ++Layer, AllottedGeometry.ToPaintGeometry(
+					GlyphSize, FSlateLayoutTransform(C - GlyphSize * 0.5f)), Glyph, GlyphFont,
+					ESlateDrawEffect::None, Neon);
+			}
+			const int32 NodeIndex = static_cast<int32>(&N - Graph.Nodes.GetData());
+			const int32 MuseumNumber = FNavDestinations::DisplayNumber(N.Label);
+			const FString Number = FString::FromInt(MuseumNumber != 0 ? MuseumNumber : MarkerOrder.Find(NodeIndex) + 1);
+			const FVector2D Badge = C + FVector2D(Radius * 0.76f, -Radius * 0.76f);
+			PaintRing(Out, ++Layer, LineGeom, Badge, 10.f, 20.f, FLinearColor(0.002f, 0.008f, 0.016f));
+			PaintRing(Out, ++Layer, LineGeom, Badge, 17.f, 2.f, Neon);
+			FSlateFontInfo NumberFont = FCoreStyle::GetDefaultFontStyle("Bold", 18);
+			const FVector2D NumberSize = FSlateApplication::Get().GetRenderer()->GetFontMeasureService()->Measure(Number, NumberFont);
+			FSlateDrawElement::MakeText(Out, ++Layer, AllottedGeometry.ToPaintGeometry(
+				NumberSize, FSlateLayoutTransform(Badge - NumberSize * 0.5f)), Number, NumberFont,
+				ESlateDrawEffect::None, FLinearColor::White);
+			continue;
 		}
 
 		// 마름모(중심→꼭짓점 = Half). 화면 px 고정 크기라 Follow 배율에도 안 커진다.
