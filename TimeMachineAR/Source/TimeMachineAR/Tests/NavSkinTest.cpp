@@ -90,8 +90,8 @@ bool FNavSkinTest::RunTest(const FString& Parameters)
 	UNavMinimapWidget* Map = Widget->GetMapView();
 	TestTrue(TEXT("Graph survived layout"), Map && Map->HasGraph());
 	TSet<FString> Hittable;
-	for (int32 Y = 50; Y < 1210; Y += 8)
-		for (int32 X = 0; X < 941; X += 8)
+	for (int32 Y = 0; Y < 532; Y += 4)
+		for (int32 X = 0; X < 429; X += 4)
 		{
 			FString Id;
 			if (Widget->FindReferenceDestinationAtLocal(FVector2D(X, Y), Id)) { Hittable.Add(Id); }
@@ -106,19 +106,89 @@ bool FNavSkinTest::RunTest(const FString& Parameters)
 	{
 		TestEqual(TEXT("Museum destination display order"), Graph.Nodes[DestinationOrder[Position]].Label, FString(ExpectedLabels[Position]));
 	}
+	TestEqual(TEXT("Artwork restores all thirteen visible destinations"), Hittable.Num(), 13);
 	for (int32 Index : DestinationOrder)
-		TestTrue(TEXT("Destination remains touchable: ") + Graph.Nodes[Index].Label, Hittable.Contains(Graph.Nodes[Index].NodeId));
+		TestTrue(TEXT("Visible destination remains touchable: ") + Graph.Nodes[Index].Label, Hittable.Contains(Graph.Nodes[Index].NodeId));
+	FString EntranceId, AmethystId;
+	for (const FNavMapNode& N : Graph.Nodes)
+	{
+		if (N.Label == TEXT("입구")) EntranceId = N.NodeId;
+		if (N.Label == TEXT("자수정")) AmethystId = N.NodeId;
+	}
+	FString RelocatedHit;
+	TestTrue(TEXT("Entrance is touchable below exit"), Widget->FindReferenceDestinationAtLocal(FVector2D(50,308), RelocatedHit));
+	TestEqual(TEXT("Printed entrance 1 retains entrance node"), RelocatedHit, EntranceId);
+	TestTrue(TEXT("Amethyst is touchable at lower left"), Widget->FindReferenceDestinationAtLocal(FVector2D(50,486), RelocatedHit));
+	TestEqual(TEXT("Printed amethyst 2 retains amethyst node"), RelocatedHit, AmethystId);
+	Widget->SelectDestination(AmethystId);
+	TestEqual(TEXT("Amethyst activates mineral gallery"), Widget->GetSelectedGallery(), FString(TEXT("mineral")));
+	Widget->SelectDestination(AmethystId);
+	TestTrue(TEXT("Second amethyst tap deselects"), Widget->GetSelectedDestination().IsEmpty());
 	FString EmptyHit;
 	TestFalse(TEXT("Header is not a destination"), Widget->FindReferenceDestinationAtLocal(FVector2D(500, 300), EmptyHit));
 	Widget->RefreshDestinations(FNavGraph(), FString());
 	FString MissingHit;
 	TestFalse(TEXT("Artwork cannot select a destination without live data"),
-		Widget->FindReferenceDestinationAtLocal(FVector2D(158, 1107), MissingHit));
+		Widget->FindReferenceDestinationAtLocal(FVector2D(319, 161), MissingHit));
 	Widget->RefreshDestinations(Graph, FString());
 	FString RestoredHit;
 	TestTrue(TEXT("Async graph arrival restores illustrated hotspot"),
-		Widget->FindReferenceDestinationAtLocal(FVector2D(158, 1107), RestoredHit));
-	TestEqual(TEXT("Illustration selects original metric graph node ID"), RestoredHit, FString(TEXT("mu-x-amseok")));
+		Widget->FindReferenceDestinationAtLocal(FVector2D(319, 161), RestoredHit));
+	FString ArchelonId;
+	for (const FNavMapNode& N : Graph.Nodes) if (N.Label == TEXT("아르켈론")) ArchelonId = N.NodeId;
+	TestEqual(TEXT("Illustration resolves the real Archelon node"), RestoredHit, ArchelonId);
+	Widget->SelectDestination(ArchelonId);
+	TestEqual(TEXT("Tap previews without routing"), Widget->GetSelectedDestination(), ArchelonId);
+	TestFalse(TEXT("Preview does not commit the navigation destination"), Map->HasDestination());
+	Widget->SelectDestination(ArchelonId);
+	TestTrue(TEXT("Second specimen tap deselects"), Widget->GetSelectedDestination().IsEmpty());
+	TestEqual(TEXT("Second specimen tap clears region"), Widget->GetSelectedGallery(), FString(TEXT("all")));
+	Widget->SelectDestination(ArchelonId);
+	TestEqual(TEXT("Selected specimen activates its gallery"), Widget->GetSelectedGallery(), FString(TEXT("marine")));
+	Widget->RefreshDestinations(Graph, FString());
+	TestEqual(TEXT("Async refresh preserves unconfirmed selection"), Widget->GetSelectedDestination(), ArchelonId);
+	// Capture the actual UMG selected state, including the polygon overlay and CTA.
+	Renderer.DrawWidget(Target, SlateWidget, FVector2D(940,1672), 0.016f);
+	Renderer.DrawWidget(Target, SlateWidget, FVector2D(940,1672), 0.016f);
+	Pixels.Reset(); Png.Reset();
+	if (Target->GameThread_GetRenderTargetResource()->ReadPixels(Pixels, Flags))
+	{
+		FImageUtils::PNGCompressImageArray(940,1672,Pixels,Png);
+		TestTrue(TEXT("Selected preview saved"), FFileHelper::SaveArrayToFile(Png, *(FPaths::ProjectSavedDir()/TEXT("NavSkinPreview_Selected.png"))));
+	}
+	Widget->SelectGallery(TEXT("paleo"));
+	TestTrue(TEXT("Gallery tap clears previous destination"), Widget->GetSelectedDestination().IsEmpty());
+	Widget->SelectGallery(TEXT("paleo"));
+	TestEqual(TEXT("Second gallery tap deselects"), Widget->GetSelectedGallery(), FString(TEXT("all")));
+	Widget->SelectGallery(TEXT("paleo"));
+	auto CaptureSize = [&](const TCHAR* Name, int32 Width, int32 Height)
+	{
+		Target->ResizeTarget(Width, Height);
+		Renderer.DrawWidget(Target, SlateWidget, FVector2D(Width,Height), 0.016f);
+		Renderer.DrawWidget(Target, SlateWidget, FVector2D(Width,Height), 0.016f);
+		Pixels.Reset(); Png.Reset();
+		if (!Target->GameThread_GetRenderTargetResource()->ReadPixels(Pixels,Flags)) { AddError(TEXT("Preview read failed")); return; }
+		FImageUtils::PNGCompressImageArray(Width,Height,Pixels,Png);
+		TestTrue(Name,FFileHelper::SaveArrayToFile(Png,*(FPaths::ProjectSavedDir()/Name)));
+	};
+	CaptureSize(TEXT("NavSkinPreview_Paleo.png"),940,1672);
+	Widget->SelectGallery(TEXT("ceno")); CaptureSize(TEXT("NavSkinPreview_Ceno.png"),940,1672);
+	Widget->SelectGallery(TEXT("mineral")); CaptureSize(TEXT("NavSkinPreview_Mineral.png"),940,1672);
+	Widget->SelectDestination(AmethystId); CaptureSize(TEXT("NavSkinPreview_Amethyst.png"),940,1672);
+	Widget->SelectDestination(EntranceId); CaptureSize(TEXT("NavSkinPreview_Entrance.png"),940,1672);
+	Widget->SelectDestination(ArchelonId); CaptureSize(TEXT("NavSkinPreview_Tall.png"),1080,2340);
+	Widget->SelectGallery(TEXT("all")); CaptureSize(TEXT("NavSkinPreview_Compact.png"),540,960);
+	Widget->StartSelectedGuidance();
+	TestTrue(TEXT("Empty CTA cannot close the picker"), Widget->FindReferenceDestinationAtLocal(FVector2D(319,161), RestoredHit));
+	Widget->SelectDestination(ArchelonId);
+	Widget->RefreshDestinations(FNavGraph(), FString());
+	TestTrue(TEXT("Missing live node invalidates selection"), Widget->GetSelectedDestination().IsEmpty());
+	Widget->RefreshDestinations(Graph, FString());
+	Widget->SelectDestination(ArchelonId);
+	Widget->StartSelectedGuidance();
+	TestFalse(TEXT("Confirmed guidance closes picker"), Widget->FindReferenceDestinationAtLocal(FVector2D(319,161), RestoredHit));
+	TestEqual(TEXT("Confirm commits the real destination"), Map->GetDestinationLabel(), FString(TEXT("아르켈론")));
+	Widget->StartSelectedGuidance(); // Repeated submission is a no-op.
 	Widget->RemoveFromRoot();
 	return bSaved;
 }

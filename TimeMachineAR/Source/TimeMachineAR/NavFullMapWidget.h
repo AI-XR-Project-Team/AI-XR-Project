@@ -13,11 +13,12 @@ class UCanvasPanel;
 class UCanvasPanelSlot;
 class USizeBox;
 class UTexture2D;
+class UButton;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnNavFullMapClosed);
 
-/** Exact supplied artwork with native live-node marker and carousel hit surfaces.
- * Bound MapView carries real navigation data without painting over the reference.
+/** Supplied floor plan with gallery previews and explicit destination confirmation.
+ * Bound MapView carries real navigation data independently of illustration coordinates.
  */
 UCLASS(Abstract)
 class TIMEMACHINEAR_API UNavFullMapWidget : public UUserWidget
@@ -28,7 +29,7 @@ public:
   bool bHasPose, const FVector2D& PoseXY, float PoseHeadingDeg, bool bPoseHasHeading,
   const FString& InDestNodeId);
 
- /** Refresh asynchronous graph cards without resetting carousel on pose updates. */
+ /** Refresh live destinations without discarding an unconfirmed user selection. */
  void RefreshDestinations(const FNavGraph& InGraph, const FString& InDestNodeId);
 
  UPROPERTY(BlueprintAssignable, Category="Nav|FullMap")
@@ -41,14 +42,24 @@ public:
 
  UNavMinimapWidget* GetMapView() const { return MapView; }
 
- /** Source PNG coordinates (941 x 1672), including the omitted 50-pixel top strip. */
+ /** Source PNG coordinates (429 x 555). Image coordinates never change metric routing. */
  bool FindReferenceDestinationAtLocal(const FVector2D& SourceImagePosition, FString& OutNodeId) const;
  bool UsesReferenceArtwork() const;
+ /** Preview is deliberately separate from starting guidance. */
+ void SelectDestination(const FString& NodeId);
+ void SelectGallery(const FString& GalleryId);
+ UFUNCTION()
+ void StartSelectedGuidance();
+ FString GetSelectedDestination() const { return SelectedDestination; }
+ FString GetSelectedGallery() const { return SelectedGallery; }
 
 protected:
  virtual void NativeConstruct() override;
  virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime) override;
  virtual FReply NativeOnMouseButtonDown(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent) override;
+ virtual int32 NativePaint(const FPaintArgs& Args, const FGeometry& AllottedGeometry,
+  const FSlateRect& MyCullingRect, FSlateWindowElementList& OutDrawElements, int32 LayerId,
+  const FWidgetStyle& InWidgetStyle, bool bParentEnabled) const override;
 
  UPROPERTY(BlueprintReadOnly, meta=(BindWidget), Category="Nav|FullMap")
  TObjectPtr<UNavMinimapWidget> MapView;
@@ -67,15 +78,28 @@ private:
  UPROPERTY(Transient)
  TObjectPtr<UCanvasPanel> ReferenceCanvas;
  UPROPERTY(Transient)
- TObjectPtr<UCanvasPanelSlot> HeaderLayoutSlot;
+ TObjectPtr<UButton> GuideButton;
  UPROPERTY(Transient)
- TObjectPtr<USizeBox> HeaderDesignSize;
+ TObjectPtr<UCanvasPanelSlot> BackLayoutSlot;
  UPROPERTY(Transient)
- TObjectPtr<UCanvasPanelSlot> MessageLayoutSlot;
+ TObjectPtr<UTextBlock> BackLabel;
  UPROPERTY(Transient)
- TObjectPtr<UCanvasPanelSlot> MessageTitleSlot;
+ TObjectPtr<UTextBlock> LexiTitle;
  UPROPERTY(Transient)
- TObjectPtr<UCanvasPanelSlot> MessageSubtitleSlot;
+ TObjectPtr<UTextBlock> LexiDescription;
+ UPROPERTY(Transient)
+ TObjectPtr<UTextBlock> SelectionTitle;
+ UPROPERTY(Transient)
+ TObjectPtr<UTextBlock> SelectionSubtitle;
+ UPROPERTY(Transient)
+ TArray<TObjectPtr<UNavDestButton>> GalleryButtons;
+ UPROPERTY(Transient)
+ TArray<TObjectPtr<UTextBlock>> GalleryLabels;
+ FString SelectedDestination;
+ FString SelectedGallery = TEXT("all");
+ void UpdateSelectionAppearance();
+ UFUNCTION()
+ void HandleGalleryClicked(const FString& GalleryId);
  void BuildSkinLayout();
  void BuildDestinationButtons(const FNavGraph& InGraph);
  UFUNCTION()

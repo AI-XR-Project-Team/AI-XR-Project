@@ -1,16 +1,17 @@
-#include "NavFullMapWidget.h"
+﻿#include "NavFullMapWidget.h"
 #include "Blueprint/WidgetTree.h"
-#include "Components/Border.h"
 #include "Components/BackgroundBlur.h"
+#include "Components/Border.h"
 #include "Components/Button.h"
 #include "Components/CanvasPanel.h"
 #include "Components/CanvasPanelSlot.h"
 #include "Components/Image.h"
 #include "Components/ScaleBox.h"
-#include "Components/ScrollBox.h"
 #include "Components/SizeBox.h"
 #include "Components/TextBlock.h"
 #include "Brushes/SlateRoundedBoxBrush.h"
+#include "Rendering/DrawElements.h"
+#include "Styling/CoreStyle.h"
 #include "Engine/Font.h"
 #include "Engine/Texture2D.h"
 #include "NavDestButton.h"
@@ -18,292 +19,347 @@
 
 namespace
 {
- constexpr float ReferenceWidth = 941.f;
- constexpr float ReferenceHeight = 1672.f;
- constexpr float TopCrop = 0.f;
- struct FReferenceHotspot { int32 Number; FVector2D Center; FVector2D Size; };
- // Source-image coordinates identify artwork only; navigation uses the live node ID.
- const FReferenceHotspot Hotspots[] = {
-  {1,{160,1110},{110,110}}, {2,{151,889},{110,120}}, {3,{610,997},{110,110}},
-  {4,{790,1042},{110,110}}, {5,{655,681},{180,190}}, {6,{784,524},{110,110}},
-  {7,{791,784},{110,110}}, {8,{375,859},{110,110}}, {9,{382,691},{110,110}},
-  {10,{201,525},{110,110}}, {11,{221,649},{110,110}}, {12,{146,775},{110,110}},
-  {13,{327,1023},{110,110}}
- };
- const TCHAR* Names[] = {TEXT("자수정"),TEXT("입구"),TEXT("삼엽충"),TEXT("고사리잎"),TEXT("아르켈론"),
+ constexpr float SourceWidth=429.f, SourceHeight=555.f, MapCropHeight=532.f;
+ constexpr float DesignWidth=940.f, DesignHeight=1740.f;
+ constexpr float MapX=20.f, MapY=280.f, MapWidth=900.f, MapScale=MapWidth/SourceWidth;
+ struct FReferenceHotspot {int32 Number; FVector2D Center; FVector2D Size; const TCHAR* Gallery;};
+ // Stable backend label keys, not the numbers printed in the new artwork.
+ // Artwork prints entrance as 1 and amethyst as 2; resolve their unchanged backend labels.
+ const FReferenceHotspot Hotspots[]={
+  {1,{50,486},{40,44},TEXT("mineral")},{2,{50,308},{36,68},TEXT("all")},
+  {3,{292,393},{42,42},TEXT("paleo")},
+  {4,{391,443},{40,42},TEXT("paleo")},{5,{319,161},{56,58},TEXT("marine")},
+  {6,{375,99},{42,42},TEXT("marine")},{7,{378,283},{42,42},TEXT("marine")},
+  {8,{155,319},{42,42},TEXT("paleo")},{9,{156,207},{42,42},TEXT("paleo")},
+  {10,{70,90},{42,42},TEXT("ceno")},{11,{80,170},{42,42},TEXT("ceno")},
+  {12,{51,243},{36,34},TEXT("all")},{13,{124,408},{42,42},TEXT("mineral")}};
+ const TCHAR* Names[]={TEXT("자수정"),TEXT("입구"),TEXT("삼엽충"),TEXT("고사리잎"),TEXT("아르켈론"),
   TEXT("알로사우루스"),TEXT("화석"),TEXT("물고기화석"),TEXT("진주화석"),TEXT("포유류 화석"),
   TEXT("거북이 화석"),TEXT("출구"),TEXT("탄생석")};
- FLinearColor Cyan() { return FLinearColor(0.08f,0.72f,1.f); }
+ const TCHAR* GalleryIds[]={TEXT("all"),TEXT("ceno"),TEXT("paleo"),TEXT("marine"),TEXT("mineral")};
+ const TCHAR* GalleryNames[]={TEXT("전체"),TEXT("신생대관"),TEXT("고생대관"),TEXT("해양생물관"),TEXT("암석관")};
+ const TCHAR* SpecimenDescriptions[]={
+  TEXT("보랏빛 광물의 모양과 색을 살펴보세요."),
+  TEXT("렉시와 함께 박물관 탐험을 시작해볼까요?"),
+  TEXT("오래전 바다 생물의 흔적을 만나보세요."),
+  TEXT("잎에 남은 무늬에서 옛 식물의 모습을 찾아보세요."),
+  TEXT("커다란 바다거북의 모습을 살펴보세요."),
+  TEXT("날카로운 이빨과 두개골을 살펴보세요."),
+  TEXT("돌에 남은 옛 생물의 흔적을 찾아보세요."),
+  TEXT("지느러미와 몸의 흔적을 찾아보세요."),
+  TEXT("화석의 모양과 표면을 가까이 살펴보세요."),
+  TEXT("옛 동물의 모습을 상상해보세요."),
+  TEXT("화석에 남은 거북의 몸과 등껍질을 살펴보세요."),
+  TEXT("이곳에서 관람을 마칠 수 있어요."),
+  TEXT("다양한 보석과 광물의 색을 만나보세요.")};
+ const TCHAR* GalleryDescriptions[]={TEXT("화석을 고르면 렉시가 안내해 드려요"),
+  TEXT("포유류와 거북이 화석을 만나볼 수 있어요."),
+  TEXT("삼엽충과 식물·물고기 화석이 있어요."),
+  TEXT("아르켈론과 공룡 화석을 만나보세요."),
+  TEXT("자수정과 탄생석의 색과 모양을 살펴보세요.")};
+ FLinearColor Accent(){return FLinearColor(0.15f,0.78f,0.91f,1.f);}
+ FLinearColor Panel(){return FLinearColor(0.013f,0.027f,0.044f,0.97f);}
+ FButtonStyle ButtonStyle(bool Selected=false)
+ {
+  FButtonStyle S;
+  S.SetNormal(FSlateRoundedBoxBrush(Selected?FLinearColor(0.03f,0.18f,0.23f,1.f):Panel(),18.f,
+   Selected?Accent():FLinearColor(0.10f,0.17f,0.22f,1.f),Selected?2.f:1.f));
+  S.SetHovered(FSlateRoundedBoxBrush(FLinearColor(0.04f,0.22f,0.27f,1.f),18.f,Accent(),2.f));
+  S.SetPressed(S.Hovered); S.SetDisabled(FSlateRoundedBoxBrush(FLinearColor(0.045f,0.067f,0.083f,1.f),18.f));
+  S.SetNormalPadding(FMargin(0)); S.SetPressedPadding(FMargin(0)); return S;
+ }
+ TArray<TArray<FVector2D>> GalleryPolygons(const FString& Id)
+ {
+  // Illustration-space boundaries only; museum_final metric routing is independent.
+  if(Id==TEXT("ceno")) return {{{42,34},{58,34},{58,48},{79,48},{79,34},{98,34},{98,74},
+   {108,74},{108,255},{33,255},{33,234},{42,234}}};
+  if(Id==TEXT("marine")) return {{{346,40},{414,40},{414,179},{418,185},{418,218},{407,223},
+   {407,316},{307,316},{307,302},{283,275},{277,252},{277,112},{273,105},{343,105}}};
+  if(Id==TEXT("paleo")) return {
+   {{118,151},{125,151},{125,166},{199,166},{199,151},{238,151},{238,225},{213,226},
+    {193,248},{193,291},{200,291},{200,343},{181,343},{181,352},{129,352},{129,257},{118,257}},
+   {{308,337},{405,337},{405,461},{398,474},{369,474},{364,482},{325,482},{320,466},
+    {273,466},{273,381},{281,371},{297,368},{297,353},{308,353}}};
+  if(Id==TEXT("mineral")) return {{{42,357},{61,357},{66,370},{148,370},{148,441},{77,441},
+   {77,427},{66,427},{66,458},{170,458},{170,450},{200,450},{200,462},{187,462},
+   {187,474},{146,474},{146,482},{113,482},{113,475},{104,475},{104,485},
+   {92,485},{92,502},{67,502},{67,515},{29,515},{29,472},{42,472}}};
+  return {};
+ }
 }
 
-void UNavFullMapWidget::NativeConstruct()
-{
- Super::NativeConstruct(); bClosing=false; BuildSkinLayout();
-}
-
-bool UNavFullMapWidget::UsesReferenceArtwork() const
-{
- return ReferenceTexture != nullptr && ReferenceCanvas != nullptr;
-}
+void UNavFullMapWidget::NativeConstruct(){Super::NativeConstruct(); bClosing=false; BuildSkinLayout();}
+bool UNavFullMapWidget::UsesReferenceArtwork() const{return ReferenceTexture && ReferenceCanvas;}
 
 void UNavFullMapWidget::BuildSkinLayout()
 {
- if (!WidgetTree || !Backdrop || !MapView || ReferenceCanvas) { return; }
- ReferenceTexture=LoadObject<UTexture2D>(nullptr,TEXT("/Game/UI/Nav/Reference/T_MuseumSimple.T_MuseumSimple"));
- MapView->RemoveFromParent(); MapView->Mode=ENavMinimapMode::Full;
- MapView->SetVisibility(ESlateVisibility::Collapsed);
+ if(!WidgetTree || !Backdrop || !MapView || ReferenceCanvas) return;
+ ReferenceTexture=LoadObject<UTexture2D>(nullptr,TEXT("/Game/UI/Nav/Reference/T_MuseumFloorplan.T_MuseumFloorplan"));
+ MapView->RemoveFromParent(); MapView->Mode=ENavMinimapMode::Full; MapView->SetVisibility(ESlateVisibility::Collapsed);
  Backdrop->SetPadding(FMargin(0)); Backdrop->SetBrushColor(FLinearColor::Transparent);
- UCanvasPanel* ScreenCanvas=WidgetTree->ConstructWidget<UCanvasPanel>(); Backdrop->SetContent(ScreenCanvas);
- UBackgroundBlur* CameraBlur=WidgetTree->ConstructWidget<UBackgroundBlur>();
- CameraBlur->SetBlurStrength(8.f); CameraBlur->SetApplyAlphaToBlur(false);
- CameraBlur->SetVisibility(ESlateVisibility::HitTestInvisible);
- UCanvasPanelSlot* BlurSlot=ScreenCanvas->AddChildToCanvas(CameraBlur);
- BlurSlot->SetAnchors(FAnchors(0.f,0.f,1.f,1.f)); BlurSlot->SetOffsets(FMargin(0));
- UBorder* CameraTint=WidgetTree->ConstructWidget<UBorder>();
- CameraTint->SetBrushColor(FLinearColor(0.003f,0.01f,0.02f,0.28f));
- CameraTint->SetVisibility(ESlateVisibility::HitTestInvisible);
- UCanvasPanelSlot* TintSlot=ScreenCanvas->AddChildToCanvas(CameraTint);
- TintSlot->SetAnchors(FAnchors(0.f,0.f,1.f,1.f)); TintSlot->SetOffsets(FMargin(0));
- TintSlot->SetZOrder(1);
+ UCanvasPanel* Screen=WidgetTree->ConstructWidget<UCanvasPanel>(); Backdrop->SetContent(Screen);
+ auto Place=[](UCanvasPanel* Canvas,UWidget* Widget,float X,float Y,float W,float H)
+ {
+  UCanvasPanelSlot* Slot=Canvas->AddChildToCanvas(Widget); Slot->SetPosition(FVector2D(X,Y)); Slot->SetSize(FVector2D(W,H));
+  Slot->SetZOrder(Canvas->GetChildrenCount()); return Slot;
+ };
+ UBackgroundBlur* Blur=WidgetTree->ConstructWidget<UBackgroundBlur>();
+ Blur->SetBlurStrength(8.f); Blur->SetApplyAlphaToBlur(false); Blur->SetVisibility(ESlateVisibility::HitTestInvisible);
+ UCanvasPanelSlot* Full=Place(Screen,Blur,0,0,0,0); Full->SetAnchors(FAnchors(0,0,1,1)); Full->SetOffsets(FMargin(0));
+ UBorder* Tint=WidgetTree->ConstructWidget<UBorder>(); Tint->SetBrushColor(FLinearColor(0.003f,0.01f,0.02f,0.48f));
+ Tint->SetVisibility(ESlateVisibility::HitTestInvisible);
+ Full=Place(Screen,Tint,0,0,0,0); Full->SetAnchors(FAnchors(0,0,1,1)); Full->SetOffsets(FMargin(0));
  UScaleBox* Scale=WidgetTree->ConstructWidget<UScaleBox>(); Scale->SetStretch(EStretch::ScaleToFit);
- UCanvasPanelSlot* ScaleSlot=ScreenCanvas->AddChildToCanvas(Scale);
- ScaleSlot->SetAnchors(FAnchors(0.f,0.f,1.f,1.f)); ScaleSlot->SetOffsets(FMargin(0));
- ScaleSlot->SetZOrder(2);
- USizeBox* Design=WidgetTree->ConstructWidget<USizeBox>(); Design->SetWidthOverride(ReferenceWidth);
- Design->SetHeightOverride(1495.f); Scale->SetContent(Design);
+ Full=Place(Screen,Scale,0,0,0,0); Full->SetAnchors(FAnchors(0,0,1,1)); Full->SetOffsets(FMargin(0));
+ USizeBox* Design=WidgetTree->ConstructWidget<USizeBox>();
+ Design->SetWidthOverride(DesignWidth); Design->SetHeightOverride(DesignHeight); Scale->SetContent(Design);
  ReferenceCanvas=WidgetTree->ConstructWidget<UCanvasPanel>(); Design->SetContent(ReferenceCanvas);
- auto Place=[](UCanvasPanel* Canvas,UWidget* Widget,float X,float Y,float Width,float Height)
- {
-  UCanvasPanelSlot* CanvasSlot=Canvas->AddChildToCanvas(Widget);
-  CanvasSlot->SetPosition(FVector2D(X,Y)); CanvasSlot->SetSize(FVector2D(Width,Height));
-  CanvasSlot->SetZOrder(Canvas->GetChildrenCount());
- };
- // Keep the same bound map instance alive for existing asynchronous lifecycle setters.
  Place(ReferenceCanvas,MapView,0,0,1,1);
- auto Slice=[&](UCanvasPanel* Canvas,float SourceX,float SourceY,float Width,float Height,float X,float Y)
- {
-  UImage* Image=WidgetTree->ConstructWidget<UImage>();
-  if (ReferenceTexture)
-  {
-   FSlateBrush Brush; Brush.SetResourceObject(ReferenceTexture); Brush.DrawAs=ESlateBrushDrawType::Image;
-   Brush.ImageSize=FVector2D(Width,Height);
-   Brush.SetUVRegion(FBox2f(FVector2f(SourceX/ReferenceWidth,SourceY/ReferenceHeight),
-    FVector2f((SourceX+Width)/ReferenceWidth,(SourceY+Height)/ReferenceHeight)));
-   Image->SetBrush(Brush);
-  }
-  else { FSlateBrush EmptyBrush; EmptyBrush.DrawAs=ESlateBrushDrawType::NoDrawType; Image->SetBrush(EmptyBrush); }
-  Image->SetVisibility(ESlateVisibility::HitTestInvisible); Place(Canvas,Image,X,Y,Width,Height); return Image;
- };
- // Restrained foreground artwork over the live camera, with independently scrollable cards.
- // Keep the approved simple panels and map; swap only Lexi's illustration.
- UBorder* TitleCap=WidgetTree->ConstructWidget<UBorder>();
- TitleCap->SetBrush(FSlateRoundedBoxBrush(FLinearColor(0.012f,0.023f,0.038f,1.f),40.f));
- TitleCap->SetBrushColor(FLinearColor::White); TitleCap->SetVisibility(ESlateVisibility::HitTestInvisible);
- Place(ReferenceCanvas,TitleCap,235,271,475,85);
- Slice(ReferenceCanvas,0,284,ReferenceWidth,941,0,284);
- // Center the equal-height Lexi/message row between Back and the map title.
- UScaleBox* HeaderScale=WidgetTree->ConstructWidget<UScaleBox>();
- HeaderScale->SetStretch(EStretch::ScaleToFit);
- UCanvasPanelSlot* HeaderSlot=ScreenCanvas->AddChildToCanvas(HeaderScale);
- HeaderLayoutSlot=HeaderSlot;
- HeaderSlot->SetAnchors(FAnchors(0.f,0.f,1.f,0.f));
- HeaderSlot->SetOffsets(FMargin(16.f,144.f,16.f,200.f)); HeaderSlot->SetZOrder(3);
- USizeBox* HeaderSize=WidgetTree->ConstructWidget<USizeBox>();
- HeaderDesignSize=HeaderSize;
- HeaderSize->SetWidthOverride(1203.f); HeaderSize->SetHeightOverride(265.f);
- HeaderScale->SetContent(HeaderSize);
- UCanvasPanel* HeaderCanvas=WidgetTree->ConstructWidget<UCanvasPanel>(); HeaderSize->SetContent(HeaderCanvas);
- UTexture2D* LexiTexture=LoadObject<UTexture2D>(nullptr,TEXT("/Game/UI/Nav/Reference/T_MuseumForeground.T_MuseumForeground"));
- auto LexiSection=[&](float Y,float Width,float Height)
- {
-  UImage* Lexi=WidgetTree->ConstructWidget<UImage>();
-  FSlateBrush Brush; Brush.SetResourceObject(LexiTexture); Brush.DrawAs=ESlateBrushDrawType::Image;
-  Brush.ImageSize=FVector2D(Width,Height);
-  Brush.SetUVRegion(FBox2f(FVector2f(130.f/941.f,Y/1671.f),FVector2f((130.f+Width)/941.f,(Y+Height)/1671.f)));
-  Lexi->SetBrush(Brush); Lexi->SetVisibility(ESlateVisibility::HitTestInvisible);
-  Place(HeaderCanvas,Lexi,0,Y,Width,Height);
- };
- if(LexiTexture) { LexiSection(0,260,195); LexiSection(195,245,70); }
- UBorder* MessagePanel=WidgetTree->ConstructWidget<UBorder>();
- const FLinearColor BubbleColor(0.012f,0.023f,0.038f,1.f);
- MessagePanel->SetBrush(FSlateRoundedBoxBrush(BubbleColor,28.f));
- MessagePanel->SetBrushColor(FLinearColor::White);
- MessagePanel->SetVisibility(ESlateVisibility::HitTestInvisible);
- UBorder* BubbleTail=WidgetTree->ConstructWidget<UBorder>();
- BubbleTail->SetBrushColor(BubbleColor); BubbleTail->SetRenderTransformAngle(45.f);
- BubbleTail->SetVisibility(ESlateVisibility::HitTestInvisible);
- Place(HeaderCanvas,BubbleTail,268,120,28,28);
- Place(HeaderCanvas,MessagePanel,280,0,923,265);
- MessageLayoutSlot=Cast<UCanvasPanelSlot>(MessagePanel->Slot);
  UFont* Face=LoadObject<UFont>(nullptr,TEXT("/Game/UI/Fonts/Pretendard-SemiBold_Font.Pretendard-SemiBold_Font"));
- auto Label=[&](UCanvasPanel* Canvas,const FString& Value,int32 Size,float X,float Y,float Width,float Height)
+ auto Text=[&](const TCHAR* Value,int32 Size,FLinearColor Color)
  {
-  UTextBlock* Text=WidgetTree->ConstructWidget<UTextBlock>(); Text->SetText(FText::FromString(Value));
-  FSlateFontInfo Font=Text->GetFont(); Font.Size=Size; if(Face) {Font.FontObject=Face;} Text->SetFont(Font);
-  Text->SetColorAndOpacity(FSlateColor(FLinearColor(0.7f,0.9f,1.f))); Text->SetJustification(ETextJustify::Center);
-  Text->SetVisibility(ESlateVisibility::HitTestInvisible); Place(Canvas,Text,X,Y,Width,Height); return Text;
+  UTextBlock* T=WidgetTree->ConstructWidget<UTextBlock>(); T->SetText(FText::FromString(Value));
+  FSlateFontInfo Font=T->GetFont(); Font.Size=Size; if(Face) Font.FontObject=Face; T->SetFont(Font);
+  T->SetColorAndOpacity(FSlateColor(Color)); T->SetVisibility(ESlateVisibility::HitTestInvisible); return T;
  };
- UTextBlock* MessageTitle=Label(HeaderCanvas,TEXT("도착지를 골라주세요!"),40,312,73,859,64);
- MessageTitle->SetColorAndOpacity(FSlateColor(FLinearColor::White));
- MessageTitleSlot=Cast<UCanvasPanelSlot>(MessageTitle->Slot);
- UTextBlock* MessageSubtitle=Label(HeaderCanvas,TEXT("원하는 전시물을 선택하세요."),27,312,151,859,48);
- MessageSubtitleSlot=Cast<UCanvasPanelSlot>(MessageSubtitle->Slot);
- FButtonStyle TransparentStyle;
- FSlateBrush Empty; Empty.DrawAs=ESlateBrushDrawType::NoDrawType;
- TransparentStyle.SetNormal(Empty); TransparentStyle.SetHovered(Empty); TransparentStyle.SetPressed(Empty);
- TransparentStyle.SetDisabled(Empty); TransparentStyle.SetNormalPadding(FMargin(0)); TransparentStyle.SetPressedPadding(FMargin(0));
- auto HotButton=[&](UCanvasPanel* Canvas,int32 Number,float X,float Y,float Width,float Height)
+ auto Label=[&](const TCHAR* Value,int32 Size,float X,float Y,float W,float H,FLinearColor Color=FLinearColor::White)
  {
-  UNavDestButton* Button=WidgetTree->ConstructWidget<UNavDestButton>(); Button->SetStyle(TransparentStyle);
-  Button->SetTouchMethod(EButtonTouchMethod::PreciseTap); Button->SetClickMethod(EButtonClickMethod::PreciseClick);
-  Button->SetIsEnabled(false); Button->WireClick(); Button->OnDestClicked.AddDynamic(this,&UNavFullMapWidget::HandleDestButtonClicked);
-  Button->SetToolTipText(FText::FromString(Names[Number-1])); Place(Canvas,Button,X,Y,Width,Height);
-  DestButtons.Add(Button); DestinationButtonNumbers.Add(Number); return Button;
+  UTextBlock* T=Text(Value,Size,Color); Place(ReferenceCanvas,T,X,Y,W,H); return T;
  };
- for (const FReferenceHotspot& Hotspot:Hotspots)
+ auto Image=[&](UTexture2D* Texture,FVector2f UV0,FVector2f UV1,float X,float Y,float W,float H)
  {
-  HotButton(ReferenceCanvas,Hotspot.Number,Hotspot.Center.X-Hotspot.Size.X*0.5f,
-   Hotspot.Center.Y-Hotspot.Size.Y*0.5f-TopCrop,Hotspot.Size.X,Hotspot.Size.Y);
- }
- UScrollBox* Carousel=WidgetTree->ConstructWidget<UScrollBox>(); Carousel->SetOrientation(Orient_Horizontal);
- Carousel->SetScrollBarVisibility(ESlateVisibility::Collapsed); Carousel->SetClipping(EWidgetClipping::ClipToBounds);
- Place(ReferenceCanvas,Carousel,0,1225-TopCrop,ReferenceWidth,270);
- USizeBox* StripSize=WidgetTree->ConstructWidget<USizeBox>(); StripSize->SetWidthOverride(ReferenceWidth+10*286.f);
- StripSize->SetHeightOverride(270); Carousel->AddChild(StripSize);
- UCanvasPanel* Strip=WidgetTree->ConstructWidget<UCanvasPanel>(); StripSize->SetContent(Strip);
- Slice(Strip,0,1225,ReferenceWidth,270,0,0);
- HotButton(Strip,1,55,23,274,239); HotButton(Strip,3,336,7,273,256); HotButton(Strip,5,615,23,272,239);
- // The initial viewport is exactly the supplied strip. Swipe reveals the other live destinations.
- int32 ExtraIndex=0;
- for (const FReferenceHotspot& Hotspot:Hotspots)
+  UImage* I=WidgetTree->ConstructWidget<UImage>(); FSlateBrush B;
+  B.SetResourceObject(Texture); B.DrawAs=Texture?ESlateBrushDrawType::Image:ESlateBrushDrawType::NoDrawType;
+  B.ImageSize=FVector2D(W,H); B.SetUVRegion(FBox2f(UV0,UV1)); I->SetBrush(B);
+  I->SetVisibility(ESlateVisibility::HitTestInvisible); Place(ReferenceCanvas,I,X,Y,W,H);
+ };
+ UButton* Back=WidgetTree->ConstructWidget<UButton>(); Back->SetStyle(ButtonStyle());
+ UTextBlock* BackText=Text(TEXT("‹"),60,FLinearColor::White); BackText->SetJustification(ETextJustify::Center);
+ Back->SetContent(BackText); Back->SetToolTipText(FText::FromString(TEXT("지도 닫기")));
+ Back->OnClicked.AddDynamic(this,&UNavFullMapWidget::Close);
+ BackLayoutSlot=Place(Screen,Back,16,16,96,96); BackLabel=BackText;
+ UTextBlock* MuseumTitle=Label(TEXT("경주 자연사박물관"),28,150,38,680,48); MuseumTitle->SetJustification(ETextJustify::Center);
+ UTexture2D* Lexi=LoadObject<UTexture2D>(nullptr,TEXT("/Game/UI/Nav/Reference/T_MuseumForeground.T_MuseumForeground"));
+ Image(Lexi,{130.f/941.f,0},{390.f/941.f,195.f/1671.f},22,108,176,132);
+ Image(Lexi,{130.f/941.f,195.f/1671.f},{375.f/941.f,265.f/1671.f},22,240,166,47);
+ UBorder* Bubble=WidgetTree->ConstructWidget<UBorder>(); Bubble->SetBrush(FSlateRoundedBoxBrush(Panel(),24.f));
+ Bubble->SetBrushColor(FLinearColor::White); Bubble->SetVisibility(ESlateVisibility::HitTestInvisible);
+ Place(ReferenceCanvas,Bubble,220,118,696,144);
+ UBorder* Tail=WidgetTree->ConstructWidget<UBorder>(); Tail->SetBrushColor(Panel()); Tail->SetRenderTransformAngle(45.f);
+ Tail->SetVisibility(ESlateVisibility::HitTestInvisible); Place(ReferenceCanvas,Tail,210,176,22,22);
+ LexiTitle=Label(TEXT("어디로 가볼까요?"),32,252,138,638,52);
+ LexiDescription=Label(TEXT("화석을 고르면 렉시가 안내해 드려요"),22,252,204,638,40,FLinearColor(0.7f,0.82f,0.9f));
+ // UMG crops only the incomplete footer; the supplied PNG is preserved byte for byte.
+ Image(ReferenceTexture,{0,0},{1,MapCropHeight/SourceHeight},MapX,MapY,MapWidth,MapCropHeight*MapScale);
+ for(const FReferenceHotspot& H:Hotspots)
  {
-  if(Hotspot.Number==1 || Hotspot.Number==3 || Hotspot.Number==5) {continue;}
-  const float X=ReferenceWidth+ExtraIndex++*286.f;
-  UBorder* Card=WidgetTree->ConstructWidget<UBorder>();
-  const FString Name=Names[Hotspot.Number-1];
-  const FLinearColor Accent(0.16f,0.28f,0.4f,1.f);
-  Card->SetBrush(FSlateRoundedBoxBrush(FLinearColor(0.012f,0.025f,0.045f,0.94f),22.f,Accent,1.f));
-  Card->SetBrushColor(FLinearColor::White); Card->SetVisibility(ESlateVisibility::HitTestInvisible); Place(Strip,Card,X+8,20,270,244);
-  Slice(Strip,Hotspot.Center.X-50,Hotspot.Center.Y-50,100,100,X+93,36);
-  Label(Strip,FString::Printf(TEXT("%d  %s"),Hotspot.Number,*Name),22,X+15,148,255,42);
-  Label(Strip,TEXT("길 안내 시작  ›"),17,X+24,209,237,36);
-  HotButton(Strip,Hotspot.Number,X+8,20,270,244);
+  UNavDestButton* B=WidgetTree->ConstructWidget<UNavDestButton>(); B->SetIsEnabled(false);
+  B->SetTouchMethod(EButtonTouchMethod::DownAndUp); B->WireClick();
+  B->OnDestClicked.AddDynamic(this,&UNavFullMapWidget::HandleDestButtonClicked);
+  B->SetToolTipText(FText::FromString(Names[H.Number-1]));
+  Place(ReferenceCanvas,B,MapX+(H.Center.X-H.Size.X/2)*MapScale,MapY+(H.Center.Y-H.Size.Y/2)*MapScale,H.Size.X*MapScale,H.Size.Y*MapScale);
+  DestButtons.Add(B); DestinationButtonNumbers.Add(H.Number);
  }
- // Anchor close to the screen's top-left, independent of the centered artwork.
- UButton* Back=WidgetTree->ConstructWidget<UButton>(); FButtonStyle BackStyle=TransparentStyle;
- BackStyle.SetNormal(FSlateRoundedBoxBrush(FLinearColor(0.012f,0.016f,0.023f,0.9f),56.f));
- BackStyle.SetHovered(FSlateRoundedBoxBrush(FLinearColor(0.035f,0.06f,0.09f,0.95f),56.f));
- BackStyle.SetPressed(BackStyle.Hovered); Back->SetStyle(BackStyle);
- UTextBlock* BackText=WidgetTree->ConstructWidget<UTextBlock>(); BackText->SetText(FText::FromString(TEXT("‹")));
- FSlateFontInfo BackFont=BackText->GetFont(); BackFont.Size=54; BackText->SetFont(BackFont);
- BackText->SetJustification(ETextJustify::Center); BackText->SetColorAndOpacity(FSlateColor(FLinearColor::White)); Back->SetContent(BackText);
- Back->SetToolTipText(FText::FromString(TEXT("지도 닫기"))); Back->OnClicked.AddDynamic(this,&UNavFullMapWidget::Close);
- Place(ScreenCanvas,Back,16,16,112,112);
- MapStatus=Label(ReferenceCanvas,ReferenceTexture ? TEXT("지도 연결 중…") : TEXT("안내도 이미지를 불러올 수 없습니다"),23,190,1140-TopCrop,570,46);
+ Label(TEXT("전시관 둘러보기"),23,28,1404,880,38,FLinearColor(0.65f,0.77f,0.83f));
+ const float Widths[]={108,182,182,220,164}; float X=20;
+ for(int32 I=0;I<5;++I)
+ {
+  UNavDestButton* B=WidgetTree->ConstructWidget<UNavDestButton>(); B->NodeId=GalleryIds[I]; B->WireClick();
+  B->OnDestClicked.AddDynamic(this,&UNavFullMapWidget::HandleGalleryClicked);
+  UTextBlock* T=Text(GalleryNames[I],26,FLinearColor::White); T->SetJustification(ETextJustify::Center);
+  B->SetContent(T); Place(ReferenceCanvas,B,X,1448,Widths[I],76); X+=Widths[I]+11;
+  GalleryButtons.Add(B); GalleryLabels.Add(T);
+ }
+ UBorder* Selection=WidgetTree->ConstructWidget<UBorder>();
+ Selection->SetBrush(FSlateRoundedBoxBrush(Panel(),24.f,FLinearColor(0.09f,0.18f,0.23f),1.f));
+ Selection->SetBrushColor(FLinearColor::White); Selection->SetVisibility(ESlateVisibility::HitTestInvisible);
+ Place(ReferenceCanvas,Selection,20,1542,900,150);
+ SelectionTitle=Label(TEXT("전시물을 선택해주세요"),32,48,1560,530,50);
+ SelectionSubtitle=Label(TEXT("지도 위 화석을 눌러보세요"),22,48,1623,530,38,FLinearColor(0.6f,0.72f,0.8f));
+ GuideButton=WidgetTree->ConstructWidget<UButton>(); GuideButton->SetStyle(ButtonStyle(true));
+ UTextBlock* GuideText=Text(TEXT("여기로 안내  ›"),28,FLinearColor::White); GuideText->SetJustification(ETextJustify::Center);
+ GuideButton->SetContent(GuideText); GuideButton->OnClicked.AddDynamic(this,&UNavFullMapWidget::StartSelectedGuidance);
+ Place(ReferenceCanvas,GuideButton,604,1564,290,106);
+ MapStatus=Label(TEXT("안내 정보 연결 중…"),21,30,1700,880,34,FLinearColor(0.65f,0.77f,0.83f));
+ MapStatus->SetJustification(ETextJustify::Center); UpdateSelectionAppearance();
 }
 
-void UNavFullMapWidget::NativeTick(const FGeometry& MyGeometry,float InDeltaTime)
+void UNavFullMapWidget::NativeTick(const FGeometry& Geometry,float Delta)
 {
- Super::NativeTick(MyGeometry,InDeltaTime);
- if(HeaderLayoutSlot && ReferenceCanvas && MyGeometry.GetLocalSize().GetMin()>0.f)
+ Super::NativeTick(Geometry,Delta);
+ if(BackLayoutSlot && BackLabel && Geometry.GetLocalSize().X>0)
  {
-  const FVector2D ViewSize=MyGeometry.GetLocalSize();
-  const float ArtScale=FMath::Min(ViewSize.X/ReferenceWidth,ViewSize.Y/1495.f);
-  const float MapTitleTop=(ViewSize.Y-1495.f*ArtScale)*0.5f+271.f*ArtScale;
-  const float Gap=FMath::Max(0.f,MapTitleTop-128.f);
-  const float HeaderHeight=FMath::Min(220.f,FMath::Max(0.f,Gap-32.f));
-  const float HeaderTop=128.f+(Gap-HeaderHeight)*0.5f;
-  const FMargin Desired(16.f,HeaderTop,16.f,HeaderHeight);
-  if(HeaderLayoutSlot->GetOffsets()!=Desired) {HeaderLayoutSlot->SetOffsets(Desired);}
-  if(HeaderHeight>0.f && HeaderDesignSize && MessageLayoutSlot && MessageTitleSlot && MessageSubtitleSlot)
+  const FVector2D View=Geometry.GetLocalSize();
+  const float Scale=FMath::Min(View.X/DesignWidth,View.Y/DesignHeight);
+  const float Size=FMath::Clamp(96.f*Scale,48.f,96.f);
+  const float Margin=FMath::Clamp(16.f*Scale,8.f,16.f);
+  BackLayoutSlot->SetPosition(FVector2D(Margin,Margin)); BackLayoutSlot->SetSize(FVector2D(Size,Size));
+  FSlateFontInfo Font=BackLabel->GetFont(); const int32 FontSize=FMath::RoundToInt(Size*.625f);
+  if(Font.Size!=FontSize){Font.Size=FontSize;BackLabel->SetFont(Font);}
+ }
+ if(ReferenceNodeIds.Num()>0 || !MapStatus){MapWaitSeconds=0;return;}
+ MapWaitSeconds+=Delta;
+ if(!ReferenceTexture) MapStatus->SetText(FText::FromString(TEXT("지도 이미지를 불러올 수 없습니다")));
+ else if(MapWaitSeconds>=10.f) MapStatus->SetText(FText::FromString(TEXT("안내 정보 연결을 확인해주세요")));
+}
+void UNavFullMapWidget::ApplyState(const FNavGraph& Graph,const TArray<FVector2D>& Route,bool HasPose,const FVector2D& Pose,float Heading,bool HasHeading,const FString& Destination)
+{
+ BuildSkinLayout(); if(!MapView)return;
+ MapView->Mode=ENavMinimapMode::Full; MapView->SetGraph(Graph); MapView->SetRouteXY(Route); MapView->SetDestinationNode(Destination);
+ if(HasPose) MapView->SetCurrentPose(Pose.X,Pose.Y,Heading,HasHeading); else MapView->ClearCurrentPose();
+ RefreshDestinations(Graph,Destination);
+}
+void UNavFullMapWidget::Close(){if(bClosing)return; bClosing=true; OnClosed.Broadcast(); RemoveFromParent();}
+bool UNavFullMapWidget::FindReferenceDestinationAtLocal(const FVector2D& P,FString& Out) const
+{
+ Out.Reset(); if(!UsesReferenceArtwork() || bClosing)return false;
+ for(const FReferenceHotspot& H:Hotspots)
+ {
+  const FVector2D D=P-H.Center;
+  if(FMath::Abs(D.X)<=H.Size.X/2 && FMath::Abs(D.Y)<=H.Size.Y/2)
   {
-   // Use the entire available width without stretching Lexi or the lettering.
-   const float DesignWidth=FMath::Max(690.f,(ViewSize.X-32.f)*265.f/HeaderHeight);
-   if(!FMath::IsNearlyEqual(HeaderDesignSize->GetWidthOverride(),DesignWidth))
-   {
-    HeaderDesignSize->SetWidthOverride(DesignWidth);
-    MessageLayoutSlot->SetSize(FVector2D(DesignWidth-280.f,265.f));
-    MessageTitleSlot->SetSize(FVector2D(DesignWidth-344.f,64.f));
-    MessageSubtitleSlot->SetSize(FVector2D(DesignWidth-344.f,48.f));
-   }
-  }
- }
- if(!MapView || !MapStatus || MapView->HasGraph()) {MapWaitSeconds=0.f; return;}
- MapWaitSeconds+=InDeltaTime;
- if(MapWaitSeconds>=10.f && ReferenceTexture) {MapStatus->SetText(FText::FromString(TEXT("지도 연결을 확인해주세요")));}
-}
-
-void UNavFullMapWidget::ApplyState(const FNavGraph& InGraph,const TArray<FVector2D>& InRouteXY,
- bool bHasPose,const FVector2D& PoseXY,float PoseHeadingDeg,bool bPoseHasHeading,const FString& InDestNodeId)
-{
- BuildSkinLayout(); if(!MapView) {return;}
- MapView->Mode=ENavMinimapMode::Full; MapView->SetGraph(InGraph); MapView->SetRouteXY(InRouteXY);
- MapView->SetDestinationNode(InDestNodeId);
- if(bHasPose) {MapView->SetCurrentPose(PoseXY.X,PoseXY.Y,PoseHeadingDeg,bPoseHasHeading);} else {MapView->ClearCurrentPose();}
- RefreshDestinations(InGraph,InDestNodeId);
-}
-
-void UNavFullMapWidget::Close()
-{
- if(bClosing) {return;} bClosing=true; OnClosed.Broadcast(); RemoveFromParent();
-}
-
-bool UNavFullMapWidget::FindReferenceDestinationAtLocal(const FVector2D& SourceImagePosition,FString& OutNodeId) const
-{
- OutNodeId.Reset(); if(!UsesReferenceArtwork() || bClosing) {return false;}
- for(const FReferenceHotspot& Hotspot:Hotspots)
- {
-  const FVector2D Offset=SourceImagePosition-Hotspot.Center;
-  if(FMath::Abs(Offset.X)<=Hotspot.Size.X*0.5f && FMath::Abs(Offset.Y)<=Hotspot.Size.Y*0.5f)
-  {
-   const FString* NodeId=ReferenceNodeIds.Find(Hotspot.Number);
-   if(NodeId && !NodeId->IsEmpty()) {OutNodeId=*NodeId; return true;}
+   const FString* Id=ReferenceNodeIds.Find(H.Number);
+   if(Id && !Id->IsEmpty()){Out=*Id;return true;}
   }
  }
  return false;
 }
-
-FReply UNavFullMapWidget::NativeOnMouseButtonDown(const FGeometry& InGeometry,const FPointerEvent& InMouseEvent)
+FReply UNavFullMapWidget::NativeOnMouseButtonDown(const FGeometry&,const FPointerEvent&){return FReply::Handled();}
+void UNavFullMapWidget::HandleDestButtonClicked(const FString& Id){SelectDestination(Id);}
+void UNavFullMapWidget::HandleGalleryClicked(const FString& Id){SelectGallery(Id);}
+void UNavFullMapWidget::SelectDestination(const FString& Id)
 {
- // Transparent map/card buttons own selection. Empty background taps stay open.
- return FReply::Handled();
-}
-
-void UNavFullMapWidget::HandleDestButtonClicked(const FString& NodeId)
-{
- if(bClosing || !UsesReferenceArtwork() || NodeId.IsEmpty()) {return;}
- bool bLiveNode=false; for(const TPair<int32,FString>& Entry:ReferenceNodeIds) {if(Entry.Value==NodeId) {bLiveNode=true; break;}}
- if(!bLiveNode) {return;} if(MapView) {MapView->SetDestinationNode(NodeId);}
- OnDestinationChosen.Broadcast(NodeId); Close();
-}
-
-void UNavFullMapWidget::RefreshDestinations(const FNavGraph& InGraph,const FString& InDestNodeId)
-{
- BuildSkinLayout(); ActiveDestination=InDestNodeId; ReferenceNodeIds.Reset();
- for(const FNavMapNode& Node:InGraph.Nodes)
+ if(bClosing || !UsesReferenceArtwork() || Id.IsEmpty())return;
+ for(const FReferenceHotspot& H:Hotspots)
  {
-  const int32 Number=FNavDestinations::DisplayNumber(Node.Label);
-  if(Number!=0 && FNavDestinations::IsDestination(Node.NodeType) && !Node.NodeId.IsEmpty())
+  const FString* Live=ReferenceNodeIds.Find(H.Number);
+  if(Live && *Live==Id)
   {
-   // Deterministic if malformed data provides duplicate display labels.
-   FString* Existing=ReferenceNodeIds.Find(Number); if(!Existing || Node.NodeId<*Existing) {ReferenceNodeIds.Add(Number,Node.NodeId);}
+   if(SelectedDestination==Id){SelectedDestination.Reset();SelectedGallery=TEXT("all");}
+   else {SelectedDestination=Id;SelectedGallery=H.Gallery;}
+   UpdateSelectionAppearance();return;
   }
  }
- BuildDestinationButtons(InGraph);
 }
-
-void UNavFullMapWidget::BuildDestinationButtons(const FNavGraph& InGraph)
+void UNavFullMapWidget::SelectGallery(const FString& Id)
 {
- for(int32 Index=0; Index<DestButtons.Num(); ++Index)
+ if(bClosing)return;
+ bool Valid=false;for(const TCHAR* Gallery:GalleryIds)if(Id==Gallery)Valid=true;
+ if(!Valid)return;
+ SelectedGallery=SelectedGallery==Id?TEXT("all"):Id;
+ SelectedDestination.Reset(); UpdateSelectionAppearance();
+}
+void UNavFullMapWidget::StartSelectedGuidance()
+{
+ if(bClosing || SelectedDestination.IsEmpty() || !UsesReferenceArtwork())return;
+ bool Live=false;for(const auto& Entry:ReferenceNodeIds)if(Entry.Value==SelectedDestination)Live=true;
+ if(!Live)return;
+ const FString Id=SelectedDestination;
+ // Latch before broadcasting to reject rapid taps and reentrant route handlers.
+ bClosing=true; if(GuideButton)GuideButton->SetIsEnabled(false);
+ if(MapView)MapView->SetDestinationNode(Id);
+ OnDestinationChosen.Broadcast(Id); OnClosed.Broadcast(); RemoveFromParent();
+}
+void UNavFullMapWidget::RefreshDestinations(const FNavGraph& Graph,const FString& Destination)
+{
+ BuildSkinLayout(); ReferenceNodeIds.Reset();
+ for(const FNavMapNode& N:Graph.Nodes)
  {
-  UNavDestButton* Button=DestButtons[Index]; if(!Button) {continue;}
-  const FString* NodeId=ReferenceNodeIds.Find(DestinationButtonNumbers[Index]);
-  Button->NodeId=NodeId ? *NodeId : FString(); Button->SetIsEnabled(UsesReferenceArtwork() && NodeId && !bClosing);
+  const int32 Number=FNavDestinations::DisplayNumber(N.Label);
+  if(Number && FNavDestinations::IsDestination(N.NodeType) && !N.NodeId.IsEmpty())
+  {
+   FString* Existing=ReferenceNodeIds.Find(Number);
+   if(!Existing || N.NodeId<*Existing)ReferenceNodeIds.Add(Number,N.NodeId);
+  }
+ }
+ bool Valid=false;for(const auto& Entry:ReferenceNodeIds)if(Entry.Value==SelectedDestination)Valid=true;
+ if(!Valid)SelectedDestination.Reset();
+ // Pose refreshes must not undo an unconfirmed selection or a gallery change.
+ if(Destination!=ActiveDestination && SelectedDestination.IsEmpty())SelectDestination(Destination);
+ ActiveDestination=Destination; BuildDestinationButtons(Graph); UpdateSelectionAppearance();
+}
+void UNavFullMapWidget::BuildDestinationButtons(const FNavGraph& Graph)
+{
+ for(int32 I=0;I<DestButtons.Num();++I)
+ {
+  const FString* Id=ReferenceNodeIds.Find(DestinationButtonNumbers[I]);
+  DestButtons[I]->NodeId=Id?*Id:FString(); DestButtons[I]->SetIsEnabled(UsesReferenceArtwork() && Id && !bClosing);
  }
  if(MapStatus)
  {
-  MapStatus->SetVisibility(UsesReferenceArtwork() && ReferenceNodeIds.Num()>0 ? ESlateVisibility::Collapsed : ESlateVisibility::HitTestInvisible);
-  if(UsesReferenceArtwork() && InGraph.Nodes.Num()>0 && ReferenceNodeIds.Num()==0)
-   {MapStatus->SetText(FText::FromString(TEXT("이 안내도의 목적지 정보를 확인해주세요")));}
+  MapStatus->SetVisibility(UsesReferenceArtwork() && ReferenceNodeIds.Num()>0?ESlateVisibility::Collapsed:ESlateVisibility::HitTestInvisible);
+  if(UsesReferenceArtwork() && Graph.Nodes.Num()>0 && ReferenceNodeIds.Num()==0)
+   MapStatus->SetText(FText::FromString(TEXT("이 지도의 전시물 정보를 확인해주세요")));
  }
+}
+void UNavFullMapWidget::UpdateSelectionAppearance()
+{
+ int32 SelectedNumber=0;
+ for(int32 I=0;I<DestButtons.Num();++I)
+ {
+  UNavDestButton* B=DestButtons[I];const bool Selected=!SelectedDestination.IsEmpty() && B->NodeId==SelectedDestination;
+  if(Selected)SelectedNumber=DestinationButtonNumbers[I];
+  FButtonStyle S;FSlateBrush Empty;Empty.DrawAs=ESlateBrushDrawType::NoDrawType;
+  S.SetNormal(Selected?FSlateRoundedBoxBrush(FLinearColor(0.05f,0.7f,0.85f,0.08f),Accent(),3.f):Empty);
+  S.SetHovered(FSlateRoundedBoxBrush(FLinearColor(0.1f,0.8f,1.f,0.06f),Accent(),2.f));
+  S.SetPressed(S.Hovered);S.SetDisabled(Empty);S.SetNormalPadding(FMargin(0));S.SetPressedPadding(FMargin(0));B->SetStyle(S);
+ }
+ int32 GalleryIndex=0;
+ for(int32 I=0;I<GalleryButtons.Num();++I)
+ {
+  const bool Selected=SelectedGallery==GalleryIds[I];if(Selected)GalleryIndex=I;
+  GalleryButtons[I]->SetStyle(ButtonStyle(Selected));
+  GalleryLabels[I]->SetColorAndOpacity(FSlateColor(Selected?FLinearColor::White:FLinearColor(0.6f,0.72f,0.8f)));
+ }
+ if(SelectionTitle)SelectionTitle->SetText(FText::FromString(SelectedNumber?Names[SelectedNumber-1]:(GalleryIndex?GalleryNames[GalleryIndex]:TEXT("전시물을 선택해주세요"))));
+ if(SelectionSubtitle)SelectionSubtitle->SetText(FText::FromString(SelectedNumber?TEXT("선택 완료 · 안내 버튼을 눌러주세요"):(GalleryIndex?TEXT("강조된 전시관의 화석을 골라주세요"):TEXT("지도 위 화석을 눌러보세요"))));
+ if(GuideButton)GuideButton->SetIsEnabled(SelectedNumber!=0 && !bClosing);
+ if(LexiTitle)
+ {
+  const FString Intro=SelectedNumber==2?FString(TEXT("여기가 박물관 입구예요")):
+   (SelectedNumber==12?FString(TEXT("여기가 박물관 출구예요")):
+   (SelectedNumber?FString::Printf(TEXT("%s 전시 공간이에요"),Names[SelectedNumber-1]):
+   (GalleryIndex?FString::Printf(TEXT("여기는 %s이에요"),GalleryNames[GalleryIndex]):FString(TEXT("어디로 가볼까요?")))));
+  LexiTitle->SetText(FText::FromString(Intro));
+ }
+ if(LexiDescription)LexiDescription->SetText(FText::FromString(SelectedNumber?
+  SpecimenDescriptions[SelectedNumber-1]:GalleryDescriptions[GalleryIndex]));
+}
+int32 UNavFullMapWidget::NativePaint(const FPaintArgs& Args,const FGeometry& Geometry,const FSlateRect& Clip,FSlateWindowElementList& Out,int32 Layer,const FWidgetStyle& Style,bool Enabled) const
+{
+ const int32 Top=Super::NativePaint(Args,Geometry,Clip,Out,Layer,Style,Enabled);
+ if(!ReferenceCanvas || SelectedGallery==TEXT("all"))return Top;
+ const FGeometry& CG=ReferenceCanvas->GetCachedGeometry();if(CG.GetLocalSize().X<=0)return Top;
+ auto Local=[&](FVector2D P){return Geometry.AbsoluteToLocal(CG.LocalToAbsolute(FVector2D(MapX+P.X*MapScale,MapY+P.Y*MapScale)));};
+ const float PixelScale=(Local({1,0})-Local({0,0})).Size();const FPaintGeometry Paint=Geometry.ToPaintGeometry();
+ // Scanline fill follows concave walls rather than filling their bounding boxes.
+ for(const TArray<FVector2D>& Polygon:GalleryPolygons(SelectedGallery))
+ {
+  float MinY=MAX_flt,MaxY=-MAX_flt;
+  for(const FVector2D& P:Polygon){MinY=FMath::Min(MinY,float(P.Y));MaxY=FMath::Max(MaxY,float(P.Y));}
+  const float Step=1.f/FMath::Max(PixelScale,0.1f);
+  for(float Y=MinY+Step*.5f;Y<MaxY;Y+=Step)
+  {
+   TArray<float> Crossings;
+   for(int32 I=0,J=Polygon.Num()-1;I<Polygon.Num();J=I++)
+   {
+    const FVector2D A=Polygon[I],B=Polygon[J];
+    if((A.Y<=Y && B.Y>Y)||(B.Y<=Y && A.Y>Y))Crossings.Add(A.X+(Y-A.Y)*(B.X-A.X)/(B.Y-A.Y));
+   }
+   Crossings.Sort();
+   for(int32 I=0;I+1<Crossings.Num();I+=2)
+   {
+    const FVector2D Start=Local({Crossings[I],Y-Step*.5f});
+    const FVector2D End=Local({Crossings[I+1],Y+Step*.5f});
+    // Filled adjacent spans scale with UMG DPI. Thin Slate lines leave gaps on Android.
+    FSlateDrawElement::MakeBox(Out,Top+1,Geometry.ToPaintGeometry(FVector2f(End-Start),
+     FSlateLayoutTransform(FVector2f(Start))),FCoreStyle::Get().GetBrush("WhiteBrush"),
+     ESlateDrawEffect::None,FLinearColor(0.12f,0.77f,0.95f,0.10f));
+   }
+  }
+  TArray<FVector2D> Outline;for(const FVector2D& P:Polygon)Outline.Add(Local(P));
+  const FVector2D FirstPoint=Outline[0];Outline.Add(FirstPoint);
+  FSlateDrawElement::MakeLines(Out,Top+2,Paint,Outline,ESlateDrawEffect::None,FLinearColor(0.18f,0.85f,1.f,0.85f),true,2.5f);
+ }
+ return Top+2;
 }
