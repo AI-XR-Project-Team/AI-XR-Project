@@ -153,13 +153,13 @@ private:
 	USceneComponent* AnchorProxy = nullptr;
 
 	UPROPERTY(EditAnywhere, Category="AR Tracking|Stabilize")
-	float DeadbandCm = 0.5f;
+	float DeadbandCm = 0.2f;
 
 	UPROPERTY(EditAnywhere, Category="AR Tracking|Stabilize")
-	float DeadbandDeg = 0.3f;
+	float DeadbandDeg = 0.1f;
 
 	UPROPERTY(EditAnywhere, Category="AR Tracking|Stabilize")
-	float FollowSpeed = 6.f;
+	float FollowSpeed = 15.f;
 
 	bool bFrontCamera = false;
 
