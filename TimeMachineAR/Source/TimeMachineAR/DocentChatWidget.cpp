@@ -1108,6 +1108,9 @@ void UDocentChatWidget::RefreshReferenceUI()
 {
 	const AARTrackingManager* Manager = AARTrackingManager::GetARTrackingManager(this);
 	const bool bScanning = Manager && Manager->IsScanning();
+	// Idle launch has no Lexi bubble; show it only for an active scan or user feedback.
+	const bool bShowScanHint = !bNavigationGuidanceActive &&
+		(bScanning || bReferenceRecognized || bFrontCamera || FPlatformTime::Seconds() < CaptureToastUntil);
 	const FLinearColor Accent = bFrontCamera ? FLinearColor(0.55f, 0.5f, 1.f, 1.f) :
 		bReferenceRecognized ? FLinearColor(0.23f,0.9f,0.44f,1.f) :
 		(bScanning ? FLinearColor(0.08f,0.43f,1.f,1.f) : FLinearColor::White);
@@ -1140,14 +1143,14 @@ void UDocentChatWidget::RefreshReferenceUI()
 	}
 	if (UBorder* Hint = Cast<UBorder>(GetWidgetFromName(TEXT("ScanHintBG"))))
 	{
-		Hint->SetVisibility(bNavigationGuidanceActive ? ESlateVisibility::Collapsed : ESlateVisibility::Visible);
+		Hint->SetVisibility(bShowScanHint ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
 		FSlateBrush Brush = Hint->Background;
 		Brush.OutlineSettings.Color = FSlateColor(Accent.CopyWithNewOpacity(0.6f));
 		Hint->SetBrush(Brush);
 	}
 	if (UWidget* Robot = GetWidgetFromName(TEXT("RefRobotSize")))
 	{
-		Robot->SetVisibility(bNavigationGuidanceActive ? ESlateVisibility::Collapsed : ESlateVisibility::Visible);
+		Robot->SetVisibility(bShowScanHint ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
 	}
 	UWidget* Scan = GetWidgetFromName(TEXT("ScanPanel"));
 	const bool bScanVisible = !bIsOpen && Scan && Scan->GetVisibility() != ESlateVisibility::Collapsed;

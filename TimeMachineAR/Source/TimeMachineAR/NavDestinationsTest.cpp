@@ -91,7 +91,18 @@ bool FNavDestinationsTest::RunTest(const FString& Parameters)
 		Far.Instruction = TEXT("앞으로 6m 직진하세요");
 		const FString FarText = FNavDestinations::LexiGuidingText(TEXT("exhibit"), TEXT("티라노사우루스 렉스"), Far);
 		TestTrue(TEXT("Guiding(멀리): label 포함"), FarText.Contains(TEXT("티라노사우루스 렉스")));
-		TestTrue(TEXT("Guiding(멀리): 서버 원문 포함"), FarText.Contains(TEXT("앞으로 6m 직진하세요")));
+		TestTrue(TEXT("Guiding uses total remaining distance"), FarText.Contains(TEXT("28 m")));
+		TestFalse(TEXT("Guiding omits stale server step distance"), FarText.Contains(TEXT("6m")));
+		for (float Cm : {0.f, 149.f, 151.f, 1234.f, -100.f})
+		{
+			FNavGuidance Moving = Far;
+			Moving.RemainingCm = Cm;
+			TestTrue(TEXT("Lexi and map share distance formatting"),
+				FNavDestinations::LexiGuidingText(TEXT("exhibit"), TEXT("아르켈론"), Moving)
+				.Contains(FNavDestinations::RemainingDistanceText(Cm)));
+		}
+		TestEqual(TEXT("Distance rounds to nearest meter"), FNavDestinations::RemainingDistanceText(151.f), FString(TEXT("2 m")));
+		TestEqual(TEXT("Distance cannot be negative"), FNavDestinations::RemainingDistanceText(-100.f), FString(TEXT("0 m")));
 		TestFalse(TEXT("Guiding(멀리): 재촉 문구 없음"), FarText.Contains(TEXT("조금만 더 가면")));
 
 		// 근접(Remaining 300, ≤500) — "조금만 더 가면" 으로 갈아탄다.
@@ -118,10 +129,11 @@ bool FNavDestinationsTest::RunTest(const FString& Parameters)
 	}
 
 	// (5c) 도착·종료 문구 — node_type 별 갈래 + label 포함.
-	TestTrue(TEXT("전시물 도착에 label 포함"),
-		FNavDestinations::LexiArrivedText(TEXT("exhibit"), TEXT("트리케라톱스")).Contains(TEXT("트리케라톱스")));
-	TestTrue(TEXT("전시물 도착: 스캔 안내"),
-		FNavDestinations::LexiArrivedText(TEXT("exhibit"), TEXT("트리케라톱스")).Contains(TEXT("스캔")));
+	TestEqual(TEXT("Ordinary exhibit arrival has no scan prompt"),
+		FNavDestinations::LexiArrivedText(TEXT("exhibit"), TEXT("삼엽충")), FString(TEXT("전시물에 도착했습니다.")));
+	TestEqual(TEXT("Archelon arrival includes AR Scan prompt"),
+		FNavDestinations::LexiArrivedText(TEXT("exhibit"), TEXT("아르켈론")),
+		FString(TEXT("전시물에 도착했습니다.\n전시물을 바라보고 AR Scan을 시작해주세요.")));
 	TestTrue(TEXT("시설 도착에 label 포함"),
 		FNavDestinations::LexiArrivedText(TEXT("facility"), TEXT("화장실")).Contains(TEXT("화장실")));
 	TestTrue(TEXT("입구 도착: 관람 인사"),
@@ -129,7 +141,10 @@ bool FNavDestinationsTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("도착(label 없음, exhibit): 전시물"),
 		FNavDestinations::LexiArrivedText(TEXT("exhibit"), TEXT("")).Contains(TEXT("전시물")));
 
-	TestTrue(TEXT("Ended(exhibit): AR 스캔 안내"), FNavDestinations::LexiEndedText(TEXT("exhibit")).Contains(TEXT("AR 스캔")));
+	TestFalse(TEXT("Ordinary exhibit end does not invite AR scan"), FNavDestinations::LexiEndedText(TEXT("exhibit")).Contains(TEXT("Scan")));
+	TestEqual(TEXT("Archelon end preserves arrival prompt"),
+		FNavDestinations::LexiEndedText(TEXT("exhibit"), TEXT("아르켈론")),
+		FNavDestinations::LexiArrivedText(TEXT("exhibit"), TEXT("아르켈론")));
 	TestTrue(TEXT("Ended(facility): 미니맵 안내"), FNavDestinations::LexiEndedText(TEXT("facility")).Contains(TEXT("미니맵")));
 
 	// (6) 버튼 순서 — 위 4칸 전시물(EX1..EX4), 아래 화장실·입구. 비목적지는 제외.

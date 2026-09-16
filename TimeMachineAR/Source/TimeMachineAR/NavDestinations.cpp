@@ -208,6 +208,11 @@ FString FNavDestinations::LexiLocalizedText()
 	return TEXT("위치를 찾았어요!\n오른쪽 미니맵을 눌러 목적지를 골라주세요.");
 }
 
+FString FNavDestinations::RemainingDistanceText(float RemainingCm)
+{
+	return FString::Printf(TEXT("%.0f m"), FMath::Max(0.f, RemainingCm) / 100.f);
+}
+
 FString FNavDestinations::LexiGuidingText(const FString& NodeType, const FString& Label, const FNavGuidance& Guidance)
 {
 	const FString Name = ResolveDestName(NodeType, Label);
@@ -223,13 +228,9 @@ FString FNavDestinations::LexiGuidingText(const FString& NodeType, const FString
 		Line1 = FString::Printf(TEXT("%s%s 안내할게요!"), *Name, *ToParticle(Name));
 	}
 
-	// 2줄: 서버가 준 턴바이턴 원문이 있으면 그대로, 없으면(경로 시작 직후 등) 안내 수단으로 대체.
+	// 서버 원문의 구간 거리는 남은 총 거리와 다르므로 거리 배지와 동일한 값을 표시한다.
 	FString Line2;
-	if (Guidance.bValid && !Guidance.Instruction.IsEmpty())
-	{
-		Line2 = Guidance.Instruction;
-	}
-	else if (Classify(NodeType) == ENavDestKind::Exhibit)
+	if (Classify(NodeType) == ENavDestKind::Exhibit)
 	{
 		Line2 = TEXT("바닥의 발자국을 따라오세요.");
 	}
@@ -238,6 +239,10 @@ FString FNavDestinations::LexiGuidingText(const FString& NodeType, const FString
 		Line2 = TEXT("바닥의 화살표를 따라오세요.");
 	}
 
+	if (Guidance.bValid)
+	{
+		Line1 += FString::Printf(TEXT("\n목적지까지 %s 남았어요."), *RemainingDistanceText(Guidance.RemainingCm));
+	}
 	return Line1 + TEXT("\n") + Line2;
 }
 
@@ -252,8 +257,9 @@ FString FNavDestinations::LexiArrivedText(const FString& NodeType, const FString
 	switch (Classify(NodeType))
 	{
 	case ENavDestKind::Exhibit:
-		return FString::Printf(
-			TEXT("%s 앞에 도착했어요!\n지금 이 공룡의 마커를 스캔하면 AR로 더 자세히 볼 수 있어요."), *Name);
+		return Label.Contains(TEXT("아르켈론")) || Label.Contains(TEXT("archelon"), ESearchCase::IgnoreCase)
+			? FString(TEXT("전시물에 도착했습니다.\n전시물을 바라보고 AR Scan을 시작해주세요."))
+			: FString(TEXT("전시물에 도착했습니다."));
 	case ENavDestKind::Facility:
 		return FString::Printf(TEXT("%s에 도착했어요!\n안내를 마칠게요."), *Name);
 	case ENavDestKind::Entrance:
@@ -262,10 +268,10 @@ FString FNavDestinations::LexiArrivedText(const FString& NodeType, const FString
 	}
 }
 
-FString FNavDestinations::LexiEndedText(const FString& NodeType)
+FString FNavDestinations::LexiEndedText(const FString& NodeType, const FString& Label)
 {
 	return (Classify(NodeType) == ENavDestKind::Exhibit)
-		? FString(TEXT("안내를 마칠게요.\nAR 스캔 탭에서 마커를 비춰보세요!"))
+		? LexiArrivedText(NodeType, Label)
 		: FString(TEXT("안내를 마칠게요.\n또 필요하면 미니맵을 눌러주세요."));
 }
 

@@ -161,7 +161,7 @@ void UNavGuideLogWidget::SyncWithMinimap()
 	// intentionally transparent there, so an active destination must keep this
 	// message alive even when Slate skips the minimap's paint pass.
 	const bool bNavShown = BoundMinimap.IsValid()
-		&& (BoundMinimap->WasRecentlyPainted() || BoundMinimap->HasDestination());
+		&& BoundMinimap->HasDestination();
 
 	// 전체 지도는 자기 렉시 말풍선을 따로 갖는다.
 	const ESlateVisibility Want = bNavShown && !bDocentOpen && Phase != ENavGuidePhase::FullMapOpen
@@ -285,6 +285,7 @@ void UNavGuideLogWidget::HandleFullMapOpenChanged(bool bOpen)
 
 void UNavGuideLogWidget::HandleDestinationChosen(const FString& NodeId)
 {
+	LastGuidance = FNavGuidance();
 	bHasDestination = !NodeId.IsEmpty();
 	Phase = bHasDestination ? ENavGuidePhase::Guiding : ENavGuidePhase::Localized;
 	Refresh();
@@ -481,7 +482,7 @@ void UNavGuideLogWidget::ApplyPhase()
 		Text = FNavDestinations::LexiRecognizedText();
 		break;
 	case ENavGuidePhase::Ended:
-		Text = FNavDestinations::LexiEndedText(DestType);
+		Text = FNavDestinations::LexiEndedText(DestType, DestLabel);
 		break;
 	}
 

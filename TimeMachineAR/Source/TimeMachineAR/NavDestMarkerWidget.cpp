@@ -92,7 +92,7 @@ FString UNavDestMarkerWidget::DistanceText() const
 	{
 		return TEXT("도착");
 	}
-	return FString::Printf(TEXT("%.0f m"), FMath::Max(0.f, RemainingCm) / 100.f);
+	return FNavDestinations::RemainingDistanceText(RemainingCm);
 }
 
 int32 UNavDestMarkerWidget::NativePaint(const FPaintArgs& Args, const FGeometry& AllottedGeometry,

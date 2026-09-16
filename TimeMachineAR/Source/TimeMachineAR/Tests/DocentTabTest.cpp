@@ -71,6 +71,8 @@ bool FDocentTabTest::RunTest(const FString& Parameters)
 	};
 
 	// ---- Scan 탭
+	CheckVis(TEXT("ScanHintBG"), ESlateVisibility::Collapsed, TEXT("Initial launch hides Lexi message"));
+	CheckVis(TEXT("RefRobotSize"), ESlateVisibility::Collapsed, TEXT("Initial launch hides Lexi avatar"));
 	Widget->SetHudTab(EDocentHudTab::Scan);
 	TestEqual(TEXT("GetHudTab() == Scan"), (uint8)Widget->GetHudTab(), (uint8)EDocentHudTab::Scan);
 	CheckVis(TEXT("ScanPanel"), ESlateVisibility::SelfHitTestInvisible, TEXT("Scan"));

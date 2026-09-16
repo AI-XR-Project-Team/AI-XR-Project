@@ -124,9 +124,10 @@ struct TIMEMACHINEAR_API FNavDestinations
 
 	/**
 	 * 안내 중. RemainingCm ≤ 500 이면 "조금만 더 가면" 문구로 갈아탄다.
-	 * 2줄은 서버 원문(Instruction)이 있으면 그걸, 없으면 발자국/화살표 문구로 채운다.
+	 * 남은 총 거리는 지도 거리 배지와 같은 값과 표시 형식을 사용한다.
 	 */
 	static FString LexiGuidingText(const FString& NodeType, const FString& Label, const FNavGuidance& Guidance);
+	static FString RemainingDistanceText(float RemainingCm);
 
 	/** 경로 이탈(§3 OffRoute 단계). */
 	static FString LexiOffRouteText();
@@ -135,7 +136,7 @@ struct TIMEMACHINEAR_API FNavDestinations
 	static FString LexiArrivedText(const FString& NodeType, const FString& Label);
 
 	/** 도착 후 잠깐의 마무리 문구(§4 자동 종료의 Ended 단계). */
-	static FString LexiEndedText(const FString& NodeType);
+	static FString LexiEndedText(const FString& NodeType, const FString& Label = FString());
 
 	/** 전시물 마커 인식 완료(초록). */
 	static FString LexiRecognizedText();

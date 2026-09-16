@@ -84,7 +84,7 @@ bool FNavGuideLogPreviewTest::RunTest(const FString& Parameters)
 	// 말풍선은 화면 상단 한 줄이라 높이는 300 이면 아바타+3줄까지 충분하다.
 	const FIntPoint Size(1080, 520);   // 하단 앵커라 아래 여백 48 + 말풍선 높이가 들어오게 넉넉히.
 	const FString NodeType = TEXT("exhibit");
-	const FString Label = TEXT("티라노사우루스 렉스");
+	const FString Label = TEXT("아르켈론");
 
 	bool bAllOk = true;
 
