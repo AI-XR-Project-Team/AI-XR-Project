@@ -121,7 +121,7 @@ bool FNavSkinTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("Amethyst is touchable at lower left"), Widget->FindReferenceDestinationAtLocal(FVector2D(50,486), RelocatedHit));
 	TestEqual(TEXT("Printed amethyst 2 retains amethyst node"), RelocatedHit, AmethystId);
 	Widget->SelectDestination(AmethystId);
-	TestEqual(TEXT("Amethyst activates mineral gallery"), Widget->GetSelectedGallery(), FString(TEXT("mineral")));
+	TestEqual(TEXT("Amethyst does not activate a gallery"), Widget->GetSelectedGallery(), FString(TEXT("all")));
 	Widget->SelectDestination(AmethystId);
 	TestTrue(TEXT("Second amethyst tap deselects"), Widget->GetSelectedDestination().IsEmpty());
 	FString EmptyHit;
@@ -144,7 +144,7 @@ bool FNavSkinTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("Second specimen tap deselects"), Widget->GetSelectedDestination().IsEmpty());
 	TestEqual(TEXT("Second specimen tap clears region"), Widget->GetSelectedGallery(), FString(TEXT("all")));
 	Widget->SelectDestination(ArchelonId);
-	TestEqual(TEXT("Selected specimen activates its gallery"), Widget->GetSelectedGallery(), FString(TEXT("marine")));
+	TestEqual(TEXT("Selected specimen does not activate a gallery"), Widget->GetSelectedGallery(), FString(TEXT("all")));
 	Widget->RefreshDestinations(Graph, FString());
 	TestEqual(TEXT("Async refresh preserves unconfirmed selection"), Widget->GetSelectedDestination(), ArchelonId);
 	// Capture the actual UMG selected state, including the polygon overlay and CTA.
@@ -158,6 +158,13 @@ bool FNavSkinTest::RunTest(const FString& Parameters)
 	}
 	Widget->SelectGallery(TEXT("paleo"));
 	TestTrue(TEXT("Gallery tap clears previous destination"), Widget->GetSelectedDestination().IsEmpty());
+	for (int32 Index : DestinationOrder)
+	{
+		Widget->SelectDestination(Graph.Nodes[Index].NodeId);
+		TestEqual(TEXT("Every specimen preserves the explicitly checked gallery"), Widget->GetSelectedGallery(), FString(TEXT("paleo")));
+		Widget->SelectDestination(Graph.Nodes[Index].NodeId);
+		TestEqual(TEXT("Specimen deselection preserves the explicitly checked gallery"), Widget->GetSelectedGallery(), FString(TEXT("paleo")));
+	}
 	Widget->SelectGallery(TEXT("paleo"));
 	TestEqual(TEXT("Second gallery tap deselects"), Widget->GetSelectedGallery(), FString(TEXT("all")));
 	Widget->SelectGallery(TEXT("paleo"));
@@ -173,6 +180,7 @@ bool FNavSkinTest::RunTest(const FString& Parameters)
 	};
 	CaptureSize(TEXT("NavSkinPreview_Paleo.png"),940,1672);
 	Widget->SelectGallery(TEXT("ceno")); CaptureSize(TEXT("NavSkinPreview_Ceno.png"),940,1672);
+	Widget->SelectGallery(TEXT("meso")); CaptureSize(TEXT("NavSkinPreview_Meso.png"),940,1672);
 	Widget->SelectGallery(TEXT("mineral")); CaptureSize(TEXT("NavSkinPreview_Mineral.png"),940,1672);
 	Widget->SelectDestination(AmethystId); CaptureSize(TEXT("NavSkinPreview_Amethyst.png"),940,1672);
 	Widget->SelectDestination(EntranceId); CaptureSize(TEXT("NavSkinPreview_Entrance.png"),940,1672);

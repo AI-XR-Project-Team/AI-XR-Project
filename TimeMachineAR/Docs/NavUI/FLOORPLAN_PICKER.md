@@ -1,18 +1,18 @@
-﻿# Museum floor-plan picker — 2026-09-16
+# Museum floor-plan picker — 2026-09-16
 
 ## Final interaction
 - T_MuseumFloorplan preserves the supplied navy/gold visual style with the entrance relocated and amethyst restored at the user's requested lower-left position.
 - UMG uses a normalized 429 x 555 illustration coordinate space for the higher-resolution texture, cropping its incomplete footer at source y=532.
 - Retains the approved Lexi illustration, a speech bubble, camera blur and top-left Back.
-- Bottom gallery tabs: All, Cenozoic, Paleozoic (central and lower-right rooms), Marine, Minerals.
+- Bottom gallery tabs: All, Cenozoic (mammal, turtle, pearl, fish), Paleozoic (trilobite, fern), Mesozoic (Archelon, fossil, Allosaurus), Minerals (birthstone, amethyst). The central circulation space has no gallery overlay.
 - Gallery selection previews a subtle image-space polygon overlay and clears any prior specimen selection.
-- A specimen tap previews a ring and a named bottom card. It does not request a route or close the map.
+- A specimen tap previews a ring and a named bottom card. It never changes the gallery highlight; only the bottom gallery controls do. It does not request a route or close the map.
 - Only the enabled Here to guide CTA broadcasts the live destination node ID and closes the picker.
 - Missing/removed live nodes disable confirmation. Pose/graph updates preserve valid pending selections.
 - Confirmation latches before broadcasting so repeated or reentrant submissions cannot start another route.
 
 ## Coordinate contract
-Hotspots and gallery boundaries are manually aligned UI geometry in source-image pixels. They are not surveyed metric boundaries and must not be used to modify routing, walls, distance or AR localization. Existing museum_final navigation coordinates and node IDs remain unchanged. Gallery names follow the previously approved museum categories.
+Hotspots and gallery boundaries are manually aligned UI geometry in source-image pixels. They are not surveyed metric boundaries and must not be used to modify routing, walls, distance or AR localization. Existing museum_final navigation coordinates and node IDs remain unchanged. Gallery names and exhibit grouping follow the user-confirmed September 16 layout.
 The illustration prints Entrance as 1 at (50,308), resolving the existing entrance label (internal display key 2). Amethyst prints as 2 at (50,486), resolving the existing amethyst label (internal key 1). All 13 destinations are visible and selectable. These two illustrated positions follow the user's earlier reference; backend metric coordinates remain unchanged. The printed 5 m decoration is not used as a scale.
 
 ## Files
@@ -32,7 +32,7 @@ The illustration prints Entrance as 1 at (50,308), resolving the existing entran
 ## Follow-up refinement
 - Selected gallery fill increased to 10% cyan with a clearer outline; adjacent filled spans avoid Android DPI scanline gaps.
 - Lexi now introduces the chosen gallery/specimen with two short lines, including entrance/exit-specific wording.
-- Tapping the same specimen again clears both selection and gallery emphasis; tapping the same gallery again returns to All.
+- Tapping the same specimen again clears only specimen selection and preserves the explicitly selected gallery; tapping the same gallery again returns to All.
 - Deselect restores Lexi's invitation and disables the guidance CTA.
 - Regression checks cover specimen toggle, gallery toggle, no premature navigation commit, and committing the correct label on confirmation.
 - Live museum_final API read-only check passed: 38 nodes, 38 edges, 13 destinations, 12 entrance-to-destination routes.

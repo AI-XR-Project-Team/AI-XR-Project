@@ -28,16 +28,16 @@ namespace
  const FReferenceHotspot Hotspots[]={
   {1,{50,486},{40,44},TEXT("mineral")},{2,{50,308},{36,68},TEXT("all")},
   {3,{292,393},{42,42},TEXT("paleo")},
-  {4,{391,443},{40,42},TEXT("paleo")},{5,{319,161},{56,58},TEXT("marine")},
-  {6,{375,99},{42,42},TEXT("marine")},{7,{378,283},{42,42},TEXT("marine")},
-  {8,{155,319},{42,42},TEXT("paleo")},{9,{156,207},{42,42},TEXT("paleo")},
+  {4,{391,443},{40,42},TEXT("paleo")},{5,{319,161},{56,58},TEXT("meso")},
+  {6,{375,99},{42,42},TEXT("meso")},{7,{378,283},{42,42},TEXT("meso")},
+  {8,{155,319},{42,42},TEXT("ceno")},{9,{156,207},{42,42},TEXT("ceno")},
   {10,{70,90},{42,42},TEXT("ceno")},{11,{80,170},{42,42},TEXT("ceno")},
   {12,{51,243},{36,34},TEXT("all")},{13,{124,408},{42,42},TEXT("mineral")}};
  const TCHAR* Names[]={TEXT("자수정"),TEXT("입구"),TEXT("삼엽충"),TEXT("고사리잎"),TEXT("아르켈론"),
   TEXT("알로사우루스"),TEXT("화석"),TEXT("물고기화석"),TEXT("진주화석"),TEXT("포유류 화석"),
   TEXT("거북이 화석"),TEXT("출구"),TEXT("탄생석")};
- const TCHAR* GalleryIds[]={TEXT("all"),TEXT("ceno"),TEXT("paleo"),TEXT("marine"),TEXT("mineral")};
- const TCHAR* GalleryNames[]={TEXT("전체"),TEXT("신생대관"),TEXT("고생대관"),TEXT("해양생물관"),TEXT("암석관")};
+ const TCHAR* GalleryIds[]={TEXT("all"),TEXT("ceno"),TEXT("paleo"),TEXT("meso"),TEXT("mineral")};
+ const TCHAR* GalleryNames[]={TEXT("전체"),TEXT("신생대관"),TEXT("고생대관"),TEXT("중생대관"),TEXT("암석관")};
  const TCHAR* SpecimenDescriptions[]={
   TEXT("보랏빛 광물의 모양과 색을 살펴보세요."),
   TEXT("렉시와 함께 박물관 탐험을 시작해볼까요?"),
@@ -53,8 +53,8 @@ namespace
   TEXT("이곳에서 관람을 마칠 수 있어요."),
   TEXT("다양한 보석과 광물의 색을 만나보세요.")};
  const TCHAR* GalleryDescriptions[]={TEXT("화석을 고르면 렉시가 안내해 드려요"),
-  TEXT("포유류와 거북이 화석을 만나볼 수 있어요."),
-  TEXT("삼엽충과 식물·물고기 화석이 있어요."),
+  TEXT("포유류·거북이·진주·물고기 화석이 있어요."),
+  TEXT("삼엽충과 고사리잎을 만나보세요."),
   TEXT("아르켈론과 공룡 화석을 만나보세요."),
   TEXT("자수정과 탄생석의 색과 모양을 살펴보세요.")};
  FLinearColor Accent(){return FLinearColor(0.15f,0.78f,0.91f,1.f);}
@@ -72,12 +72,12 @@ namespace
  {
   // Illustration-space boundaries only; museum_final metric routing is independent.
   if(Id==TEXT("ceno")) return {{{42,34},{58,34},{58,48},{79,48},{79,34},{98,34},{98,74},
-   {108,74},{108,255},{33,255},{33,234},{42,234}}};
-  if(Id==TEXT("marine")) return {{{346,40},{414,40},{414,179},{418,185},{418,218},{407,223},
+   {108,74},{108,255},{33,255},{33,234},{42,234}},
+   {{118,151},{125,151},{125,166},{199,166},{199,151},{238,151},{238,225},{213,226},
+    {193,248},{193,291},{200,291},{200,343},{181,343},{181,352},{129,352},{129,257},{118,257}}};
+  if(Id==TEXT("meso")) return {{{346,40},{414,40},{414,179},{418,185},{418,218},{407,223},
    {407,316},{307,316},{307,302},{283,275},{277,252},{277,112},{273,105},{343,105}}};
   if(Id==TEXT("paleo")) return {
-   {{118,151},{125,151},{125,166},{199,166},{199,151},{238,151},{238,225},{213,226},
-    {193,248},{193,291},{200,291},{200,343},{181,343},{181,352},{129,352},{129,257},{118,257}},
    {{308,337},{405,337},{405,461},{398,474},{369,474},{364,482},{325,482},{320,466},
     {273,466},{273,381},{281,371},{297,368},{297,353},{308,353}}};
   if(Id==TEXT("mineral")) return {{{42,357},{61,357},{66,370},{148,370},{148,441},{77,441},
@@ -244,8 +244,9 @@ void UNavFullMapWidget::SelectDestination(const FString& Id)
   const FString* Live=ReferenceNodeIds.Find(H.Number);
   if(Live && *Live==Id)
   {
-   if(SelectedDestination==Id){SelectedDestination.Reset();SelectedGallery=TEXT("all");}
-   else {SelectedDestination=Id;SelectedGallery=H.Gallery;}
+   // Only the bottom gallery controls may change the room highlight.
+   if(SelectedDestination==Id)SelectedDestination.Reset();
+   else SelectedDestination=Id;
    UpdateSelectionAppearance();return;
   }
  }
