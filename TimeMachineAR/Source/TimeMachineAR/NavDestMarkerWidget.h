@@ -104,10 +104,14 @@ private:
 	FVector GuideHeadWorld = FVector::ZeroVector;
 
 	/** 아이콘 브러시(SetDestination 에서 1회 로드). 로드 실패면 마름모만 그린다. */
+	// 2026-09-16 실기기 SIGSEGV 수정: UPROPERTY 가 없으면 브러시가 문 텍스처(LoadObject 로 받은 것)를
+	//   GC 가 수거해, 다음 페인트의 MakeBox 에서 해제된 메모리(0xdddddddd…)를 건드리고 죽는다.
+	UPROPERTY(Transient)
 	FSlateBrush IconBrush;
 	bool bHasIcon = false;
 
 	/** 전방 셰브론 브러시(NativeConstruct 에서 1회 로드). 없으면 셰브론 없이 거리만. */
+	UPROPERTY(Transient)
 	FSlateBrush ChevronBrush;
 	bool bHasChevron = false;
 

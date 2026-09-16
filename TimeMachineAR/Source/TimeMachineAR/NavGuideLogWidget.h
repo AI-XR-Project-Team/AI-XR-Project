@@ -133,6 +133,8 @@ private:
 	 */
 	bool AdoptScanHintStyle();
 	bool bScanStyleAdopted = false;
+	// 같은 이유로 반영(2026-09-16): 브러시가 문 리소스를 GC 가 수거하지 못하게 한다.
+	UPROPERTY(Transient)
 	FSlateBrush ScanBubbleBrush;
 
 	/**
