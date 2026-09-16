@@ -1,9 +1,9 @@
 display_order,node_key,pos_x_cm,pos_y_cm,pos_z_cm,node_type,label,placement_status
 1,mu-x-amseok,5100,2400,120,exhibit,자수정,existing-gallery-approach
 2,mu-e-blue-s,4545,3260,120,entrance,입구,existing-gallery-approach
-3,mu-j-go-s,6410,2200,120,exhibit,삼엽충,existing-gallery-approach
+3,g2-I,6485.4,2543.2,120,exhibit,삼엽충,existing-gallery-approach
 4,mu-x-gosaeng,6900,2230,120,exhibit,고사리잎,existing-gallery-approach
-5,mu-x-jungsaeng,7220,3400,120,exhibit,아르켈론,existing-gallery-approach
+5,g2-K,6549,3928.3,120,exhibit,아르켈론,existing-gallery-approach
 6,mu-x-jung-north,7200,4530,120,exhibit,알로사우루스,existing-gallery-approach
 7,mu-n-jung-s,6850,3200,120,exhibit,화석,existing-gallery-approach
 8,mu-n-ante,5600,2400,120,exhibit,물고기화석,existing-gallery-approach
