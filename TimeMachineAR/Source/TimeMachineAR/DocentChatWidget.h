@@ -168,6 +168,7 @@ protected:
 	virtual void NativeConstruct() override;
 	virtual void NativeDestruct() override;
 	virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime) override;
+	virtual FReply NativeOnPreviewKeyDown(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent) override;
 
 	// ------------------------------------------------------------ 바인딩 위젯
 
@@ -352,6 +353,8 @@ private:
 
 	/** 지금 켜진 하단 바 탭. 이 값 하나로 세 패널의 배타 표시가 정해진다. */
 	EDocentHudTab ActiveTab = EDocentHudTab::Scan;
+	/** 목적지 선택으로 전체 지도가 닫힌 다음 시스템 뒤로가기를 받을 포커스를 한 번 복구한다. */
+	bool bNavBackFocusPending = false;
 
 	/**
 	 * ActiveTab 기준으로 ScanPanel/NavPanel/ChatPanel/BottomBar/Btn_CloseAR 을 맞춘다.
@@ -366,6 +369,8 @@ private:
 	UFUNCTION() void HandleScanTabClicked();
 	/** NabButton 클릭 → SetHudTab(Nav) 후 전체 지도를 바로 연다. 기존 HandleReferenceExit 바인딩과 별도로 함께 붙는다. */
 	UFUNCTION() void HandleNavTabClicked();
+	UFUNCTION() void HandleNavigationStarted(const FString& NodeId);
+	bool bNavigationGuidanceActive = false;
 
 	/**
 	 * 내비 도착 후 자동 종료(§4)가 정리까지 끝냈을 때(UNavMinimapWidget::OnNavigationClosed).

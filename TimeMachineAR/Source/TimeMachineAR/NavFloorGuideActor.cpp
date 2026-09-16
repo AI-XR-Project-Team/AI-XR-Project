@@ -10,6 +10,8 @@
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Engine/Texture.h"
 #include "UObject/ConstructorHelpers.h"
+#include "Kismet/GameplayStatics.h"
+#include "Camera/PlayerCameraManager.h"
 
 namespace
 {
@@ -239,6 +241,50 @@ void ANavFloorGuideActor::UpdateGuide(const TArray<FVector2D>& RoutePtsMap, cons
 
 	UpdateGuideInternal(RoutePtsMap, UserXY, NodeType, Label, Arrival,
 		[Loc](const FVector2D& M) { return Loc->MapToWorld(M.X, M.Y, 0.f); });
+}
+
+void ANavFloorGuideActor::UpdateGuideUnlocalized(const TArray<FVector2D>& RoutePtsMap,
+	const FVector2D& UserXY, const FString& NodeType, const FString& Label)
+{
+	EnsureAssets();
+	APlayerCameraManager* Camera = UGameplayStatics::GetPlayerCameraManager(this, 0);
+	if (PlaneMesh == nullptr || Camera == nullptr || RoutePtsMap.Num() < 2)
+	{
+		HideGuide();
+		return;
+	}
+
+	FVector2D RouteForward = RoutePtsMap[1] - RoutePtsMap[0];
+	for (int32 Index = 2; RouteForward.IsNearlyZero() && Index < RoutePtsMap.Num(); ++Index)
+	{
+		RouteForward = RoutePtsMap[Index] - RoutePtsMap[0];
+	}
+	if (RouteForward.IsNearlyZero())
+	{
+		HideGuide();
+		return;
+	}
+
+	const FVector CameraForward3D = Camera->GetCameraRotation().Vector();
+	const FVector2D CameraForward(CameraForward3D.X, CameraForward3D.Y);
+	const float RotationRad = FMath::Atan2(CameraForward.Y, CameraForward.X)
+		- FMath::Atan2(RouteForward.Y, RouteForward.X);
+	const float CosA = FMath::Cos(RotationRad);
+	const float SinA = FMath::Sin(RotationRad);
+	FVector Anchor = Camera->GetCameraLocation() + CameraForward3D.GetSafeNormal2D() * 80.f;
+	// Until AR plane localization arrives, use a conservative eye-to-floor estimate.
+	Anchor.Z -= 140.f;
+	UE_LOG(LogNav, Log, TEXT("[floor] showing unlocalized route guide from camera (points=%d)."), RoutePtsMap.Num());
+
+	UpdateGuideInternal(RoutePtsMap, UserXY, NodeType, Label, FNavFloorArrival(),
+		[UserXY, Anchor, CosA, SinA](const FVector2D& MapPoint)
+		{
+			const FVector2D Delta = MapPoint - UserXY;
+			return Anchor + FVector(
+				Delta.X * CosA - Delta.Y * SinA,
+				Delta.X * SinA + Delta.Y * CosA,
+				0.f);
+		});
 }
 
 void ANavFloorGuideActor::UpdateGuidePreview(const TArray<FVector2D>& RoutePtsWorld, const FVector2D& UserXY,

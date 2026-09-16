@@ -112,10 +112,10 @@ TSharedRef<SWidget> UNavGuideLogWidget::RebuildWidget()
 			// 아바타(96)+이름표+말풍선 3줄까지 여유 있게 잡는다.
 			// 화면 **하단** 가로 꽉 채움(양옆 4%, 아래 여백 48). 내비 화면은 하단 탭바가 없어 이 자리가
 			// 비어 있고, 상단은 X·미니맵과 겹친다. 높이는 내용에 맞춰 자동(AutoSize).
-			RowSlot->SetAnchors(FAnchors(0.04f, 1.f, 0.96f, 1.f));
-			RowSlot->SetAlignment(FVector2D(0.f, 1.f));
+			RowSlot->SetAnchors(FAnchors(0.04f, 0.76f, 0.96f, 0.76f));
+			RowSlot->SetAlignment(FVector2D(0.f, 0.5f));
 			RowSlot->SetAutoSize(true);
-			RowSlot->SetOffsets(FMargin(0.f, -48.f, 0.f, 0.f));
+			RowSlot->SetOffsets(FMargin(0.f));
 		}
 	}
 	return Super::RebuildWidget();
@@ -142,13 +142,29 @@ void UNavGuideLogWidget::NativeConstruct()
 
 void UNavGuideLogWidget::SyncWithMinimap()
 {
+	if (!ScanHud.IsValid())
+	{
+		TArray<UUserWidget*> Widgets;
+		UWidgetBlueprintLibrary::GetAllWidgetsOfClass(this, Widgets, UDocentChatWidget::StaticClass(), true);
+		if (Widgets.Num() > 0)
+		{
+			ScanHud = Cast<UDocentChatWidget>(Widgets[0]);
+		}
+	}
+	// This overlay lives directly in the viewport, outside the HUD panels.
+	// An active route must not make it reappear over the docent conversation.
+	const bool bDocentOpen = ScanHud.IsValid() && ScanHud->GetHudTab() == EDocentHudTab::Docent;
 	// 안내 로그는 **미니맵이 화면에 실제로 표출될 때만** 보인다(=네비 기능 활성). 미니맵은
 	// 앱 내내 살아 있고 네비 버튼이 표시/숨김만 토글하므로, 존재 여부가 아니라 "지금 그려지고
 	// 있는가"로 판정해야 한다. 숨겨진(부모 접힘 포함) 위젯은 NativePaint 가 멈춰 시각이 안 는다.
-	const bool bNavShown = BoundMinimap.IsValid() && BoundMinimap->WasRecentlyPainted();
+	// Guidance moves back onto the regular scan HUD. The minimap itself is
+	// intentionally transparent there, so an active destination must keep this
+	// message alive even when Slate skips the minimap's paint pass.
+	const bool bNavShown = BoundMinimap.IsValid()
+		&& (BoundMinimap->WasRecentlyPainted() || BoundMinimap->HasDestination());
 
 	// 전체 지도는 자기 렉시 말풍선을 따로 갖는다.
-	const ESlateVisibility Want = bNavShown && Phase != ENavGuidePhase::FullMapOpen
+	const ESlateVisibility Want = bNavShown && !bDocentOpen && Phase != ENavGuidePhase::FullMapOpen
 		? ESlateVisibility::HitTestInvisible   // 표시 전용(터치 안 먹음).
 		: ESlateVisibility::Collapsed;
 	if (GetVisibility() != Want)

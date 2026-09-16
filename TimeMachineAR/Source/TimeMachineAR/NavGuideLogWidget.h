@@ -13,6 +13,7 @@ class UTextBlock;
 class UTexture2D;
 class UNavMinimapWidget;
 class UNavLocalizer;
+class UDocentChatWidget;
 
 /** 안내 로그가 보여 주는 단계. node_type 은 문구 갈래를 위해 따로 본다. */
 UENUM()
@@ -110,6 +111,7 @@ protected:
 	TObjectPtr<UTextBlock> MessageText;
 
 private:
+	TWeakObjectPtr<UDocentChatWidget> ScanHud;
 	UFUNCTION() void HandleLocalized(const FString& MarkerCode);
 	UFUNCTION() void HandleLocalizationLost();
 	UFUNCTION() void HandleAnchorChanged(const FString& MarkerCode);

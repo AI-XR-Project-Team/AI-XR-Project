@@ -36,6 +36,9 @@ public:
  FOnNavDestinationChosen OnDestinationChosen;
  UPROPERTY(BlueprintAssignable, Category="Nav|FullMap")
  FOnNavFullMapClosed OnClosed;
+	/** 뒤로가기 버튼/Android 뒤로가기로 지도를 취소했을 때만 방송한다. 목적지 확정은 제외한다. */
+	UPROPERTY(BlueprintAssignable, Category="Nav|FullMap")
+	FOnNavFullMapClosed OnCancelled;
 
  UFUNCTION(BlueprintCallable, Category="Nav|FullMap")
  void Close();
@@ -56,6 +59,7 @@ public:
 protected:
  virtual void NativeConstruct() override;
  virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime) override;
+	virtual FReply NativeOnPreviewKeyDown(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent) override;
  virtual FReply NativeOnMouseButtonDown(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent) override;
  virtual int32 NativePaint(const FPaintArgs& Args, const FGeometry& AllottedGeometry,
   const FSlateRect& MyCullingRect, FSlateWindowElementList& OutDrawElements, int32 LayerId,

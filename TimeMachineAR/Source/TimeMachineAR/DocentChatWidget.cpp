@@ -30,6 +30,7 @@
 #include "Components/HorizontalBox.h"
 #include "Components/HorizontalBoxSlot.h"
 #include "Components/OverlaySlot.h"
+#include "Components/Overlay.h"
 #include "Components/SizeBox.h"
 #include "Components/SizeBoxSlot.h"
 #include "Components/VerticalBox.h"
@@ -106,6 +107,7 @@ bool SaveImageToGallery(const FString& SourcePath, const FString& DisplayName)
 void UDocentChatWidget::NativeConstruct()
 {
 	Super::NativeConstruct();
+	SetIsFocusable(true);
 #if !UE_BUILD_SHIPPING
 	if (FParse::Param(FCommandLine::Get(), TEXT("ReferenceUIPreview")))
 	{
@@ -136,6 +138,8 @@ void UDocentChatWidget::NativeConstruct()
 	if (UNavMinimapWidget* Minimap = Cast<UNavMinimapWidget>(GetWidgetFromName(TEXT("WBP_NavMinimap"))))
 	{
 		Minimap->OnNavigationClosed.AddUniqueDynamic(this, &UDocentChatWidget::HandleNavClosedByAutoEnd);
+		Minimap->OnFullMapBackRequested.AddUniqueDynamic(this, &UDocentChatWidget::HandleScanTabClicked);
+		Minimap->OnDestinationChosen.AddUniqueDynamic(this, &UDocentChatWidget::HandleNavigationStarted);
 	}
 
 	if (DocentNameText != nullptr)
@@ -304,6 +308,8 @@ void UDocentChatWidget::NativeDestruct()
 	if (UNavMinimapWidget* Minimap = Cast<UNavMinimapWidget>(GetWidgetFromName(TEXT("WBP_NavMinimap"))))
 	{
 		Minimap->OnNavigationClosed.RemoveDynamic(this, &UDocentChatWidget::HandleNavClosedByAutoEnd);
+		Minimap->OnFullMapBackRequested.RemoveDynamic(this, &UDocentChatWidget::HandleScanTabClicked);
+		Minimap->OnDestinationChosen.RemoveDynamic(this, &UDocentChatWidget::HandleNavigationStarted);
 	}
 	// 서브시스템은 위젯보다 오래 산다. 언바인드하지 않으면 죽은 위젯으로
 	// 브로드캐스트가 계속 날아간다.
@@ -373,6 +379,28 @@ void UDocentChatWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTim
 	// WBP 이벤트 그래프가 우리 클릭 핸들러보다 먼저 돌면서 같은 패널을 건드릴 수 있다.
 	// 매 틱 다시 강제한다. ApplyHudTab 은 값이 다를 때만 SetVisibility 해서 가볍다.
 	ApplyHudTab();
+
+	// 목적지를 고르면 전체 지도 위젯이 제거된다. 그 다음 프레임에 HUD가 포커스를
+	// 되찾아야 Android 시스템 뒤로가기가 앱 종료 대신 스캔 화면 전환으로 들어온다.
+	if (bNavBackFocusPending && ActiveTab == EDocentHudTab::Nav)
+	{
+		const UNavMinimapWidget* Minimap = Cast<UNavMinimapWidget>(GetWidgetFromName(TEXT("WBP_NavMinimap")));
+		if (Minimap == nullptr || !Minimap->IsFullMapOpen())
+		{
+			SetFocus();
+			bNavBackFocusPending = false;
+		}
+	}
+}
+
+FReply UDocentChatWidget::NativeOnPreviewKeyDown(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent)
+{
+	if (ActiveTab == EDocentHudTab::Nav && InKeyEvent.GetKey() == EKeys::Android_Back)
+	{
+		SetHudTab(EDocentHudTab::Scan);
+		return FReply::Handled();
+	}
+	return Super::NativeOnPreviewKeyDown(InGeometry, InKeyEvent);
 }
 
 void UDocentChatWidget::OpenChat(const FString& InExhibitId)
@@ -480,6 +508,10 @@ void UDocentChatWidget::ToggleChat()
 void UDocentChatWidget::SetHudTab(EDocentHudTab Tab)
 {
 	ActiveTab = Tab;
+	if (Tab != EDocentHudTab::Nav)
+	{
+		bNavBackFocusPending = false;
+	}
 	ApplyHudTab(/*bForceRefresh=*/true);
 }
 
@@ -498,13 +530,32 @@ void UDocentChatWidget::ApplyHudTab(bool bForceRefresh)
 
 	UWidget* ScanPanel = GetWidgetFromName(TEXT("ScanPanel"));
 	UWidget* NavPanel = GetWidgetFromName(TEXT("NavPanel"));
+	// 모서리 컨트롤만 감춘다. NavMinimapBox 를 Collapsed 로 만들면 그 안의
+	// UNavMinimapWidget 틱도 멈춰 경로 진행과 바닥 발자국 갱신이 정지한다.
+	SetVis(GetWidgetFromName(TEXT("NavCloseButton")), ESlateVisibility::Collapsed);
+	if (UWidget* NavMinimapBox = GetWidgetFromName(TEXT("NavMinimapBox")))
+	{
+		SetVis(NavMinimapBox, ESlateVisibility::HitTestInvisible);
+		NavMinimapBox->SetRenderOpacity(0.f);
+	}
+	if (UWidget* NavMinimap = GetWidgetFromName(TEXT("WBP_NavMinimap")))
+	{
+		SetVis(NavMinimap, ESlateVisibility::HitTestInvisible);
+		NavMinimap->SetRenderOpacity(0.f);
+		if (UNavMinimapWidget* Minimap = Cast<UNavMinimapWidget>(NavMinimap))
+		{
+			Minimap->SetVisualsSuppressed(true);
+		}
+	}
 
 	switch (ActiveTab)
 	{
 	case EDocentHudTab::Scan:
 		if (bIsOpen) { ApplyOpenState(false); bChanged = true; }
 		SetVis(ScanPanel, ESlateVisibility::SelfHitTestInvisible);
-		SetVis(NavPanel, ESlateVisibility::Collapsed);
+		// Keep the hidden minimap alive while guidance is active. It drives route
+		// progress, the guide message, and AR footprints behind the scan HUD.
+		SetVis(NavPanel, bNavigationGuidanceActive ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
 		SetVis(BottomBar, ESlateVisibility::Visible);
 		SetVis(Btn_CloseAR, bReferenceRecognized ? ESlateVisibility::Visible : ESlateVisibility::Hidden);
 		break;
@@ -516,7 +567,7 @@ void UDocentChatWidget::ApplyHudTab(bool bForceRefresh)
 			SetVis(NavPanel, Minimap && Minimap->IsFullMapOpen() ? ESlateVisibility::Hidden : ESlateVisibility::Visible);
 		}
 		SetVis(ScanPanel, ESlateVisibility::Collapsed);
-		// 내비는 전체화면이고 자체 NavCloseButton 으로 돌아간다. 하단 바는 접어 둔다.
+		// 목적지 선택 후 AR 안내 화면에서도 하단 바는 접어 둔다.
 		SetVis(BottomBar, ESlateVisibility::Collapsed);
 		SetVis(Btn_CloseAR, ESlateVisibility::Hidden);
 		break;
@@ -686,6 +737,7 @@ void UDocentChatWidget::HandleScanTabClicked()
 void UDocentChatWidget::HandleNavTabClicked()
 {
 	SetHudTab(EDocentHudTab::Nav);
+	bNavBackFocusPending = true;
 	// 내비 탭에 들어오자마자 전체 지도를 띄운다. 예전엔 우측 상단 미니맵(사각형)을 한 번 더
 	// 눌러야 목적지를 고를 수 있었다. 이미 떠 있으면 OpenFullMap 이 알아서 무시한다.
 	if (UNavMinimapWidget* Minimap = Cast<UNavMinimapWidget>(GetWidgetFromName(TEXT("WBP_NavMinimap"))))
@@ -698,11 +750,22 @@ void UDocentChatWidget::HandleNavTabClicked()
 	}
 }
 
+void UDocentChatWidget::HandleNavigationStarted(const FString& NodeId)
+{
+	if (NodeId.IsEmpty())
+	{
+		return;
+	}
+	bNavigationGuidanceActive = true;
+	SetHudTab(EDocentHudTab::Scan);
+}
+
 void UDocentChatWidget::HandleNavClosedByAutoEnd()
 {
 	// 도착 뒤 마무리 문구까지 다 보여 주고 경로를 정리한 시점(§4). 다음 할 일은 보통
 	// AR 스캔이므로 스캔 탭으로 되돌린다. 문구는 ApplyHudTab 이 손대지 않으므로 기존
 	// 스캔 힌트("AR 스캔을 눌러 시작해주세요…")가 그대로 보인다.
+	bNavigationGuidanceActive = false;
 	SetHudTab(EDocentHudTab::Scan);
 }
 
@@ -1077,9 +1140,14 @@ void UDocentChatWidget::RefreshReferenceUI()
 	}
 	if (UBorder* Hint = Cast<UBorder>(GetWidgetFromName(TEXT("ScanHintBG"))))
 	{
+		Hint->SetVisibility(bNavigationGuidanceActive ? ESlateVisibility::Collapsed : ESlateVisibility::Visible);
 		FSlateBrush Brush = Hint->Background;
 		Brush.OutlineSettings.Color = FSlateColor(Accent.CopyWithNewOpacity(0.6f));
 		Hint->SetBrush(Brush);
+	}
+	if (UWidget* Robot = GetWidgetFromName(TEXT("RefRobotSize")))
+	{
+		Robot->SetVisibility(bNavigationGuidanceActive ? ESlateVisibility::Collapsed : ESlateVisibility::Visible);
 	}
 	UWidget* Scan = GetWidgetFromName(TEXT("ScanPanel"));
 	const bool bScanVisible = !bIsOpen && Scan && Scan->GetVisibility() != ESlateVisibility::Collapsed;

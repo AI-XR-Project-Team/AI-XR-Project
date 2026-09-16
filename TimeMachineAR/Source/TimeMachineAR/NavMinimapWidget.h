@@ -185,6 +185,10 @@ public:
 	UPROPERTY(BlueprintAssignable, Category = "Nav|Minimap")
 	FOnNavFullMapOpenChanged OnFullMapOpenChanged;
 
+	/** 전체 지도에서 뒤로가기를 눌렀을 때. 도슨트 HUD가 기존 AR 스캔 화면으로 돌아간다. */
+	UPROPERTY(BlueprintAssignable, Category = "Nav|Minimap")
+	FOnNavArrivalClosed OnFullMapBackRequested;
+
 	/**
 	 * 턴바이턴 안내가 갱신될 때(측위 중, Follow 모드만). BP 가 WBP_NavStatus 배너로 잇는다.
 	 * bArrived 로 도착 화면도 여기서 가른다(5-D).
@@ -219,6 +223,8 @@ public:
 	/** 경로를 지운다. EmptyHint 가 있으면 다시 보인다. */
 	UFUNCTION(BlueprintCallable, Category = "Nav|Minimap")
 	void ClearRoute();
+	/** Keeps route/tick logic active while hiding the compact map artwork. */
+	void SetVisualsSuppressed(bool bSuppressed) { bVisualsSuppressed = bSuppressed; Invalidate(EInvalidateWidgetReason::Paint); }
 
 	UFUNCTION(BlueprintPure, Category = "Nav|Minimap")
 	bool HasRoute() const { return RouteXY.Num() > 0; }
@@ -477,6 +483,7 @@ private:
 	float CurrentHeadingDeg = 0.f;
 	bool bHasCurrent = false;
 	bool bCurrentHasHeading = false;
+	bool bVisualsSuppressed = false;
 
 	/** 직전 프레임 이탈 상태(전환 시에만 로그). */
 	bool bWasOffRoute = false;
@@ -546,6 +553,8 @@ private:
 	/** 전체 지도가 닫힐 때. OnFullMapOpenChanged(false) 를 방송한다. */
 	UFUNCTION()
 	void HandleFullMapClosed();
+	UFUNCTION()
+	void HandleFullMapCancelled();
 
 	/** 현재 떠 있는 전체 지도(중복 오픈 방지). */
 	UPROPERTY(Transient)

@@ -74,7 +74,7 @@ bool FBuildTimeRevealFXTest::RunTest(const FString&)
   FSavePackageArgs Args; Args.TopLevelFlags=RF_Public|RF_Standalone; Args.SaveFlags=SAVE_NoError;
   const FString File=FPackageName::LongPackageNameToFilename(PackageName,FPackageName::GetAssetPackageExtension());
   TestTrue(TEXT("Saved effect"),UPackage::SavePackage(Package,Sys,*File,Args));
-  AddInfo(FString::Printf(TEXT("FX_BUILT %s emitters=%d"),Names[I],Sys->GetEmitterHandles().Num()));
+  AddInfo(FString::Printf(TEXT("FX_BUILT %s emitters=%d"),SystemNames[I],Sys->GetEmitterHandles().Num()));
  }
  return !HasAnyErrors();
 }

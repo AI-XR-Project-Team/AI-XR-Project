@@ -66,6 +66,11 @@ void UNavMinimapWidget::SetWaypoints(const TArray<FNavWaypoint>& InWaypoints)
 	bWasOffRoute = false;
 	OffRouteSinceSeconds = -1.f;   // 새 경로 → 이탈 타이머 리셋.
 	RefreshEmptyHint();
+	if (Mode == ENavMinimapMode::Follow && FloorGuide != nullptr && !bHasCurrent && RouteXY.Num() >= 2)
+	{
+		FloorGuide->UpdateGuideUnlocalized(RouteXY, RouteXY[0],
+			GetNodeType(DestinationNodeId), GetNodeLabel(DestinationNodeId));
+	}
 	if (UNavMinimapWidget* Full = GetOpenFullMapView()) { Full->SetWaypoints(InWaypoints); }
 	Invalidate(EInvalidateWidgetReason::Paint);
 }
@@ -110,6 +115,11 @@ void UNavMinimapWidget::SetRouteXY(const TArray<FVector2D>& InRouteXY)
 	OffRouteSinceSeconds = -1.f;
 	AutoEnd.Reset();   // §4 도착 자동 종료 타이머도 같이 되감는다 — 다음 경로를 위해.
 	RefreshEmptyHint();
+	if (Mode == ENavMinimapMode::Follow && FloorGuide != nullptr && !bHasCurrent && RouteXY.Num() >= 2)
+	{
+		FloorGuide->UpdateGuideUnlocalized(RouteXY, RouteXY[0],
+			GetNodeType(DestinationNodeId), GetNodeLabel(DestinationNodeId));
+	}
 	if (UNavMinimapWidget* Full = GetOpenFullMapView()) { Full->SetRouteXY(InRouteXY); }
 	Invalidate(EInvalidateWidgetReason::Paint);
 }
@@ -161,6 +171,7 @@ void UNavMinimapWidget::OpenFullMap()
 		CurrentXY, CurrentHeadingDeg, bCurrentHasHeading, DestinationNodeId);
 	W->OnDestinationChosen.AddDynamic(this, &UNavMinimapWidget::HandleDestinationChosen);
 	W->OnClosed.AddDynamic(this, &UNavMinimapWidget::HandleFullMapClosed);
+	W->OnCancelled.AddDynamic(this, &UNavMinimapWidget::HandleFullMapCancelled);
 	W->AddToViewport(100);
 	FullMapInstance = W;
 
@@ -192,6 +203,11 @@ void UNavMinimapWidget::HandleFullMapClosed()
 {
 	FullMapInstance.Reset();
 	OnFullMapOpenChanged.Broadcast(false);
+}
+
+void UNavMinimapWidget::HandleFullMapCancelled()
+{
+	OnFullMapBackRequested.Broadcast();
 }
 
 TSubclassOf<UNavFullMapWidget> UNavMinimapWidget::ResolveFullMapWidgetClass() const
@@ -704,6 +720,10 @@ int32 UNavMinimapWidget::NativePaint(const FPaintArgs& Args, const FGeometry& Al
 {
 	int32 Layer = Super::NativePaint(Args, AllottedGeometry, MyCullingRect, OutDrawElements,
 		LayerId, InWidgetStyle, bParentEnabled);
+	if (bVisualsSuppressed && !IsDesignTime())
+	{
+		return Layer;
+	}
 
 	// "표출 중" 표식 — 숨겨지면(부모 접힘 포함) 이 호출 자체가 멈춘다. 안내 로그가 이 신선도로
 	// 미니맵이 화면에 떠 있는지(네비 활성)를 판정한다. 디자인 미리보기는 제외.

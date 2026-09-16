@@ -88,7 +88,11 @@ namespace
  }
 }
 
-void UNavFullMapWidget::NativeConstruct(){Super::NativeConstruct(); bClosing=false; BuildSkinLayout();}
+void UNavFullMapWidget::NativeConstruct()
+{
+ Super::NativeConstruct(); bClosing=false; SetIsFocusable(true); BuildSkinLayout();
+ if(UWorld* World=GetWorld()) World->GetTimerManager().SetTimerForNextTick(FTimerDelegate::CreateWeakLambda(this,[this](){SetFocus();}));
+}
 bool UNavFullMapWidget::UsesReferenceArtwork() const{return ReferenceTexture && ReferenceCanvas;}
 
 void UNavFullMapWidget::BuildSkinLayout()
@@ -209,7 +213,12 @@ void UNavFullMapWidget::ApplyState(const FNavGraph& Graph,const TArray<FVector2D
  if(HasPose) MapView->SetCurrentPose(Pose.X,Pose.Y,Heading,HasHeading); else MapView->ClearCurrentPose();
  RefreshDestinations(Graph,Destination);
 }
-void UNavFullMapWidget::Close(){if(bClosing)return; bClosing=true; OnClosed.Broadcast(); RemoveFromParent();}
+void UNavFullMapWidget::Close(){if(bClosing)return; bClosing=true; OnCancelled.Broadcast(); OnClosed.Broadcast(); RemoveFromParent();}
+FReply UNavFullMapWidget::NativeOnPreviewKeyDown(const FGeometry& InGeometry,const FKeyEvent& InKeyEvent)
+{
+ if(InKeyEvent.GetKey()==EKeys::Android_Back){Close();return FReply::Handled();}
+ return Super::NativeOnPreviewKeyDown(InGeometry,InKeyEvent);
+}
 bool UNavFullMapWidget::FindReferenceDestinationAtLocal(const FVector2D& P,FString& Out) const
 {
  Out.Reset(); if(!UsesReferenceArtwork() || bClosing)return false;

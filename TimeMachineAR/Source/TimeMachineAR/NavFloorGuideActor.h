@@ -86,6 +86,14 @@ public:
 		const FString& NodeType, const FString& Label, const FNavFloorArrival& Arrival = FNavFloorArrival());
 
 	/**
+	 * Shows an initial guide before marker/cloud-anchor localization is available.
+	 * The route start is placed on the estimated floor in front of the AR camera;
+	 * the normal localized guide replaces it as soon as SetCurrentPose starts.
+	 */
+	void UpdateGuideUnlocalized(const TArray<FVector2D>& RoutePtsMap, const FVector2D& UserXY,
+		const FString& NodeType, const FString& Label);
+
+	/**
 	 * 에디터 프리뷰/테스트용: 측위 없이 **맵 = 월드(항등)** 로 깐다. 실제 앱 경로는 아니다.
 	 * `TimeMachineAR.Nav.FloorGuidePreview` 가 방향·교대·머티리얼을 오프스크린 렌더로 확인한다.
 	 */
