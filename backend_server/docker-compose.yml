@@ -1,0 +1,33 @@
+# 공룡 박물관 AR — 로컬 PostgreSQL (1주차, PC 단독 검증용)
+# 기동:  docker compose up -d
+# 상태:  docker compose ps        (db 가 healthy 여야 함)
+# 접속:  psql postgresql://dino:dino_dev_pw@localhost:5432/dino_ar -c "\dt"
+# 초기화 재실행: docker compose down -v  (dino_pgdata 볼륨 삭제 → 최초 기동 취급)
+#
+# 환경변수는 .env 가 있으면 그 값을, 없으면 아래 기본값(.env.example 과 동일)을 사용한다.
+
+services:
+  db:
+    image: postgres:16
+    container_name: dino_ar_db
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-dino}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dino_dev_pw}
+      POSTGRES_DB: ${POSTGRES_DB:-dino_ar}
+    ports:
+      - "5432:5432"
+    volumes:
+      # 영속 데이터
+      - dino_pgdata:/var/lib/postgresql/data
+      # 최초 기동 시 자동 실행되는 초기화 스크립트 위치
+      - ./db/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-dino} -d ${POSTGRES_DB:-dino_ar}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
+
+volumes:
+  dino_pgdata:

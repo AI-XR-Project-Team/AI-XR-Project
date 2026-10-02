@@ -1,0 +1,506 @@
+{
+  "T_ArchelonHero.png": {
+    "source": "ref_01_hero.png",
+    "box_xyxy": [
+      13,
+      68,
+      1446,
+      1040
+    ],
+    "size": [
+      1433,
+      972
+    ],
+    "note": "대표 이미지. 알파 컷아웃 그대로, 여백만 잘라 냄"
+  },
+  "T_IntroIllustration.png": {
+    "source": "ref_07_parts_sheet.png",
+    "box_xyxy": [
+      732,
+      45,
+      1026,
+      285
+    ],
+    "size": [
+      294,
+      240
+    ],
+    "note": "청록 발광 거북 실루엣. 갈색(큰 거북) 픽셀 제거"
+  },
+  "T_FeatureIllustration.png": {
+    "source": "ref_07_parts_sheet.png",
+    "box_xyxy": [
+      800,
+      290,
+      1092,
+      660
+    ],
+    "size": [
+      288,
+      332
+    ],
+    "note": "청록 와이어프레임 거북. 갈색 픽셀 제거"
+  },
+  "T_HabitatMap.png": {
+    "source": "ref_07_parts_sheet.png",
+    "box_xyxy": [
+      1095,
+      368,
+      1421,
+      681
+    ],
+    "size": [
+      326,
+      312
+    ],
+    "note": "북아메리카 서부 내해 지도. 왼쪽 아래 영문 라벨을 inpaint 로 제거(라벨은 UMG 가 그림)"
+  },
+  "T_DiscoverySkeleton.png": {
+    "source": "ref_07_parts_sheet.png",
+    "box_xyxy": [
+      1033,
+      62,
+      1436,
+      411
+    ],
+    "size": [
+      399,
+      345
+    ],
+    "note": "거북 골격. 청록(지도) 픽셀 제거"
+  },
+  "T_RexyCTA.png": {
+    "source": "ref_07_parts_sheet.png",
+    "box_xyxy": [
+      60,
+      420,
+      320,
+      672
+    ],
+    "size": [
+      251,
+      243
+    ],
+    "note": "렉시(가리키는 자세). 갈색 픽셀 제거"
+  },
+  "T_BtnBack.png": {
+    "source": "ref_07_parts_sheet.png",
+    "box_xyxy": [
+      348,
+      530,
+      463,
+      649
+    ],
+    "size": [
+      115,
+      118
+    ],
+    "note": "뒤로 원형 버튼"
+  },
+  "T_BtnMenu.png": {
+    "source": "ref_07_parts_sheet.png",
+    "box_xyxy": [
+      476,
+      530,
+      590,
+      649
+    ],
+    "size": [
+      114,
+      118
+    ],
+    "note": "메뉴 원형 버튼"
+  },
+  "T_BtnNext.png": {
+    "source": "ref_07_parts_sheet.png",
+    "box_xyxy": [
+      597,
+      520,
+      729,
+      656
+    ],
+    "size": [
+      132,
+      136
+    ],
+    "note": "다음 원형 버튼(발광 강함)"
+  },
+  "T_IcoTabIntro.png": {
+    "source": "ref_07_parts_sheet.png",
+    "box_xyxy": [
+      48,
+      672,
+      210,
+      824
+    ],
+    "size": [
+      128,
+      128
+    ],
+    "note": "탭 아이콘 흰 마스크. 글리프 bbox(크롭 내) (48, 36, 114, 89)"
+  },
+  "T_IcoTabFeature.png": {
+    "source": "ref_07_parts_sheet.png",
+    "box_xyxy": [
+      216,
+      672,
+      368,
+      824
+    ],
+    "size": [
+      128,
+      128
+    ],
+    "note": "탭 아이콘 흰 마스크. 글리프 bbox(크롭 내) (46, 30, 108, 92)"
+  },
+  "T_IcoTabHabitat.png": {
+    "source": "ref_07_parts_sheet.png",
+    "box_xyxy": [
+      372,
+      670,
+      539,
+      826
+    ],
+    "size": [
+      128,
+      128
+    ],
+    "note": "탭 아이콘 흰 마스크. 글리프 bbox(크롭 내) (50, 30, 115, 95)"
+  },
+  "T_IcoTabDiscovery.png": {
+    "source": "ref_07_parts_sheet.png",
+    "box_xyxy": [
+      548,
+      671,
+      711,
+      826
+    ],
+    "size": [
+      128,
+      128
+    ],
+    "note": "탭 아이콘 흰 마스크. 글리프 bbox(크롭 내) (50, 33, 109, 93)"
+  },
+  "T_IcoStatLength.png": {
+    "source": "ref_07_parts_sheet.png",
+    "box_xyxy": [
+      758,
+      677,
+      905,
+      822
+    ],
+    "size": [
+      128,
+      128
+    ],
+    "note": "요약 아이콘 흰 마스크. 글리프 bbox (26, 40, 121, 88)"
+  },
+  "T_IcoStatWeight.png": {
+    "source": "ref_07_parts_sheet.png",
+    "box_xyxy": [
+      924,
+      677,
+      1070,
+      822
+    ],
+    "size": [
+      128,
+      128
+    ],
+    "note": "요약 아이콘 흰 마스크. 글리프 bbox (50, 37, 96, 87)"
+  },
+  "T_IcoStatDiet.png": {
+    "source": "ref_07_parts_sheet.png",
+    "box_xyxy": [
+      1088,
+      677,
+      1236,
+      823
+    ],
+    "size": [
+      128,
+      128
+    ],
+    "note": "요약 아이콘 흰 마스크. 글리프 bbox (33, 46, 114, 90)"
+  },
+  "T_IcoStatEra.png": {
+    "source": "ref_07_parts_sheet.png",
+    "box_xyxy": [
+      1254,
+      676,
+      1400,
+      822
+    ],
+    "size": [
+      128,
+      128
+    ],
+    "note": "요약 아이콘 흰 마스크. 글리프 bbox (42, 38, 99, 95)"
+  },
+  "T_IcoFlipper.png": {
+    "source": "ref_07_parts_sheet.png",
+    "box_xyxy": [
+      39,
+      844,
+      138,
+      969
+    ],
+    "size": [
+      128,
+      128
+    ],
+    "note": "작은 아이콘 흰 마스크. 글리프 bbox (25, 27, 67, 75)"
+  },
+  "T_IcoShell.png": {
+    "source": "ref_07_parts_sheet.png",
+    "box_xyxy": [
+      141,
+      844,
+      238,
+      969
+    ],
+    "size": [
+      128,
+      128
+    ],
+    "note": "작은 아이콘 흰 마스크. 글리프 bbox (21, 23, 75, 77)"
+  },
+  "T_IcoBeak.png": {
+    "source": "ref_07_parts_sheet.png",
+    "box_xyxy": [
+      240,
+      844,
+      340,
+      970
+    ],
+    "size": [
+      128,
+      128
+    ],
+    "note": "작은 아이콘 흰 마스크. 글리프 bbox (28, 29, 77, 77)"
+  },
+  "T_IcoWaves.png": {
+    "source": "ref_07_parts_sheet.png",
+    "box_xyxy": [
+      341,
+      844,
+      438,
+      970
+    ],
+    "size": [
+      128,
+      128
+    ],
+    "note": "작은 아이콘 흰 마스크. 글리프 bbox (24, 40, 76, 62)"
+  },
+  "T_IcoPin.png": {
+    "source": "ref_07_parts_sheet.png",
+    "box_xyxy": [
+      440,
+      845,
+      535,
+      968
+    ],
+    "size": [
+      128,
+      128
+    ],
+    "note": "작은 아이콘 흰 마스크. 글리프 bbox (28, 25, 65, 74)"
+  },
+  "T_IcoWaves2.png": {
+    "source": "ref_07_parts_sheet.png",
+    "box_xyxy": [
+      538,
+      844,
+      634,
+      968
+    ],
+    "size": [
+      128,
+      128
+    ],
+    "note": "작은 아이콘 흰 마스크. 글리프 bbox (25, 36, 71, 64)"
+  },
+  "T_IcoThermo.png": {
+    "source": "ref_07_parts_sheet.png",
+    "box_xyxy": [
+      637,
+      844,
+      734,
+      967
+    ],
+    "size": [
+      128,
+      128
+    ],
+    "note": "작은 아이콘 흰 마스크. 글리프 bbox (34, 26, 63, 77)"
+  },
+  "T_IcoJelly.png": {
+    "source": "ref_07_parts_sheet.png",
+    "box_xyxy": [
+      737,
+      843,
+      839,
+      967
+    ],
+    "size": [
+      128,
+      128
+    ],
+    "note": "작은 아이콘 흰 마스크. 글리프 bbox (33, 26, 70, 78)"
+  },
+  "T_IcoRocks.png": {
+    "source": "ref_07_parts_sheet.png",
+    "box_xyxy": [
+      845,
+      843,
+      945,
+      968
+    ],
+    "size": [
+      128,
+      128
+    ],
+    "note": "작은 아이콘 흰 마스크. 글리프 bbox (24, 29, 75, 69)"
+  },
+  "T_IcoLayers.png": {
+    "source": "ref_07_parts_sheet.png",
+    "box_xyxy": [
+      948,
+      843,
+      1047,
+      969
+    ],
+    "size": [
+      128,
+      128
+    ],
+    "note": "작은 아이콘 흰 마스크. 글리프 bbox (24, 32, 75, 69)"
+  },
+  "T_IcoStones.png": {
+    "source": "ref_07_parts_sheet.png",
+    "box_xyxy": [
+      1051,
+      842,
+      1153,
+      969
+    ],
+    "size": [
+      128,
+      128
+    ],
+    "note": "작은 아이콘 흰 마스크. 글리프 bbox (27, 26, 74, 78)"
+  },
+  "T_IcoDoc.png": {
+    "source": "ref_07_parts_sheet.png",
+    "box_xyxy": [
+      1166,
+      841,
+      1274,
+      947
+    ],
+    "size": [
+      128,
+      128
+    ],
+    "note": "작은 아이콘 흰 마스크. 글리프 bbox (30, 29, 77, 79)"
+  },
+  "T_IcoCap.png": {
+    "source": "ref_07_parts_sheet.png",
+    "box_xyxy": [
+      1288,
+      843,
+      1404,
+      973
+    ],
+    "size": [
+      128,
+      128
+    ],
+    "note": "작은 아이콘 흰 마스크. 글리프 bbox (24, 31, 91, 98)"
+  },
+  "T_IcoZonePin.png": {
+    "source": "ref_06_ui_sheet.png",
+    "box_xyxy": [
+      392,
+      30,
+      446,
+      100
+    ],
+    "size": [
+      128,
+      128
+    ],
+    "note": "전시존 배지의 핀. 흰 마스크, 글리프 bbox (6, 8, 48, 64)"
+  },
+  "T_IcoMarine.png": {
+    "source": "ref_06_ui_sheet.png",
+    "box_xyxy": [
+      1190,
+      178,
+      1240,
+      230
+    ],
+    "size": [
+      128,
+      128
+    ],
+    "note": "해양 파충류 배지의 물결. 흰 마스크, 글리프 bbox (14, 16, 48, 38)"
+  },
+  "T_IcoEra.png": {
+    "source": "ref_06_ui_sheet.png",
+    "box_xyxy": [
+      1190,
+      258,
+      1240,
+      310
+    ],
+    "size": [
+      128,
+      128
+    ],
+    "note": "백악기 후기 배지의 산. 흰 마스크, 글리프 bbox (12, 12, 48, 39)"
+  },
+  "T_PanelGlow.png": {
+    "source": "ref_06_ui_sheet.png",
+    "box_xyxy": [
+      21,
+      113,
+      771,
+      482
+    ],
+    "size": [
+      736,
+      368
+    ],
+    "note": "남색 유리 패널 + 청록 발광 테두리. UMG Box(9-slice) 브러시용, 모서리 여백 약 40px"
+  },
+  "T_GlowLine.png": {
+    "source": "ref_06_ui_sheet.png",
+    "box_xyxy": [
+      790,
+      836,
+      1390,
+      868
+    ],
+    "size": [
+      593,
+      26
+    ],
+    "note": "청록 발광 가로선. 탭 밑줄"
+  },
+  "T_OceanBackground.png": {
+    "source": "(procedural)",
+    "box_xyxy": [
+      0,
+      0,
+      1080,
+      2400
+    ],
+    "size": [
+      1080,
+      2400
+    ],
+    "note": "남색 해양 그라데이션 + 수면 글로우 + 빛줄기 + 보케. 전용 배경 원본이 없어 합성"
+  }
+}

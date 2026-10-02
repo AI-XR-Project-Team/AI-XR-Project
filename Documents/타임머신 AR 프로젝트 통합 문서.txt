@@ -1,0 +1,231 @@
+﻿1. Ground Rules (그라운드 룰)
+1. 브랜치 전략 (Git Flow)
+* 메인 브랜치
+   * main: 배포/제출 가능한 안정 버전만 유지
+   * develop: 다음 릴리스를 위한 통합 브랜치
+* 작업 브랜치
+   * feature/<topic>: 기능 개발 (예: feature/boss-ai)
+   * fix/<topic>: 버그 수정 (예: fix/replication-desync)
+   * hotfix/<topic>: 긴급 수정 (예: hotfix/crash-on-Load)
+* 기본 흐름
+   1. develop에서 브랜치 생성 (feature/, fix/*)
+   2. 작업 완료 PR 생성 리뷰 반영 → develop 머지
+   3. 필요 시 release/ 생성 → main 반영 후 develop 에도 동기화
+* 원칙 (중요)
+   * 핵심 C++ 코드/서버 코드는 PR 기반 반영 (직접 푸시 지양)
+2. 브랜치/커밋 명명 규칙 (Conventional Commits)
+* 브랜치 네이밍
+   * feature/<topic> / fix/<topic> / hotfix/<topic>
+   * <topic>: 짧고 구체적으로, 소문자+하이픈 권장 (예: feature/Listen-server-lobby)
+* 커밋 메시지 규칙
+   * 형식: type (scope): subject
+   * type 예시: feat, fix, refactor, chore, docs, test
+   * 예시:
+      * feat (server): add position validation rpc
+      * fix(ui): prevent null widget crash
+      * refactor(core): split boss state machine
+3. PR 가이드 및 규칙
+* 필수 규칙
+   * 핵심 C++ 코드 및 서버 코드는 PR 생성 후 1인 이상 리뷰 필수
+* PR 작성 가이드 (권장)
+   * 변경 요약 (무엇을/왜 바꿨는지)
+   * 테스트 방법 (로컬/멀티플레이/Quest 3 검증 여부)
+   * 관련 이슈/태스크 링크 (있다면)
+* 리뷰/머지 규칙 (권장)
+   * 리뷰 코멘트 반영 후 재요청
+   * 머지 방식은 팀에서 Merge 통일
+4. 언리얼 에셋 명명 규칙 + 에셋 사용 규칙
+* 외부 에셋/라이브러리: 사용 시 출처 명시 (링크/라이선스/구매처 등)
+* Meta Quest 3 사전 검증: 맵 스케일과 기믹은 Quest 3에서 사전 검증 필수
+* 에셋 네이밍 (권장 프리픽스)
+   * Blueprint: BP_
+   * Material: M_ / Material Instance: MI_
+   * Texture: T_
+   * Static Mesh: SM_ / Skeletal Mesh: SK_
+   * Animation: Anim_ (또는 AN로 팀 규칙 고정)
+   * Sound: S_ / Sound Cue: SQ_
+   * Niagara: NS_ (System), NE_ (Emitter)
+5. C++ 코드 명명 규칙 (언리얼 C++ 데디케이티드 서버)
+* 기본 규칙: 모든 클래스/구조체/함수/변수명: PascalCase (UpperCamelCase)
+* 타입 접두사: UObject: U, AActor: A, Struct/순수 C++ 클래스: F, Enum: E, Interface: I
+* Boolean: b 접두사 사용 (예: bIsBossDefeated, bIsLaserActive)
+* RPC / RepNotify 접두사
+   * Server RPC: Server_
+   * Client RPC: Client_
+   * Multicast RPC: Multicast_
+   * RepNotify: OnRep_
+6. Python Backend 명명 규칙
+* 클래스명: PascalCase
+* 함수/메서드/변수명: snake_case
+* 상수: UPPER_SNAKE_CASE
+* Private 멤버: _ 접두사 사용
+2. TimeMachine AR — 네트워크 패킷 명세서 v1.0 (팀원 B)
+실시간 동기화 서버의 모든 패킷 구조체, 프로토콜 흐름, 성능 기준을 정의합니다. C++ 서버 구현 시 이 문서를 단일 진실 소스(Single Source of Truth)로 사용하십시오.
+1. 프로토콜 개요
+전송 계층 선택 전략: MVP 단계 WebSocket으로 빠르게 검증, 이후 C++ UDP 서버로 확장합니다.
+항목
+	✅ MVP — WebSocket
+	🔵 확장 — C++ UDP
+	포트
+	8765
+	9000
+	전송 방식
+	Full-duplex WS
+	UDP recvfrom()
+	직렬화
+	JSON → Binary LE
+	Binary Little-Endian
+	Transform 주기
+	30 Hz
+	30 Hz
+	Heartbeat 주기
+	1 Hz
+	1 Hz
+	이벤트 패킷
+	즉시 전송
+	즉시 전송
+	최대 패킷 크기
+	512 bytes
+	512 bytes
+	Magic Byte
+	0x41 0x52
+	0x41 0x52
+	구현 언어
+	Python asyncio
+	C++ / Winsock2
+	(참고: Magic Byte 0x41 0x52는 ASCII "AR"의 헥사 표현입니다. 불일치 시 즉시 드롭합니다.)
+2. 공통 패킷 헤더 (6 Bytes)
+#pragma pack(push, 1)
+struct PacketHeader {
+   uint8_t  magic[2];     // 2B  { 0x41, 0x52 }  "AR"
+   uint8_t  version;      // 1B  현재 0x01
+   uint8_t  type;         // 1B  PacketType enum
+   uint16_t body_len;     // 2B  헤더 이후 바디 길이
+   // Total: 6 bytes
+};
+#pragma pack(pop)
+
+enum class PacketType : uint8_t {
+   PKT_JOIN         = 0x01,  // 세션 입장 (C→S)
+   PKT_LEAVE        = 0x02,  // 세션 퇴장 (C→S)
+   PKT_TRANSFORM    = 0x03,  // 위치/회전 동기화 30Hz (C↔S↔C)
+   PKT_ERA_CHANGE   = 0x04,  // 시대 변경 (C→S→C)
+   PKT_HEARTBEAT    = 0x05,  // 연결 유지 핑/퐁 1Hz (C↔S)
+   PKT_AI_TRIGGER   = 0x06,  // AI 도슨트 호출 (C→S→BE)
+   PKT_ACK          = 0x07,  // 수신 확인 (S→C, RUDP용)
+   PKT_SERVER_STATE = 0x08,  // 서버 상태 브로드캐스트 (S→C)
+};
+
+3. 핵심 패킷 구조체
+// 0x03 PKT_TRANSFORM (총 78 bytes) - 핵심 동기화 패킷
+#pragma pack(push, 1)
+struct FSyncTransformPacket {
+   PacketHeader header;       // 6B
+   uint32_t     user_id;      // 4B
+   uint32_t     session_id;   // 4B
+   uint32_t     seq_num;      // 4B
+   uint64_t     timestamp;    // 8B
+   float        pos_x, pos_y, pos_z; // 12B
+   float        rot_x, rot_y, rot_z, rot_w; // 16B
+   float        vel_x, vel_y, vel_z; // 12B (Dead Reckoning용)
+   uint8_t      era_id;       // 1B
+   uint8_t      flags;        // 1B (bit0: IS_MOVING, bit1: IS_GAZING, bit2: IS_MENU_OPEN)
+};
+#pragma pack(pop)
+
+(기타 구조체: JoinPacket, LeavePacket, EraChangePacket, HeartbeatPacket, AiTriggerPacket 등 정의됨)
+4. 세션 상태 머신 및 타임아웃
+* 흐름: IDLE → CONNECTING → CONNECTED → IN_SESSION → LEAVING → DISCONNECTED
+* 타임아웃 기준:
+   * Heartbeat 미수신 (3초): LEAVING 강제 전환
+   * Transform 미수신 (5초): Dead Reckoning 모드 진입
+   * DR 모드 지속 (10초): DISCONNECTED
+   * 세션 입장 실패 (즉시): E001 SESSION_FULL (최대 50 CCU)
+5. 시퀀스 다이어그램 & 서버 구조
+(생략: HTML 내 ASCII 다이어그램으로 작성됨. 핵심 흐름은 30Hz 루프, 도슨트 트리거 시 FastAPI 비동기 포워딩, 유실 시 속도 벡터 기반 보간 처리)
+* Python MVP 구조: asyncio Event Loop 기반 (Receive Coroutine, Broadcast Queue)
+* C++ UDP 확장: Main Thread (recvfrom), Dispatcher, Session Manager, Worker Thread Pool(Broadcast, Heartbeat, DR) 구조
+6. 성능 목표
+* 50 CCU 기준 초당 수신 1,500 pkt/s, 브로드캐스트 73,500 pkt/s (총 약 5.7 MB/s 트래픽)
+* 목표 지연시간 RTT ≤ 50ms
+7. 에러 코드
+* E001 SESSION_FULL: 최대 접속자 초과
+* E002 INVALID_MAGIC: 헤더 매직 불일치 (즉시 드롭)
+* E004 HEARTBEAT_TIMEOUT: 3초 무응답
+* E006 PACKET_TOO_LARGE: 512바이트 초과 (강제 종료)
+3. 타임머신 AR — 개발 현황 페이지 (HTML 내용 요약)
+Unreal Engine 5와 Meta Quest 3 기반 타임머신 AR 프로젝트의 12주 개발 마일스톤, 팀원 파트, 기술 스택 등을 정리한 대시보드
+1. 프로젝트 개요
+* 소개: 고대 한국 건축 실루엣과 MR 스캔 시각화. 공룡 박물관을 비롯한 역사·전시 공간의 사라진 장면을 Meta Quest 3 패스스루 위에 1:1 스케일로 복원하는 실감형 MR 플랫폼.
+* 개발 목표: 12주 단위 스프린트, 3인 전담 분업, 핵심 마일스톤(M1~M4) 관리.
+* 핵심 지표: VPS Anchoring, 72 FPS 방어, 30Hz 동기화, AI 도슨트 응답 ≤2s
+2. 팀 파트 분류
+* 팀원 A (XR 클라이언트 엔지니어): UE5 셋업, Meta XR Plugin 구성, VPS 정합, 타임 슬라이더 손목 UI, 3D 건축물 크로스페이드, 72 FPS 최적화, TTS 오디오 연동.
+* 팀원 B (네트워크/코어 서버 엔지니어): C++ IOCP 데디케이티드 서버, RUDP 프로토콜, 세션 관리, 30Hz Transform 브로드캐스팅, Dead Reckoning 보간, 50 CCU 부하 테스트.
+* 팀원 C (AI 백엔드 / 데이터 엔지니어): Python FastAPI 서버, Gemini API 연동, Cloud TTS 연동, PostgreSQL DB 설계, 관람 동선 및 체류시간 로그 적재, Redis 캐싱.
+3. 기술 스택 3계층
+1. XR Client: Unreal Engine 5, Meta XR Plugin, Blueprint, VPS Anchoring, Quest 3 APK
+2. Core Network: C++ IOCP, Custom RUDP, 30Hz Broadcast, Dead Reckoning
+3. AI Backend: Python FastAPI, Gemini API, Cloud TTS, PostgreSQL, Redis Cache
+4. 리스크 관리
+* R1 Quest 3 발열/FPS 드랍: Forward Shading 조기 적용 및 폴리곤 절감 (72 FPS 방어).
+* R2 야외 네트워크 불안정: Dead Reckoning 허용 오차 확대 및 텔레포트 방지 설계.
+* R3 Gemini API 응답 지연: 주요 POI Redis 캐싱 및 2초 이내 응답 목표 설정.
+4. [프로젝트 기획서] 타임머신 AR
+공간 복원 기반 실감형 역사 체험 플랫폼
+1. 프로젝트 개요
+* 목표: 현재는 유실되고 터(초석)만 남은 역사적 유적지를 메타 퀘스트 3의 MR(혼합현실) 기술을 통해 복원하여, 사용자가 과거의 공간을 생생하게 체험할 수 있도록 하는 차세대 전시/관광 플랫폼 구축.
+* 핵심 가치: 단순한 정보 제공을 넘어선 '사라진 공간의 완벽한 시각적 재구성' 및 다중 사용자 간의 '초저지연(Low-Latency) 동기화 체험'.
+2. 시스템 아키텍처 (3-Tier 하이브리드 구조)
+1. 프론트엔드 (클라이언트): Meta Quest 3 (Standalone). UE5 + Meta XR Plugin. 패스스루 현실 공간 인식 및 3D 데이터 렌더링.
+2. 실시간 코어 서버 (데이터 플레인 - 핵심): C++ / IOCP / 커스텀 RUDP. 다중 관람객 초저지연 세션 관리 및 공간/시선 동기화. TCP 지연 문제 해결.
+3. 웹 백엔드 서버 (컨트롤 플레인): Python FastAPI. 무거운 3D 애셋 URL 제공, AI 도슨트 API 연동 (Gemini), 통계 데이터 적재.
+3. 핵심 기술 흐름 (LiDAR 및 공간 데이터 연동)
+* 사전 맵핑 (오프라인): LiDAR 스캐너로 유적지 정밀 스캔 → 3D Point Cloud 사전 구축.
+* 실시간 매칭 (온라인): 퀘스트 3가 현실을 스캔하고 사전 구축된 맵과 대조(VPS)하여 가상 건축물 소환(Anchoring).
+4. 주요 기능
+1. 초석 기반 정밀 정합: 남은 돌을 인식해 오차 없이 기둥/지붕 연출.
+2. 타임 슬라이더: 손목 UI로 신라시대 → 조선시대 → 현재로 시간 변환 관찰.
+3. AI 생성형 도슨트: 시선(Gaze)과 상황에 맞춰 실시간 역사적 맥락 해설.
+5. 프로젝트 차별성
+단순 앱이 아닌 "언리얼 렌더링 + C++ 저수준 네트워크 + 생성형 AI 백엔드" 풀스택 공간 컴퓨팅 시스템으로 수준 높은 엔지니어링 역량 증명.
+5. [Roadmap] 타임머신 AR 프로젝트 로드맵 및 마일스톤
+총 개발 기간: 12주 (애자일 스크럼 변형 2주 단위 스프린트)
+1. 단계별 프로젝트 로드맵
+* Phase 1: 기반 구축 및 공간 데이터 확보 (W1~W2)
+   * W1: 시스템 설계, 패킷 구조체 확정, DB 생성.
+   * W2: 타겟 유적지 LiDAR 스캐닝, UE5 Mesh 변환, 에셋 준비.
+* Phase 2: 코어 네트워크 및 백엔드 개발 (W3~W5)
+   * W3: C++ IOCP 스레드 풀 구축, RUDP 통신 모듈 기초.
+   * W4: FastAPI 백엔드 및 Gemini API 연동.
+   * W5: 코어 서버 세션 관리/브로드캐스팅 로직 완성 및 부하 테스트.
+* Phase 3: 프론트엔드(XR) 구현 및 서버 연동 (W6~W9)
+   * W6: Meta Quest 3 환경 세팅, 패스스루 및 VPS 정합 테스트.
+   * W7: UE5 C++에 RUDP 클라이언트 이식, 아바타 렌더링.
+   * W8: 타임 슬라이더 구현, 크로스페이드 애니메이션, 시선(Gaze) 객체 상호작용.
+   * W9: AI 도슨트 API 연동 (비동기 POST), 자막 및 TTS 출력.
+* Phase 4: 통합 테스트, 최적화 및 안정화 (W10~W12)
+   * W10: Full-cycle 통합 테스트, Dead Reckoning 알고리즘 적용.
+   * W11: 72 FPS 방어 렌더링 최적화, 서버 메모리 릭 점검 및 50 CCU 테스트.
+   * W12: UI/UX 폴리싱, 영상 촬영 및 포트폴리오 작성.
+2. 핵심 마일스톤 (Key Milestones)
+마일스톤
+	시점
+	달성 목표 / 산출물
+	검수 기준
+	M1: 환경 및 데이터 준비
+	Week 2 종료
+	유적지 3D Mesh 파일, DB 스키마 완료
+	맵핑 데이터가 언리얼 엔진에 정상 임포트 될 것.
+	M2: 코어 네트워크 통신
+	Week 5 종료
+	C++ IOCP 서버 실행 파일, FastAPI 서버
+	더미 클라이언트 50개 접속 시 패킷 지연 50ms 이하.
+	M3: AR 인터랙션 통합
+	Week 9 종료
+	언리얼 프로젝트 (APK 빌드)
+	Quest 3 착용 후 서버 위치 동기화 및 AI 도슨트 정상 응답.
+	M4: 최종 릴리즈
+	Week 12 종료
+	최종 릴리즈 빌드, 포트폴리오 영상/문서
+	72 FPS 유지 및 네트워크 단절 시 데드레코닝 정상 작동.

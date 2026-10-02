@@ -1,0 +1,274 @@
+// FNavFloorGuide·FNavDestinations 바닥 안내 단위 테스트 (9단계 §C-1).
+//
+// 순수 static 이라 PIE 없이 검증한다. 커맨드라인:
+//   UnrealEditor-Cmd -project=<abs.uproject> \
+//     -ExecCmds="Automation RunTests TimeMachineAR.Nav.FloorGuide; Quit" -unattended -nullrhi -nosplash
+
+#if WITH_DEV_AUTOMATION_TESTS
+
+#include "Misc/AutomationTest.h"
+#include "NavFloorGuide.h"
+#include "NavDestinations.h"
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FNavFloorGuideTest,
+	"TimeMachineAR.Nav.FloorGuide",
+	EAutomationTestFlags::ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FNavFloorGuideTest::RunTest(const FString& Parameters)
+{
+	auto MakeLine = [](float X0, float X1, int32 N)
+	{
+		TArray<FVector2D> Pts;
+		for (int32 i = 0; i <= N; ++i)
+		{
+			Pts.Add(FVector2D(FMath::Lerp(X0, X1, (float)i / N), 0.f));
+		}
+		return Pts;
+	};
+
+	TArray<FNavFloorPlacement> Out;
+
+	// (1) 직선(+X) 1000cm, 사용자 시작점, 간격 100·범위 600 → 6개(x=100..600), yaw≈0.
+	{
+		const TArray<FVector2D> Route = { FVector2D(0, 0), FVector2D(1000, 0) };
+		FNavFloorGuide::BuildPlacements(Route, FVector2D(0, 0), 100.f, 600.f, Out);
+		TestEqual(TEXT("직선: 6개"), Out.Num(), 6);
+		if (Out.Num() == 6)
+		{
+			TestTrue(TEXT("첫 발자국 x=100"), FMath::IsNearlyEqual(Out[0].MapPos.X, 100.f, 0.5f));
+			TestTrue(TEXT("끝 발자국 x=600"), FMath::IsNearlyEqual(Out.Last().MapPos.X, 600.f, 0.5f));
+			TestTrue(TEXT("진행 yaw≈0"), FMath::IsNearlyEqual(Out[0].YawDeg, 0.f, 0.5f));
+			TestTrue(TEXT("y=0 유지"), FMath::IsNearlyEqual(Out[3].MapPos.Y, 0.f, 0.5f));
+		}
+	}
+
+	// (2) 사용자가 중간(250)에 있으면 그 앞의 **고정 그리드**(300·400·…·800)만 낸다.
+	//     그리드는 경로 시작 기준 k·100 이라 사용자 위치와 무관하게 월드에 고정된다.
+	{
+		const TArray<FVector2D> Route = { FVector2D(0, 0), FVector2D(1000, 0) };
+		FNavFloorGuide::BuildPlacements(Route, FVector2D(250, 0), 100.f, 600.f, Out);
+		TestEqual(TEXT("중간 사용자: 6개(300..800)"), Out.Num(), 6);
+		if (Out.Num() >= 1)
+		{
+			TestTrue(TEXT("첫 발자국 x=300(그리드 고정)"), FMath::IsNearlyEqual(Out[0].MapPos.X, 300.f, 0.5f));
+		}
+	}
+
+	// (2b) 발자국은 월드 고정 그리드(k·100)에만 놓인다. 사용자가 임의 위치에 있어도 모든
+	//      자리는 100 의 배수 → 예전처럼 사용자를 따라 미끄러지지 않는다(350·450… 이 아님).
+	{
+		const TArray<FVector2D> Route = { FVector2D(0, 0), FVector2D(1000, 0) };
+		FNavFloorGuide::BuildPlacements(Route, FVector2D(237, 0), 100.f, 600.f, Out);
+		bool bAllOnGrid = Out.Num() > 0;
+		for (const FNavFloorPlacement& P : Out)
+		{
+			const float R = FMath::Abs(FMath::Fmod(P.MapPos.X, 100.f));
+			const float DistToGrid = FMath::Min(R, 100.f - R);   // 가장 가까운 100 배수까지(양쪽).
+			if (DistToGrid > 0.5f)
+			{
+				bAllOnGrid = false;
+			}
+		}
+		TestTrue(TEXT("모든 발자국이 100 그리드에 고정(사용자 237 무관)"), bAllOnGrid);
+	}
+
+	// (2c) 사용자가 걸으면 겹치는 발자국은 같은 월드 위치를 유지한다(뒤는 빠지고 앞이 들어옴).
+	{
+		const TArray<FVector2D> Route = { FVector2D(0, 0), FVector2D(1000, 0) };
+		TArray<FNavFloorPlacement> A, B;
+		FNavFloorGuide::BuildPlacements(Route, FVector2D(250, 0), 100.f, 600.f, A);   // 300..800
+		FNavFloorGuide::BuildPlacements(Route, FVector2D(270, 0), 100.f, 600.f, B);   // 400..900
+		// A 의 400..800 은 B 에도 같은 X 로 존재해야 한다(자리 고정).
+		bool bOverlapStable = A.Num() >= 2 && B.Num() >= 2;
+		for (int32 i = 1; i < A.Num(); ++i)   // A[0]=300 은 B 창에서 빠지므로 제외.
+		{
+			const float X = A[i].MapPos.X;
+			const bool bFound = B.ContainsByPredicate([X](const FNavFloorPlacement& P)
+				{ return FMath::IsNearlyEqual(P.MapPos.X, X, 0.5f); });
+			if (!bFound) { bOverlapStable = false; }
+		}
+		TestTrue(TEXT("걸어도 겹치는 발자국 월드 고정"), bOverlapStable);
+	}
+
+	// (3) 범위가 경로 끝을 넘으면 끝에서 멈춘다(700에서 범위600이어도 끝=1000).
+	{
+		const TArray<FVector2D> Route = { FVector2D(0, 0), FVector2D(1000, 0) };
+		FNavFloorGuide::BuildPlacements(Route, FVector2D(700, 0), 100.f, 600.f, Out);
+		TestEqual(TEXT("경로 끝 클립: 3개(800·900·1000)"), Out.Num(), 3);
+		if (Out.Num() == 3)
+		{
+			TestTrue(TEXT("끝 발자국이 경로 끝(1000) 이내"), Out.Last().MapPos.X <= 1000.5f);
+		}
+	}
+
+	// (4) 점 2개 미만·잘못된 파라미터 → 빈 결과.
+	{
+		const TArray<FVector2D> One = { FVector2D(0, 0) };
+		FNavFloorGuide::BuildPlacements(One, FVector2D(0, 0), 100.f, 600.f, Out);
+		TestEqual(TEXT("1점 → 없음"), Out.Num(), 0);
+
+		const TArray<FVector2D> Route = { FVector2D(0, 0), FVector2D(1000, 0) };
+		FNavFloorGuide::BuildPlacements(Route, FVector2D(0, 0), 0.f, 600.f, Out);
+		TestEqual(TEXT("간격 0 → 없음"), Out.Num(), 0);
+		FNavFloorGuide::BuildPlacements(Route, FVector2D(0, 0), 100.f, 0.f, Out);
+		TestEqual(TEXT("범위 0 → 없음"), Out.Num(), 0);
+	}
+
+	// (5) ㄱ자 경로: (0,0)->(500,0)->(500,500). 앞구간 yaw≈0, 꺾은 뒤 yaw≈90.
+	{
+		const TArray<FVector2D> Route = { FVector2D(0, 0), FVector2D(500, 0), FVector2D(500, 500) };
+		FNavFloorGuide::BuildPlacements(Route, FVector2D(0, 0), 100.f, 1000.f, Out);
+		TestTrue(TEXT("ㄱ자: 충분히 많음"), Out.Num() >= 8);
+		if (Out.Num() >= 8)
+		{
+			TestTrue(TEXT("초반 yaw≈0(+X)"), FMath::IsNearlyEqual(Out[0].YawDeg, 0.f, 1.f));
+			// 꺾은 뒤(누적 500 이후)의 발자국은 +Y 방향(yaw 90).
+			TestTrue(TEXT("후반 yaw≈90(+Y)"), FMath::IsNearlyEqual(Out.Last().YawDeg, 90.f, 1.f));
+			// 꺾인 뒤 발자국은 x=500 축에 붙는다(엣지 고정).
+			TestTrue(TEXT("후반 x=500 고정"), FMath::IsNearlyEqual(Out.Last().MapPos.X, 500.f, 1.f));
+		}
+	}
+
+	// (5b) 코너 정점 위 발(누적 500 = k5)은 두 세그먼트 사이 현 방향(45°)이고 가로 오프셋이 0 으로 준다.
+	//      직선 위 발(k3, k8)은 오프셋 배율 1.
+	{
+		const TArray<FVector2D> Route = { FVector2D(0, 0), FVector2D(500, 0), FVector2D(500, 500) };
+		FNavFloorGuide::BuildPlacements(Route, FVector2D(0, 0), 100.f, 1000.f, Out);
+		const FNavFloorPlacement* Corner = Out.FindByPredicate([](const FNavFloorPlacement& P) { return P.StepIndex == 5; });
+		const FNavFloorPlacement* Before = Out.FindByPredicate([](const FNavFloorPlacement& P) { return P.StepIndex == 3; });
+		const FNavFloorPlacement* After = Out.FindByPredicate([](const FNavFloorPlacement& P) { return P.StepIndex == 8; });
+		TestNotNull(TEXT("코너 k5 존재"), Corner);
+		if (Corner != nullptr)
+		{
+			TestTrue(TEXT("코너 발 yaw≈45(현 방향)"), FMath::IsNearlyEqual(Corner->YawDeg, 45.f, 1.f));
+			TestTrue(TEXT("코너 발은 경로 정점에 고정(500,0)"), Corner->MapPos.Equals(FVector2D(500, 0), 0.5f));
+			TestTrue(TEXT("90° 회전이면 가로 오프셋 0"), Corner->LateralScale <= 0.01f);
+		}
+		if (Before != nullptr) { TestTrue(TEXT("직선 발 오프셋 배율 1"), Before->LateralScale >= 0.99f); }
+		if (After != nullptr) { TestTrue(TEXT("코너 뒤 직선 발 오프셋 배율 1"), After->LateralScale >= 0.99f); }
+	}
+
+	// (5c) 좌우 교대는 StepIndex 로 — 사용자가 걸어 창이 밀려도 같은 자리는 같은 발.
+	{
+		const TArray<FVector2D> Route = { FVector2D(0, 0), FVector2D(1000, 0) };
+		TArray<FNavFloorPlacement> A, B;
+		FNavFloorGuide::BuildPlacements(Route, FVector2D(0, 0), 100.f, 600.f, A);     // k=1..6
+		FNavFloorGuide::BuildPlacements(Route, FVector2D(120, 0), 100.f, 600.f, B);   // k=2..7
+		TestEqual(TEXT("A 첫 k=1"), A.Num() > 0 ? A[0].StepIndex : -1, 1);
+		TestEqual(TEXT("B 첫 k=2"), B.Num() > 0 ? B[0].StepIndex : -1, 2);
+		bool bSameSide = A.Num() >= 2 && B.Num() >= 1;
+		for (const FNavFloorPlacement& PA : A)
+		{
+			const FNavFloorPlacement* PB = B.FindByPredicate([&](const FNavFloorPlacement& P) { return P.StepIndex == PA.StepIndex; });
+			if (PB != nullptr && (PB->IsLeft() != PA.IsLeft() || !PB->MapPos.Equals(PA.MapPos, 0.5f)))
+			{
+				bSameSide = false;
+			}
+		}
+		TestTrue(TEXT("걸어도 같은 k 는 같은 발·같은 자리"), bSameSide);
+		if (A.Num() >= 2)
+		{
+			TestTrue(TEXT("이웃 k 는 좌우가 다르다"), A[0].IsLeft() != A[1].IsLeft());
+		}
+	}
+
+	// (5d) 직선 네 방향 yaw: +X 0, +Y 90, -X 180, -Y -90 (맵 기준. 월드 방향은 액터가 두 점 변환으로 뽑는다).
+	{
+		struct FCase { FVector2D End; float Yaw; const TCHAR* Name; };
+		const FCase Cases[] = {
+			{ FVector2D(1000, 0), 0.f, TEXT("+X yaw 0") },
+			{ FVector2D(0, 1000), 90.f, TEXT("+Y yaw 90") },
+			{ FVector2D(-1000, 0), 180.f, TEXT("-X yaw 180") },
+			{ FVector2D(0, -1000), -90.f, TEXT("-Y yaw -90") },
+		};
+		for (const FCase& C : Cases)
+		{
+			const TArray<FVector2D> Route = { FVector2D(0, 0), C.End };
+			FNavFloorGuide::BuildPlacements(Route, FVector2D(0, 0), 100.f, 600.f, Out);
+			TestEqual(TEXT("직선 6개"), Out.Num(), 6);
+			if (Out.Num() > 0)
+			{
+				TestTrue(C.Name, FMath::IsNearlyEqual(FRotator::NormalizeAxis(Out[0].YawDeg - C.Yaw), 0.f, 0.5f));
+			}
+		}
+	}
+
+	// (5e) 짧은 경로(120cm): k=1 하나만. 아주 짧은 경로(40cm): 발밑 여유(50) 안이라 0개.
+	{
+		const TArray<FVector2D> Short = { FVector2D(0, 0), FVector2D(120, 0) };
+		FNavFloorGuide::BuildPlacements(Short, FVector2D(0, 0), 100.f, 600.f, Out);
+		TestEqual(TEXT("짧은 경로 1개"), Out.Num(), 1);
+		const TArray<FVector2D> Tiny = { FVector2D(0, 0), FVector2D(40, 0) };
+		FNavFloorGuide::BuildPlacements(Tiny, FVector2D(0, 0), 100.f, 600.f, Out);
+		TestEqual(TEXT("40cm 경로 0개"), Out.Num(), 0);
+	}
+
+	// (5f) 중복 점(길이 0 세그먼트)이 끼어도 자리·방향이 깨지지 않는다.
+	{
+		const TArray<FVector2D> Dup = { FVector2D(0, 0), FVector2D(300, 0), FVector2D(300, 0), FVector2D(300, 0), FVector2D(300, 700) };
+		FNavFloorGuide::BuildPlacements(Dup, FVector2D(0, 0), 100.f, 1000.f, Out);
+		TestEqual(TEXT("중복점 경로: 10개(k1..10)"), Out.Num(), 10);
+		bool bFinite = true;
+		for (const FNavFloorPlacement& P : Out)
+		{
+			if (!FMath::IsFinite(P.YawDeg) || !FMath::IsFinite(P.MapPos.X) || !FMath::IsFinite(P.MapPos.Y)) { bFinite = false; }
+		}
+		TestTrue(TEXT("중복점: 값 전부 유한"), bFinite);
+		const FNavFloorPlacement* K3 = Out.FindByPredicate([](const FNavFloorPlacement& P) { return P.StepIndex == 3; });
+		const FNavFloorPlacement* K6 = Out.FindByPredicate([](const FNavFloorPlacement& P) { return P.StepIndex == 6; });
+		if (K3 != nullptr) { TestTrue(TEXT("중복점 위 발 자리 (300,0)"), K3->MapPos.Equals(FVector2D(300, 0), 0.5f)); }
+		if (K6 != nullptr) { TestTrue(TEXT("중복점 뒤 yaw≈90"), FMath::IsNearlyEqual(K6->YawDeg, 90.f, 1.f)); }
+
+		const TArray<FVector2D> AllDup = { FVector2D(5, 5), FVector2D(5, 5) };
+		FNavFloorGuide::BuildPlacements(AllDup, FVector2D(0, 0), 100.f, 600.f, Out);
+		TestEqual(TEXT("길이 0 경로 → 없음"), Out.Num(), 0);
+		const TArray<FVector2D> Empty;
+		FNavFloorGuide::BuildPlacements(Empty, FVector2D(0, 0), 100.f, 600.f, Out);
+		TestEqual(TEXT("빈 경로 → 없음"), Out.Num(), 0);
+	}
+
+	// (5g) 월드 가로 오프셋: 진행 +X 에서 왼발은 -Y(왼쪽), 오른발은 +Y(오른쪽, UE 왼손). 배율 0 이면 중심.
+	{
+		const FVector C(100, 200, 0);
+		const FVector L = FNavFloorGuide::OffsetForStep(C, FVector(1, 0, 0), true, 10.f, 1.f);
+		const FVector R = FNavFloorGuide::OffsetForStep(C, FVector(1, 0, 0), false, 10.f, 1.f);
+		TestTrue(TEXT("왼발 = 중심 -Y 10"), L.Equals(FVector(100, 190, 0), 0.01f));
+		TestTrue(TEXT("오른발 = 중심 +Y 10"), R.Equals(FVector(100, 210, 0), 0.01f));
+		const FVector Z = FNavFloorGuide::OffsetForStep(C, FVector(1, 0, 0), false, 10.f, 0.f);
+		TestTrue(TEXT("배율 0 → 중심"), Z.Equals(C, 0.01f));
+		const FVector Y = FNavFloorGuide::OffsetForStep(C, FVector(0, 1, 0), true, 10.f, 1.f);
+		TestTrue(TEXT("+Y 진행 왼발 = +X 쪽"), Y.Equals(FVector(110, 200, 0), 0.01f));
+	}
+
+	// (5h) 바닥 스타일 — 전시물은 황금 좌우 쌍 + 교대, 시설은 기존 화살표 한 장, junction 은 무효.
+	{
+		const FNavDestinations::FFloorStyle Ex = FNavDestinations::FloorStyle(TEXT("exhibit"), TEXT("티라노사우르스 렉스"));
+		TestTrue(TEXT("전시물: 왼발 텍스처"), Ex.LeftTexturePath.Contains(TEXT("/Game/UI/Nav/Floor/Golden/T_Footprint_Left")));
+		TestTrue(TEXT("전시물: 오른발 텍스처"), Ex.RightTexturePath.Contains(TEXT("T_Footprint_Right")));
+		TestTrue(TEXT("전시물: 교대"), Ex.bAlternate);
+		TestTrue(TEXT("링 텍스처"), Ex.ArrivalRingTexturePath.Contains(TEXT("T_NavArrivalRing")));
+		const FNavDestinations::FFloorStyle Fa = FNavDestinations::FloorStyle(TEXT("facility"), TEXT("화장실"));
+		TestTrue(TEXT("시설: 화살표(좌=우)"), Fa.LeftTexturePath == Fa.RightTexturePath && Fa.LeftTexturePath.Contains(TEXT("T_Floor_Arrow_Facility")));
+		TestFalse(TEXT("시설: 교대 없음"), Fa.bAlternate);
+		TestFalse(TEXT("junction: 무효"), FNavDestinations::FloorStyle(TEXT("junction"), TEXT("")).IsValid());
+	}
+
+	// (6) 바닥 텍스처 경로 — node_type·공룡별 분기.
+	{
+		const FString Tri = FNavDestinations::FloorTextureObjectPath(TEXT("exhibit"), TEXT("트리케라톱스"));
+		TestTrue(TEXT("전시물1 = EX1 발자국"), Tri.Contains(TEXT("T_Floor_FP_EX1_Triceratops")));
+		const FString Rex = FNavDestinations::FloorTextureObjectPath(TEXT("exhibit"), TEXT("티라노사우르스 렉스"));
+		TestTrue(TEXT("전시물3 = EX3 발자국"), Rex.Contains(TEXT("T_Floor_FP_EX3_TRex")));
+		const FString Toilet = FNavDestinations::FloorTextureObjectPath(TEXT("facility"), TEXT("화장실"));
+		TestTrue(TEXT("화장실 = 화살표"), Toilet.Contains(TEXT("T_Floor_Arrow_Facility")));
+		const FString Ent = FNavDestinations::FloorTextureObjectPath(TEXT("entrance"), TEXT("입구/출구"));
+		TestTrue(TEXT("입구 = 화살표"), Ent.Contains(TEXT("T_Floor_Arrow_Facility")));
+		TestTrue(TEXT("junction = 없음"),
+			FNavDestinations::FloorTextureObjectPath(TEXT("junction"), TEXT("")).IsEmpty());
+		TestTrue(TEXT("Floor 폴더로 간다"), Tri.Contains(TEXT("/Game/UI/Nav/Floor/")));
+	}
+
+	return true;
+}
+
+#endif // WITH_DEV_AUTOMATION_TESTS

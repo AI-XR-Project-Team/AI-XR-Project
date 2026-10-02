@@ -1,0 +1,90 @@
+node_key,map_key,pos_x_cm,pos_y_cm,pos_z_cm,node_type,label
+n-entrance,floor1,0,0,120,entrance,정문
+j-lobby,floor1,0,600,120,junction,로비 분기
+n-corridor-1,floor1,0,1400,120,waypoint,중앙복도 중간
+ex-tyranno,floor1,-400,1400,120,exhibit,티라노사우루스 골격 앞
+ex-triceratops,floor1,400,1400,120,exhibit,트리케라톱스 골격 앞
+wc-1,floor1,300,600,120,facility,화장실
+s-start,neuti4,130,145,120,entrance,시작점(거실/다용도실 앞)
+j-bend,neuti4,170,310,120,junction,경유(경로 꺾임)
+d-kitchen,neuti4,210,485,120,facility,도착점(주방)
+n-a,neuti4f,2280,120,120,entrance,입구·출구
+n-b,neuti4f,2280,540,120,waypoint,B지점
+n-c,neuti4f,1740,540,120,waypoint,C지점
+n-d,neuti4f,1740,1260,120,junction,D지점
+n-e,neuti4f,1740,1740,120,facility,화장실
+n-f,neuti4f,1740,2100,120,exhibit,트리케라톱스
+n-g,neuti4f,1140,2100,120,exhibit,티라노사우루스 렉스
+n-h,neuti4f,1140,1740,120,junction,H지점
+n-i,neuti4f,960,1740,120,exhibit,브라키오사우르스
+n-j,neuti4f,960,1260,120,junction,J지점
+n-k,neuti4f,960,1020,120,waypoint,K지점
+n-l,neuti4f,60,1020,120,exhibit,안킬로사우르스
+n-m,neuti4f,60,1740,120,waypoint,M지점
+mu-e-blue-n,museum_final,4545,3430,120,entrance,출구
+mu-n-corrN-a,museum_final,4720,3460,120,waypoint,5구역 복도 입구
+mu-n-corrN-b,museum_final,4830,3800,120,waypoint,5구역 복도
+mu-j-corrN-top,museum_final,4830,4260,120,junction,5구역 복도 북쪽 분기
+mu-n-box5,museum_final,4780,4680,120,waypoint,5구역 북쪽 끝(박스)
+mu-n-strip-e,museum_final,5860,4260,120,waypoint,신생대 북동 입구 앞
+mu-j-sin-in,museum_final,5930,4030,120,junction,신생대 북동 입구
+mu-x-sinsaeng,museum_final,5550,3350,120,exhibit,포유류 화석
+mu-j-sin-door,museum_final,5630,3030,120,exhibit,거북이 화석
+mu-d-red,museum_final,5780,3035,120,waypoint,빨간 문(2-5)
+mu-x-trickart,museum_final,6040,2950,120,exhibit,진주화석
+mu-j-hub-sw,museum_final,5920,2550,120,junction,허브 남서
+mu-d-navy,museum_final,5790,2515,120,waypoint,남색 문(2-1)
+mu-n-hub-south,museum_final,6030,2280,120,waypoint,허브 남쪽 통로
+mu-n-south-glass,museum_final,6100,2190,120,waypoint,남쪽 유리문 앞(외부 출입구 방향)
+mu-d-yellow,museum_final,6395,2655,120,waypoint,노란 문(2-3)
+mu-d-black,museum_final,6405,3305,120,waypoint,검은 문(2-4)
+mu-e-blue-s,museum_final,4545,3260,120,entrance,입구
+mu-n-corrS-a,museum_final,4700,3230,120,waypoint,1구역 복도 입구
+mu-n-corrS-b,museum_final,4700,2850,120,waypoint,1구역 복도
+mu-j-amseok,museum_final,4700,2450,120,exhibit,탄생석
+mu-x-amseok,museum_final,5100,2400,120,exhibit,자수정
+mu-j-corrS-c,museum_final,4700,2030,120,junction,1구역 남쪽 분기
+mu-n-bump1,museum_final,4750,1650,120,waypoint,1구역 남쪽 끝(반원 앞)
+mu-n-south-w,museum_final,5200,2040,120,waypoint,남쪽 복도 서
+mu-n-south-e,museum_final,5600,2050,120,waypoint,남쪽 복도 동
+mu-n-ante,museum_final,5600,2400,120,exhibit,물고기화석
+mu-j-go,museum_final,6460,2530,120,junction,고생대 입구
+mu-j-go-s,museum_final,6410,2200,120,exhibit,삼엽충 앞
+mu-x-gosaeng,museum_final,6900,2230,120,exhibit,고사리잎
+mu-j-jung,museum_final,6490,3400,120,junction,중생대 입구
+mu-n-jung-s,museum_final,6850,3200,120,exhibit,화석
+mu-x-jungsaeng,museum_final,7220,3400,120,exhibit,아르켈론 앞
+mu-n-jung-e,museum_final,7260,3850,120,waypoint,중생대 동쪽 통로
+mu-n-jung-ne,museum_final,7250,4350,120,junction,중생대 북동 분기
+mu-x-jung-north,museum_final,7200,4530,120,exhibit,알로사우루스
+mu-n-jung-nw,museum_final,6480,4350,120,waypoint,중생대 북서 모서리
+mu-j-jung-w,museum_final,6480,3850,120,waypoint,중생대 서쪽 통로
+g2-A,museum_final,4696.9,3219.2,120,entrance,출발점
+g2-B,museum_final,4696.9,2037.8,120,waypoint,
+g2-C,museum_final,4840,2037.8,120,junction,
+g2-D,museum_final,4840,1596.2,120,exhibit,전시물1
+g2-E,museum_final,5632,2037.8,120,waypoint,
+g2-F,museum_final,5632,2475,120,waypoint,
+g2-G,museum_final,6052,2475,120,waypoint,
+g2-H,museum_final,6175.8,3047.8,120,junction,
+g2-J,museum_final,6549,3442.2,120,junction,
+g3-L,museum_final,5307,3047.8,120,waypoint,
+g3-M,museum_final,5307,3934,120,waypoint,
+g3-N,museum_final,5889,3934,120,waypoint,
+g3-O,museum_final,5889,4249,120,waypoint,
+g3-P,museum_final,4843,4249,120,junction,
+g3-Q,museum_final,4843,4707,120,waypoint,
+g3-R,museum_final,4843,3466,120,waypoint,
+g3-S,museum_final,4669,3466,120,waypoint,
+g3-T,museum_final,6549,4362,120,waypoint,
+g3-U,museum_final,7235,4362,120,waypoint,
+g3-V,museum_final,7235,3228,120,waypoint,
+g3-W,museum_final,6718,3228,120,waypoint,
+g3-X,museum_final,6430,2543.2,120,waypoint,
+g3-Y,museum_final,6430,2143,120,waypoint,
+g3-Z,museum_final,7226,2143,120,waypoint,
+g3-AA,museum_final,7226,2825,120,waypoint,
+g3-AB,museum_final,6759,2825,120,waypoint,
+g3-AC,museum_final,6684,2599,120,waypoint,
+g2-I,museum_final,6485.4,2543.2,120,exhibit,삼엽충
+g2-K,museum_final,6549,3928.3,120,exhibit,아르켈론

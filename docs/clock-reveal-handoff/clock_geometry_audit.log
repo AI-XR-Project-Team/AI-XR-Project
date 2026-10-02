@@ -1,0 +1,28 @@
+CLOCK_VIEW Body tris=1993019 bounds=IsValid=true, Min=(X=-70.078 Y=-40.454 Z=-95.194), Max=(X=69.739 Y=40.413 Z=95.107)
+CLOCK_GEOM Body frontCase(Y>20) centroid=(-1.66 30.04 -41.16) maxRadiusXZ=79.02 verts=308150
+CLOCK_GEOM Body dialPlaneY=37.50 dialVerts=6656 dialCentre=(-0.23 37.50 -70.77) dialRadius=54.46 vertsInFrontOfDial=10583 maxY=40.41
+CLOCK_GEOM Body ySlices(verts,maxRadiusXZ)=[y-45:2630,r70][y-40:227966,r103][y-35:54820,r106][y-30:250103,r106][y-25:5469,r74][y-10:3010,r147][y-5:12018,r165][y0:23337,r166][y5:33199,r164][y10:53879,r153][y15:52579,r148][y20:55939,r108][y25:102271,r101][y30:81913,r86][y35:67227,r62][y40:801,r24]
+CLOCK_GEOM Body +Y plane y=37.5 verts=2491
+CLOCK_GEOM Body +Y plane y=37.0 verts=2282
+CLOCK_GEOM Body +Y plane y=34.0 verts=2073
+CLOCK_GEOM Body +Y plane y=36.5 verts=2060
+CLOCK_GEOM Body +Y plane y=35.0 verts=1829
+CLOCK_GEOM Body +Y plane y=34.5 verts=1816
+CLOCK_VIEW HandHour tris=1928112 bounds=IsValid=true, Min=(X=-21.767 Y=-5.307 Z=-95.220), Max=(X=21.569 Y=5.219 Z=95.056)
+CLOCK_GEOM HandHour hubCentre(bottom30cm)=(-2.73 -0.07 -79.86) hubWidthX=36.98 tipZ=95.06 length=190.28 thicknessY=10.53 widthsByZ=[-95:37.0][-76:37.0][-57:43.3][-38:42.1][-19:39.8][-0:25.2][19:12.0][38:18.2][57:11.3][76:6.0][95:1.4]
+CLOCK_VIEW HandMinute tris=1074001 bounds=IsValid=true, Min=(X=-13.699 Y=-3.718 Z=-95.182), Max=(X=13.664 Y=3.634 Z=95.120)
+CLOCK_GEOM HandMinute hubCentre(bottom30cm)=(-0.06 -0.05 -79.81) hubWidthX=20.03 tipZ=95.12 length=190.30 thicknessY=7.35 widthsByZ=[-95:18.0][-76:26.7][-57:27.4][-38:7.6][-19:7.6][-0:4.9][19:5.8][38:4.3][57:8.1][76:2.6][95:0.7]
+[2026.09.14-09.13.20:547][207]LogAutomationController: LogTemp: CLOCK_VIEW Body tris=1993019 bounds=IsValid=true, Min=(X=-70.078 Y=-40.454 Z=-95.194), Max=(X=69.739 Y=40.413 Z=95.107) [log]
+[2026.09.14-09.13.20:547][207]LogAutomationController: LogTemp: CLOCK_GEOM Body frontCase(Y>20) centroid=(-1.66 30.04 -41.16) maxRadiusXZ=79.02 verts=308150 [log]
+[2026.09.14-09.13.20:547][207]LogAutomationController: LogTemp: CLOCK_GEOM Body dialPlaneY=37.50 dialVerts=6656 dialCentre=(-0.23 37.50 -70.77) dialRadius=54.46 vertsInFrontOfDial=10583 maxY=40.41 [log]
+[2026.09.14-09.13.20:547][207]LogAutomationController: LogTemp: CLOCK_GEOM Body ySlices(verts,maxRadiusXZ)=[y-45:2630,r70][y-40:227966,r103][y-35:54820,r106][y-30:250103,r106][y-25:5469,r74][y-10:3010,r147][y-5:12018,r165][y0:23337,r166][y5:33199,r164][y10:53879,r153][y15:52579,r148][y20:55939,r108][y25:102271,r101][y30:81913,r86][y35:67227,r62][y40:801,r24] [log]
+[2026.09.14-09.13.20:547][207]LogAutomationController: LogTemp: CLOCK_GEOM Body +Y plane y=37.5 verts=2491 [log]
+[2026.09.14-09.13.20:547][207]LogAutomationController: LogTemp: CLOCK_GEOM Body +Y plane y=37.0 verts=2282 [log]
+[2026.09.14-09.13.20:547][207]LogAutomationController: LogTemp: CLOCK_GEOM Body +Y plane y=34.0 verts=2073 [log]
+[2026.09.14-09.13.20:547][207]LogAutomationController: LogTemp: CLOCK_GEOM Body +Y plane y=36.5 verts=2060 [log]
+[2026.09.14-09.13.20:547][207]LogAutomationController: LogTemp: CLOCK_GEOM Body +Y plane y=35.0 verts=1829 [log]
+[2026.09.14-09.13.20:547][207]LogAutomationController: LogTemp: CLOCK_GEOM Body +Y plane y=34.5 verts=1816 [log]
+[2026.09.14-09.13.20:547][207]LogAutomationController: LogTemp: CLOCK_VIEW HandHour tris=1928112 bounds=IsValid=true, Min=(X=-21.767 Y=-5.307 Z=-95.220), Max=(X=21.569 Y=5.219 Z=95.056) [log]
+[2026.09.14-09.13.20:547][207]LogAutomationController: LogTemp: CLOCK_GEOM HandHour hubCentre(bottom30cm)=(-2.73 -0.07 -79.86) hubWidthX=36.98 tipZ=95.06 length=190.28 thicknessY=10.53 widthsByZ=[-95:37.0][-76:37.0][-57:43.3][-38:42.1][-19:39.8][-0:25.2][19:12.0][38:18.2][57:11.3][76:6.0][95:1.4] [log]
+[2026.09.14-09.13.20:547][207]LogAutomationController: LogTemp: CLOCK_VIEW HandMinute tris=1074001 bounds=IsValid=true, Min=(X=-13.699 Y=-3.718 Z=-95.182), Max=(X=13.664 Y=3.634 Z=95.120) [log]
+[2026.09.14-09.13.20:547][207]LogAutomationController: LogTemp: CLOCK_GEOM HandMinute hubCentre(bottom30cm)=(-0.06 -0.05 -79.81) hubWidthX=20.03 tipZ=95.12 length=190.30 thicknessY=7.35 widthsByZ=[-95:18.0][-76:26.7][-57:27.4][-38:7.6][-19:7.6][-0:4.9][19:5.8][38:4.3][57:8.1][76:2.6][95:0.7] [log]

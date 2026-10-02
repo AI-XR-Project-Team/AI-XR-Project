@@ -1,0 +1,57 @@
+#include "DinoStatTile.h"
+
+#include "Components/Image.h"
+#include "Components/TextBlock.h"
+
+void UDinoStatTile::SetStat(const FDinoStat& InStat)
+{
+	Stat = InStat;
+	Apply();
+}
+
+void UDinoStatTile::NativeConstruct()
+{
+	Super::NativeConstruct();
+
+	Apply();
+}
+
+void UDinoStatTile::Apply()
+{
+	if (StatIcon != nullptr)
+	{
+		if (Stat.Icon != nullptr)
+		{
+			StatIcon->SetBrushFromTexture(Stat.Icon);
+			if (bApplyIconTint)
+			{
+				StatIcon->SetColorAndOpacity(Stat.IconTint);
+			}
+			StatIcon->SetVisibility(ESlateVisibility::HitTestInvisible);
+		}
+		else
+		{
+			// 아이콘 없는 타일에서 칸을 남기면 그 타일만 글자가 아래로 내려앉는다.
+			StatIcon->SetVisibility(ESlateVisibility::Collapsed);
+		}
+	}
+
+	if (StatLabel != nullptr)
+	{
+		StatLabel->SetText(Stat.Label);
+	}
+
+	if (StatValue != nullptr)
+	{
+		StatValue->SetText(Stat.Value);
+	}
+
+	if (StatSub != nullptr)
+	{
+		// 아랫줄이 비는 타일도 있다. 빈 칸이 자리를 먹으면 타일 높이가 서로 안 맞는다.
+		StatSub->SetText(Stat.Sub);
+		StatSub->SetVisibility(Stat.Sub.IsEmpty()
+			? ESlateVisibility::Collapsed
+			: ESlateVisibility::HitTestInvisible);
+	}
+}

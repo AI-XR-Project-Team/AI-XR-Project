@@ -1,0 +1,910 @@
+NIAGARA_AUDIT system /Game/FreeNiagaraPack/Effects/NS_ActiveAtom.NS_ActiveAtom fixedBounds=dynamic warmup=0.00 exposed=[]
+NIAGARA_AUDIT   emitter Ring enabled=1 sim=GPU local=0 boundsMode=1 fixed=IsValid=true, Min=(X=-1000.000 Y=-1000.000 Z=-1000.000), Max=(X=1000.000 Y=1000.000 Z=1000.000) persistentIDs=0 interpSpawn=1 maxParticlesEst=0
+NIAGARA_AUDIT     renderer NiagaraSpriteRendererProperties enabled=1 /Niagara/DefaultAssets/DefaultSpriteMaterial.DefaultSpriteMaterial align=0 facing=0 sortMode=0
+NIAGARA_AUDIT     ri Constants.Ring.InitializeParticle.Color = (R=1.000000,G=1.000000,B=1.000000,A=1.000000)
+NIAGARA_AUDIT     ri Constants.Ring.InitializeParticle.Lifetime Max = 8.0
+NIAGARA_AUDIT     ri Constants.Ring.InitializeParticle.Lifetime Min = 4.0
+NIAGARA_AUDIT     ri Constants.Ring.InitializeParticle.Mass Max = 1.25
+NIAGARA_AUDIT     ri Constants.Ring.InitializeParticle.Mass Min = 0.75
+NIAGARA_AUDIT     ri Constants.Ring.InitializeParticle.Position Offset = X=0.000 Y=0.000 Z=0.000
+NIAGARA_AUDIT     ri Constants.Ring.InitializeParticle.Sprite Rotation Angle Max = 360.0
+NIAGARA_AUDIT     ri Constants.Ring.InitializeParticle.Sprite Rotation Angle Min = 0.0
+NIAGARA_AUDIT     ri Constants.Ring.InitializeParticle.Uniform Sprite Size Max = 12.0
+NIAGARA_AUDIT     ri Constants.Ring.InitializeParticle.Uniform Sprite Size Min = 1.0
+NIAGARA_AUDIT     ri Constants.Ring.TorusLocation.Handle Radius = -0.164691
+NIAGARA_AUDIT     ri Constants.Ring.TorusLocation.Knot Helix Loops = 2
+NIAGARA_AUDIT     ri Constants.Ring.TorusLocation.Knot Ring Loops = 5
+NIAGARA_AUDIT     ri Constants.Ring.TorusLocation.Large Radius = 1000.0
+NIAGARA_AUDIT     ri Constants.Ring.TorusLocation.Non Uniform Scale = X=1.000 Y=1.000 Z=1.000
+NIAGARA_AUDIT     ri Constants.Ring.TorusLocation.Normalized Angle Around Torus Axis = 0.0
+NIAGARA_AUDIT     ri Constants.Ring.TorusLocation.Offset = X=0.000 Y=0.000 Z=0.000
+NIAGARA_AUDIT     ri Constants.Ring.TorusLocation.Radius Position = 1.0
+NIAGARA_AUDIT     ri Constants.Ring.TorusLocation.Random Seed = 0
+NIAGARA_AUDIT     ri Constants.Ring.TorusLocation.Spawn Group Mask = 0
+NIAGARA_AUDIT     ri Constants.Ring.TorusLocation.Surface Position = 0.0
+NIAGARA_AUDIT     ri Constants.Ring.TorusLocation.Torus Axis = X=0.000 Y=90.000 Z=90.000
+NIAGARA_AUDIT     ri Constants.Ring.TorusLocation.Torus Knot Tube Radius = 10.0
+NIAGARA_AUDIT     ri Constants.Ring.TorusLocation.U Distribution = 0.0
+NIAGARA_AUDIT     ri Constants.Ring.TorusLocation.U Position = 0.336364
+NIAGARA_AUDIT     ri Constants.Ring.TorusLocation.V Distribution = 0.0
+NIAGARA_AUDIT     ri Constants.Ring.TorusLocation.V Position = -0.945455
+NIAGARA_AUDIT     ri Constants.Ring.Color.Scale Alpha = 1.0
+NIAGARA_AUDIT     ri Constants.Ring.Color.Scale Color = X=1.000 Y=1.000 Z=1.000
+NIAGARA_AUDIT     ri Constants.Ring.Drag.Drag = 1.0
+NIAGARA_AUDIT     ri Constants.Ring.Drag.Rotational Drag = 1.0
+NIAGARA_AUDIT     ri Constants.Ring.FloatFromCurve.Scale Curve = 1.0
+NIAGARA_AUDIT     ri Constants.Ring.ScaleColor.Scale RGB = X=1.000 Y=1.000 Z=1.000
+NIAGARA_AUDIT     ri Constants.Ring.ScaleColor.Scale RGBA = (Vector4f)
+NIAGARA_AUDIT     ri Constants.Ring.SolveForcesAndVelocity.Acceleration Limit = 9999.0
+NIAGARA_AUDIT     ri Constants.Ring.SolveForcesAndVelocity.Manually Enable Rotational Solver = (NiagaraBool)
+NIAGARA_AUDIT     ri Constants.Ring.SolveForcesAndVelocity.Mesh Orientation = (Quat4f)
+NIAGARA_AUDIT     ri Constants.Ring.SolveForcesAndVelocity.Rotational Force = X=0.000 Y=0.000 Z=0.000
+NIAGARA_AUDIT     ri Constants.Ring.SolveForcesAndVelocity.Rotational Velocity = X=0.000 Y=0.000 Z=0.000
+NIAGARA_AUDIT     ri Constants.Ring.SolveForcesAndVelocity.Speed Limit = 1000.0
+NIAGARA_AUDIT     ri Constants.Ring.VortexForce.Influence Falloff Radius = 100.0
+NIAGARA_AUDIT     ri Constants.Ring.VortexForce.Origin Pull Amount = 0.0
+NIAGARA_AUDIT     ri Constants.Ring.VortexForce.Vortex Axis = X=0.000 Y=0.000 Z=1.000
+NIAGARA_AUDIT     ri Constants.Ring.VortexForce.Vortex Force Amount = 200.0
+NIAGARA_AUDIT     ri Constants.Ring.VortexForce.Vortex Influence Position = (NiagaraPosition)
+NIAGARA_AUDIT     ri Constants.Ring.VortexForce.Vortex Origin = (NiagaraPosition)
+NIAGARA_AUDIT     ri Constants.Ring.VortexForce.Vortex Origin Offset = X=0.000 Y=0.000 Z=0.000
+NIAGARA_AUDIT     ri Constants.Ring.EmitterState.Loop Delay = 0.0
+NIAGARA_AUDIT     ri Constants.Ring.EmitterState.Loop Duration = 2.0
+NIAGARA_AUDIT     ri Constants.Ring.EmitterState.MaxDistance = 5000.0
+NIAGARA_AUDIT     ri Constants.Ring.EmitterState.MinDistance = 0.0
+NIAGARA_AUDIT     ri Constants.Ring.SpawnRate.Spawn Probability = 1.0
+NIAGARA_AUDIT     ri Constants.Ring.SpawnRate.SpawnGroup = 0
+NIAGARA_AUDIT     ri Constants.Ring.SpawnRate.SpawnRate = 5000.0
+NIAGARA_AUDIT   emitter Ring001 enabled=1 sim=GPU local=0 boundsMode=1 fixed=IsValid=true, Min=(X=-1000.000 Y=-1000.000 Z=-1000.000), Max=(X=1000.000 Y=1000.000 Z=1000.000) persistentIDs=0 interpSpawn=1 maxParticlesEst=0
+NIAGARA_AUDIT     ri Constants.Ring001.InitializeParticle.Color = (R=1.000000,G=1.000000,B=1.000000,A=1.000000)
+NIAGARA_AUDIT     ri Constants.Ring001.InitializeParticle.Lifetime Max = 8.0
+NIAGARA_AUDIT     ri Constants.Ring001.InitializeParticle.Lifetime Min = 4.0
+NIAGARA_AUDIT     ri Constants.Ring001.InitializeParticle.Mass Max = 1.25
+NIAGARA_AUDIT     ri Constants.Ring001.InitializeParticle.Mass Min = 0.75
+NIAGARA_AUDIT     ri Constants.Ring001.InitializeParticle.Position Offset = X=0.000 Y=0.000 Z=0.000
+NIAGARA_AUDIT     ri Constants.Ring001.InitializeParticle.Sprite Rotation Angle Max = 360.0
+NIAGARA_AUDIT     ri Constants.Ring001.InitializeParticle.Sprite Rotation Angle Min = 0.0
+NIAGARA_AUDIT     ri Constants.Ring001.InitializeParticle.Uniform Sprite Size Max = 12.0
+NIAGARA_AUDIT     ri Constants.Ring001.InitializeParticle.Uniform Sprite Size Min = 1.0
+NIAGARA_AUDIT     ri Constants.Ring001.TorusLocation.Handle Radius = -0.164691
+NIAGARA_AUDIT     ri Constants.Ring001.TorusLocation.Knot Helix Loops = 2
+NIAGARA_AUDIT     ri Constants.Ring001.TorusLocation.Knot Ring Loops = 5
+NIAGARA_AUDIT     ri Constants.Ring001.TorusLocation.Large Radius = 1000.0
+NIAGARA_AUDIT     ri Constants.Ring001.TorusLocation.Non Uniform Scale = X=1.000 Y=1.000 Z=1.000
+NIAGARA_AUDIT     ri Constants.Ring001.TorusLocation.Normalized Angle Around Torus Axis = 0.0
+NIAGARA_AUDIT     ri Constants.Ring001.TorusLocation.Offset = X=0.000 Y=0.000 Z=0.000
+NIAGARA_AUDIT     ri Constants.Ring001.TorusLocation.Radius Position = 1.0
+NIAGARA_AUDIT     ri Constants.Ring001.TorusLocation.Random Seed = 0
+NIAGARA_AUDIT     ri Constants.Ring001.TorusLocation.Spawn Group Mask = 0
+NIAGARA_AUDIT     ri Constants.Ring001.TorusLocation.Surface Position = 0.0
+NIAGARA_AUDIT     ri Constants.Ring001.TorusLocation.Torus Axis = X=0.000 Y=-90.000 Z=90.000
+NIAGARA_AUDIT     ri Constants.Ring001.TorusLocation.Torus Knot Tube Radius = 10.0
+NIAGARA_AUDIT     ri Constants.Ring001.TorusLocation.U Distribution = 0.0
+NIAGARA_AUDIT     ri Constants.Ring001.TorusLocation.U Position = 0.336364
+NIAGARA_AUDIT     ri Constants.Ring001.TorusLocation.V Distribution = 0.0
+NIAGARA_AUDIT     ri Constants.Ring001.TorusLocation.V Position = -0.945455
+NIAGARA_AUDIT     ri Constants.Ring001.Color.Scale Alpha = 1.0
+NIAGARA_AUDIT     ri Constants.Ring001.Color.Scale Color = X=1.000 Y=1.000 Z=1.000
+NIAGARA_AUDIT     ri Constants.Ring001.Drag.Drag = 1.0
+NIAGARA_AUDIT     ri Constants.Ring001.Drag.Rotational Drag = 1.0
+NIAGARA_AUDIT     ri Constants.Ring001.FloatFromCurve.Scale Curve = 1.0
+NIAGARA_AUDIT     ri Constants.Ring001.ScaleColor.Scale RGB = X=1.000 Y=1.000 Z=1.000
+NIAGARA_AUDIT     ri Constants.Ring001.ScaleColor.Scale RGBA = (Vector4f)
+NIAGARA_AUDIT     ri Constants.Ring001.SolveForcesAndVelocity.Acceleration Limit = 9999.0
+NIAGARA_AUDIT     ri Constants.Ring001.SolveForcesAndVelocity.Manually Enable Rotational Solver = (NiagaraBool)
+NIAGARA_AUDIT     ri Constants.Ring001.SolveForcesAndVelocity.Mesh Orientation = (Quat4f)
+NIAGARA_AUDIT     ri Constants.Ring001.SolveForcesAndVelocity.Rotational Force = X=0.000 Y=0.000 Z=0.000
+NIAGARA_AUDIT     ri Constants.Ring001.SolveForcesAndVelocity.Rotational Velocity = X=0.000 Y=0.000 Z=0.000
+NIAGARA_AUDIT     ri Constants.Ring001.SolveForcesAndVelocity.Speed Limit = 1000.0
+NIAGARA_AUDIT     ri Constants.Ring001.VortexForce.Influence Falloff Radius = 100.0
+NIAGARA_AUDIT     ri Constants.Ring001.VortexForce.Origin Pull Amount = 0.0
+NIAGARA_AUDIT     ri Constants.Ring001.VortexForce.Vortex Axis = X=0.000 Y=0.000 Z=1.000
+NIAGARA_AUDIT     ri Constants.Ring001.VortexForce.Vortex Force Amount = -200.0
+NIAGARA_AUDIT     ri Constants.Ring001.VortexForce.Vortex Influence Position = (NiagaraPosition)
+NIAGARA_AUDIT     ri Constants.Ring001.VortexForce.Vortex Origin = (NiagaraPosition)
+NIAGARA_AUDIT     ri Constants.Ring001.VortexForce.Vortex Origin Offset = X=0.000 Y=0.000 Z=0.000
+NIAGARA_AUDIT     ri Constants.Ring001.EmitterState.Loop Delay = 0.0
+NIAGARA_AUDIT     ri Constants.Ring001.EmitterState.Loop Duration = 2.0
+NIAGARA_AUDIT     ri Constants.Ring001.EmitterState.MaxDistance = 5000.0
+NIAGARA_AUDIT     ri Constants.Ring001.EmitterState.MinDistance = 0.0
+NIAGARA_AUDIT     ri Constants.Ring001.SpawnRate.Spawn Probability = 1.0
+NIAGARA_AUDIT     ri Constants.Ring001.SpawnRate.SpawnGroup = 0
+NIAGARA_AUDIT     ri Constants.Ring001.SpawnRate.SpawnRate = 5000.0
+NIAGARA_AUDIT   emitter Ring002 enabled=1 sim=GPU local=0 boundsMode=1 fixed=IsValid=true, Min=(X=-1000.000 Y=-1000.000 Z=-1000.000), Max=(X=1000.000 Y=1000.000 Z=1000.000) persistentIDs=0 interpSpawn=1 maxParticlesEst=0
+NIAGARA_AUDIT     ri Constants.Ring002.InitializeParticle.Color = (R=1.000000,G=1.000000,B=1.000000,A=1.000000)
+NIAGARA_AUDIT     ri Constants.Ring002.InitializeParticle.Lifetime Max = 8.0
+NIAGARA_AUDIT     ri Constants.Ring002.InitializeParticle.Lifetime Min = 4.0
+NIAGARA_AUDIT     ri Constants.Ring002.InitializeParticle.Mass Max = 1.25
+NIAGARA_AUDIT     ri Constants.Ring002.InitializeParticle.Mass Min = 0.75
+NIAGARA_AUDIT     ri Constants.Ring002.InitializeParticle.Position Offset = X=0.000 Y=0.000 Z=0.000
+NIAGARA_AUDIT     ri Constants.Ring002.InitializeParticle.Sprite Rotation Angle Max = 360.0
+NIAGARA_AUDIT     ri Constants.Ring002.InitializeParticle.Sprite Rotation Angle Min = 0.0
+NIAGARA_AUDIT     ri Constants.Ring002.InitializeParticle.Uniform Sprite Size Max = 12.0
+NIAGARA_AUDIT     ri Constants.Ring002.InitializeParticle.Uniform Sprite Size Min = 1.0
+NIAGARA_AUDIT     ri Constants.Ring002.TorusLocation.Handle Radius = -0.164691
+NIAGARA_AUDIT     ri Constants.Ring002.TorusLocation.Knot Helix Loops = 2
+NIAGARA_AUDIT     ri Constants.Ring002.TorusLocation.Knot Ring Loops = 5
+NIAGARA_AUDIT     ri Constants.Ring002.TorusLocation.Large Radius = 1000.0
+NIAGARA_AUDIT     ri Constants.Ring002.TorusLocation.Non Uniform Scale = X=1.000 Y=1.000 Z=1.000
+NIAGARA_AUDIT     ri Constants.Ring002.TorusLocation.Normalized Angle Around Torus Axis = 0.0
+NIAGARA_AUDIT     ri Constants.Ring002.TorusLocation.Offset = X=0.000 Y=0.000 Z=0.000
+NIAGARA_AUDIT     ri Constants.Ring002.TorusLocation.Radius Position = 1.0
+NIAGARA_AUDIT     ri Constants.Ring002.TorusLocation.Random Seed = 0
+NIAGARA_AUDIT     ri Constants.Ring002.TorusLocation.Spawn Group Mask = 0
+NIAGARA_AUDIT     ri Constants.Ring002.TorusLocation.Surface Position = 0.0
+NIAGARA_AUDIT     ri Constants.Ring002.TorusLocation.Torus Axis = X=0.000 Y=0.000 Z=90.000
+NIAGARA_AUDIT     ri Constants.Ring002.TorusLocation.Torus Knot Tube Radius = 10.0
+NIAGARA_AUDIT     ri Constants.Ring002.TorusLocation.U Distribution = 0.0
+NIAGARA_AUDIT     ri Constants.Ring002.TorusLocation.U Position = 0.336364
+NIAGARA_AUDIT     ri Constants.Ring002.TorusLocation.V Distribution = 0.0
+NIAGARA_AUDIT     ri Constants.Ring002.TorusLocation.V Position = -0.945455
+NIAGARA_AUDIT     ri Constants.Ring002.Color.Scale Alpha = 1.0
+NIAGARA_AUDIT     ri Constants.Ring002.Color.Scale Color = X=1.000 Y=1.000 Z=1.000
+NIAGARA_AUDIT     ri Constants.Ring002.Drag.Drag = 1.0
+NIAGARA_AUDIT     ri Constants.Ring002.Drag.Rotational Drag = 1.0
+NIAGARA_AUDIT     ri Constants.Ring002.FloatFromCurve.Scale Curve = 1.0
+NIAGARA_AUDIT     ri Constants.Ring002.ScaleColor.Scale RGB = X=1.000 Y=1.000 Z=1.000
+NIAGARA_AUDIT     ri Constants.Ring002.ScaleColor.Scale RGBA = (Vector4f)
+NIAGARA_AUDIT     ri Constants.Ring002.SolveForcesAndVelocity.Acceleration Limit = 9999.0
+NIAGARA_AUDIT     ri Constants.Ring002.SolveForcesAndVelocity.Manually Enable Rotational Solver = (NiagaraBool)
+NIAGARA_AUDIT     ri Constants.Ring002.SolveForcesAndVelocity.Mesh Orientation = (Quat4f)
+NIAGARA_AUDIT     ri Constants.Ring002.SolveForcesAndVelocity.Rotational Force = X=0.000 Y=0.000 Z=0.000
+NIAGARA_AUDIT     ri Constants.Ring002.SolveForcesAndVelocity.Rotational Velocity = X=0.000 Y=0.000 Z=0.000
+NIAGARA_AUDIT     ri Constants.Ring002.SolveForcesAndVelocity.Speed Limit = 1000.0
+NIAGARA_AUDIT     ri Constants.Ring002.VortexForce.Influence Falloff Radius = 100.0
+NIAGARA_AUDIT     ri Constants.Ring002.VortexForce.Origin Pull Amount = 0.0
+NIAGARA_AUDIT     ri Constants.Ring002.VortexForce.Vortex Axis = X=0.000 Y=0.000 Z=1.000
+NIAGARA_AUDIT     ri Constants.Ring002.VortexForce.Vortex Force Amount = 200.0
+NIAGARA_AUDIT     ri Constants.Ring002.VortexForce.Vortex Influence Position = (NiagaraPosition)
+NIAGARA_AUDIT     ri Constants.Ring002.VortexForce.Vortex Origin = (NiagaraPosition)
+NIAGARA_AUDIT     ri Constants.Ring002.VortexForce.Vortex Origin Offset = X=0.000 Y=0.000 Z=0.000
+NIAGARA_AUDIT     ri Constants.Ring002.EmitterState.Loop Delay = 0.0
+NIAGARA_AUDIT     ri Constants.Ring002.EmitterState.Loop Duration = 2.0
+NIAGARA_AUDIT     ri Constants.Ring002.EmitterState.MaxDistance = 5000.0
+NIAGARA_AUDIT     ri Constants.Ring002.EmitterState.MinDistance = 0.0
+NIAGARA_AUDIT     ri Constants.Ring002.SpawnRate.Spawn Probability = 1.0
+NIAGARA_AUDIT     ri Constants.Ring002.SpawnRate.SpawnGroup = 0
+NIAGARA_AUDIT     ri Constants.Ring002.SpawnRate.SpawnRate = 5000.0
+NIAGARA_AUDIT   emitter Singularity_Point_ enabled=1 sim=GPU local=0 boundsMode=1 fixed=IsValid=true, Min=(X=-1000.000 Y=-1000.000 Z=-1000.000), Max=(X=1000.000 Y=1000.000 Z=1000.000) persistentIDs=0 interpSpawn=1 maxParticlesEst=0
+NIAGARA_AUDIT     ri Constants.Singularity_Point_.InitializeParticle.Color = (R=1.000000,G=1.000000,B=1.000000,A=1.000000)
+NIAGARA_AUDIT     ri Constants.Singularity_Point_.InitializeParticle.Lifetime Max = 8.0
+NIAGARA_AUDIT     ri Constants.Singularity_Point_.InitializeParticle.Lifetime Min = 4.0
+NIAGARA_AUDIT     ri Constants.Singularity_Point_.InitializeParticle.Mass Max = 1.25
+NIAGARA_AUDIT     ri Constants.Singularity_Point_.InitializeParticle.Mass Min = 0.75
+NIAGARA_AUDIT     ri Constants.Singularity_Point_.InitializeParticle.Position Offset = X=0.000 Y=0.000 Z=0.000
+NIAGARA_AUDIT     ri Constants.Singularity_Point_.InitializeParticle.Sprite Rotation Angle Max = 360.0
+NIAGARA_AUDIT     ri Constants.Singularity_Point_.InitializeParticle.Sprite Rotation Angle Min = 0.0
+NIAGARA_AUDIT     ri Constants.Singularity_Point_.InitializeParticle.Uniform Sprite Size Max = 12.0
+NIAGARA_AUDIT     ri Constants.Singularity_Point_.InitializeParticle.Uniform Sprite Size Min = 1.0
+NIAGARA_AUDIT     ri Constants.Singularity_Point_.SphereLocation.Non Uniform Scale = X=1.000 Y=1.000 Z=1.000
+NIAGARA_AUDIT     ri Constants.Singularity_Point_.SphereLocation.Offset = X=0.000 Y=0.000 Z=0.000
+NIAGARA_AUDIT     ri Constants.Singularity_Point_.SphereLocation.Random Seed = 0
+NIAGARA_AUDIT     ri Constants.Singularity_Point_.SphereLocation.Spawn Group Mask = 0
+NIAGARA_AUDIT     ri Constants.Singularity_Point_.SphereLocation.Sphere Orientation Axis = X=1.000 Y=0.000 Z=0.000
+NIAGARA_AUDIT     ri Constants.Singularity_Point_.SphereLocation.Sphere Radius = 100.0
+NIAGARA_AUDIT     ri Constants.Singularity_Point_.SphereLocation.Surface Only Band Thickness = 0.0
+NIAGARA_AUDIT     ri Constants.Singularity_Point_.Color.Scale Alpha = 1.0
+NIAGARA_AUDIT     ri Constants.Singularity_Point_.Color.Scale Color = X=1.000 Y=1.000 Z=1.000
+NIAGARA_AUDIT     ri Constants.Singularity_Point_.Drag.Drag = 1.0
+NIAGARA_AUDIT     ri Constants.Singularity_Point_.Drag.Rotational Drag = 1.0
+NIAGARA_AUDIT     ri Constants.Singularity_Point_.FloatFromCurve.Scale Curve = 1.0
+NIAGARA_AUDIT     ri Constants.Singularity_Point_.ScaleColor.Scale RGB = X=1.000 Y=1.000 Z=1.000
+NIAGARA_AUDIT     ri Constants.Singularity_Point_.ScaleColor.Scale RGBA = (Vector4f)
+NIAGARA_AUDIT     ri Constants.Singularity_Point_.SolveForcesAndVelocity.Acceleration Limit = 9999.0
+NIAGARA_AUDIT     ri Constants.Singularity_Point_.SolveForcesAndVelocity.Manually Enable Rotational Solver = (NiagaraBool)
+NIAGARA_AUDIT     ri Constants.Singularity_Point_.SolveForcesAndVelocity.Mesh Orientation = (Quat4f)
+NIAGARA_AUDIT     ri Constants.Singularity_Point_.SolveForcesAndVelocity.Rotational Force = X=0.000 Y=0.000 Z=0.000
+NIAGARA_AUDIT     ri Constants.Singularity_Point_.SolveForcesAndVelocity.Rotational Velocity = X=0.000 Y=0.000 Z=0.000
+NIAGARA_AUDIT     ri Constants.Singularity_Point_.SolveForcesAndVelocity.Speed Limit = 1000.0
+NIAGARA_AUDIT     ri Constants.Singularity_Point_.SpringForce.Attachment Point Velocity = X=0.000 Y=0.000 Z=0.000
+NIAGARA_AUDIT     ri Constants.Singularity_Point_.SpringForce.Dampening Coefficient = 1.0
+NIAGARA_AUDIT     ri Constants.Singularity_Point_.SpringForce.Desired Minimum Separation Distance = 5.0
+NIAGARA_AUDIT     ri Constants.Singularity_Point_.SpringForce.Force Strength = 1.0
+NIAGARA_AUDIT     ri Constants.Singularity_Point_.SpringForce.Spring Tightness = 50.0
+NIAGARA_AUDIT     ri Constants.Singularity_Point_.EmitterState.Loop Delay = 0.0
+NIAGARA_AUDIT     ri Constants.Singularity_Point_.EmitterState.Loop Duration = 2.0
+NIAGARA_AUDIT     ri Constants.Singularity_Point_.EmitterState.MaxDistance = 5000.0
+NIAGARA_AUDIT     ri Constants.Singularity_Point_.EmitterState.MinDistance = 0.0
+NIAGARA_AUDIT     ri Constants.Singularity_Point_.SpawnRate.Spawn Probability = 1.0
+NIAGARA_AUDIT     ri Constants.Singularity_Point_.SpawnRate.SpawnGroup = 0
+NIAGARA_AUDIT     ri Constants.Singularity_Point_.SpawnRate.SpawnRate = 1000.0
+NIAGARA_AUDIT system /Game/FreeNiagaraPack/Effects/NS_Worm-Hole.NS_Worm-Hole fixedBounds=dynamic warmup=0.00 exposed=[]
+NIAGARA_AUDIT   emitter Worm-Hole_Up enabled=1 sim=GPU local=0 boundsMode=1 fixed=IsValid=true, Min=(X=-1000.000 Y=-1000.000 Z=-1000.000), Max=(X=1000.000 Y=1000.000 Z=1000.000) persistentIDs=0 interpSpawn=1 maxParticlesEst=0
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.GridLocation.Offset = X=0.000 Y=0.000 Z=0.000
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.GridLocation.Random Placement Seed = 0
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.GridLocation.Randomize Placement Within Cell = X=1.000 Y=1.000 Z=1.000
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.GridLocation.XYZ Dimensions = X=100.000 Y=100.000 Z=10.000
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.InitializeParticle.Color = (R=1.000000,G=1.000000,B=1.000000,A=1.000000)
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.InitializeParticle.Lifetime = 1.0
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.InitializeParticle.Lifetime Max = 10.0
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.InitializeParticle.Lifetime Min = 8.0
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.InitializeParticle.Mass Max = 1.25
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.InitializeParticle.Mass Min = 0.75
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.InitializeParticle.Position Offset = X=0.000 Y=0.000 Z=0.000
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.InitializeParticle.Sprite Rotation Angle Max = 360.0
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.InitializeParticle.Sprite Rotation Angle Min = 0.0
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.InitializeParticle.Uniform Sprite Size Max = 4.0
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.InitializeParticle.Uniform Sprite Size Min = 2.0
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.Color.Scale Alpha = 1.0
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.Color.Scale Color = X=1.000 Y=1.000 Z=1.000
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.CurlNoiseForce.Curl Noise Cone Mask Angle = 45.0
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.CurlNoiseForce.Curl Noise Cone Mask Falloff Angle = 45.0
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.CurlNoiseForce.Noise Frequency = 11.479915
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.CurlNoiseForce.Noise Strength = 67.442795
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.CurlNoiseForce.Pan Noise Field = X=0.000 Y=0.000 Z=0.000
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.CurlNoiseForce.Random Seed = 11
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.CurlNoiseForce.Randomization Vector = X=0.650 Y=0.125 Z=0.370
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.Drag.Drag = 1.0
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.Drag.Rotational Drag = 1.0
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.Drag001.Drag = 1.0
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.Drag001.Rotational Drag = 1.0
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.PointAttractionForce.Attraction Radius = 500.0
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.PointAttractionForce.Attraction Strength = -50.0
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.PointAttractionForce.Attractor Position = (NiagaraPosition)
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.PointAttractionForce.Attractor Position Offset = X=0.000 Y=0.000 Z=0.000
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.PointAttractionForce.Falloff Exponent = 0.5
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.PointAttractionForce.Kill Radius = 4.0
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.PointAttractionForce.Position To Attract = (NiagaraPosition)
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.SolveForcesAndVelocity.Acceleration Limit = 9999.0
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.SolveForcesAndVelocity.Manually Enable Rotational Solver = (NiagaraBool)
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.SolveForcesAndVelocity.Mesh Orientation = (Quat4f)
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.SolveForcesAndVelocity.Rotational Force = X=0.000 Y=0.000 Z=0.000
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.SolveForcesAndVelocity.Rotational Velocity = X=0.000 Y=0.000 Z=0.000
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.SolveForcesAndVelocity.Speed Limit = 1000.0
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.VortexForce.Influence Falloff Radius = 100.0
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.VortexForce.Origin Pull Amount = 0.0
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.VortexForce.Vortex Axis = X=0.000 Y=0.000 Z=1.000
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.VortexForce.Vortex Force Amount = 200.0
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.WindForce.Alignment Falloff Start / End = (Vector2f)
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.WindForce.Frequency = 1.0
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.WindForce.Friction = 1.0
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.WindForce.Friction Distance Limit = 10.0
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.WindForce.Normal Friction Mask = 0.0
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.WindForce.Offset By Time = X=0.000 Y=0.000 Z=-100.000
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.WindForce.Position = (NiagaraPosition)
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.WindForce.Scale = 0.5
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.WindForce.Turbulence Flow Loop Duration = 3.0
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.WindForce.Wind Speed = X=0.000 Y=0.000 Z=100.000
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.WindForce.Wind Speed Scale = 1.0
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.EmitterState.Loop Delay = 0.0
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.EmitterState.Loop Duration = 0.0
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.EmitterState.MaxDistance = 5000.0
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.EmitterState.MinDistance = 0.0
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.SpawnParticlesInGrid.Spawn Group = 0
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.SpawnParticlesInGrid.Spawn Time = 0.0
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.SpawnParticlesInGrid.X Count = 10
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.SpawnParticlesInGrid.Y Count = 10
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.SpawnParticlesInGrid.Z Count = 10
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.SpawnRate.Spawn Probability = 1.0
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.SpawnRate.SpawnGroup = 0
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.SpawnRate.SpawnRate = 1000.0
+NIAGARA_AUDIT   emitter Worm-Hole_Down enabled=1 sim=GPU local=0 boundsMode=1 fixed=IsValid=true, Min=(X=-1000.000 Y=-1000.000 Z=-1000.000), Max=(X=1000.000 Y=1000.000 Z=1000.000) persistentIDs=0 interpSpawn=1 maxParticlesEst=0
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.GridLocation.Offset = X=0.000 Y=0.000 Z=0.000
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.GridLocation.Random Placement Seed = 0
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.GridLocation.Randomize Placement Within Cell = X=1.000 Y=1.000 Z=1.000
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.GridLocation.XYZ Dimensions = X=100.000 Y=100.000 Z=10.000
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.InitializeParticle.Color = (R=1.000000,G=1.000000,B=1.000000,A=1.000000)
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.InitializeParticle.Lifetime = 1.0
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.InitializeParticle.Lifetime Max = 10.0
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.InitializeParticle.Lifetime Min = 8.0
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.InitializeParticle.Mass Max = 1.25
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.InitializeParticle.Mass Min = 0.75
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.InitializeParticle.Position Offset = X=0.000 Y=0.000 Z=0.000
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.InitializeParticle.Sprite Rotation Angle Max = 360.0
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.InitializeParticle.Sprite Rotation Angle Min = 0.0
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.InitializeParticle.Uniform Sprite Size Max = 4.0
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.InitializeParticle.Uniform Sprite Size Min = 2.0
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.Color.Scale Alpha = 1.0
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.Color.Scale Color = X=1.000 Y=1.000 Z=1.000
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.CurlNoiseForce.Curl Noise Cone Mask Angle = 45.0
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.CurlNoiseForce.Curl Noise Cone Mask Falloff Angle = 45.0
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.CurlNoiseForce.Noise Frequency = 11.479915
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.CurlNoiseForce.Noise Strength = 67.442795
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.CurlNoiseForce.Pan Noise Field = X=0.000 Y=0.000 Z=0.000
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.CurlNoiseForce.Random Seed = 11
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.CurlNoiseForce.Randomization Vector = X=0.650 Y=0.125 Z=0.370
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.Drag.Drag = 1.0
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.Drag.Rotational Drag = 1.0
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.Drag001.Drag = 1.0
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.Drag001.Rotational Drag = 1.0
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.PointAttractionForce.Attraction Radius = 500.0
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.PointAttractionForce.Attraction Strength = -50.0
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.PointAttractionForce.Attractor Position = (NiagaraPosition)
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.PointAttractionForce.Attractor Position Offset = X=0.000 Y=0.000 Z=0.000
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.PointAttractionForce.Falloff Exponent = 0.5
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.PointAttractionForce.Kill Radius = 4.0
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.PointAttractionForce.Position To Attract = (NiagaraPosition)
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.SolveForcesAndVelocity.Acceleration Limit = 9999.0
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.SolveForcesAndVelocity.Manually Enable Rotational Solver = (NiagaraBool)
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.SolveForcesAndVelocity.Mesh Orientation = (Quat4f)
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.SolveForcesAndVelocity.Rotational Force = X=0.000 Y=0.000 Z=0.000
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.SolveForcesAndVelocity.Rotational Velocity = X=0.000 Y=0.000 Z=0.000
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.SolveForcesAndVelocity.Speed Limit = 1000.0
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.VortexForce.Influence Falloff Radius = 100.0
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.VortexForce.Origin Pull Amount = 0.0
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.VortexForce.Vortex Axis = X=0.000 Y=0.000 Z=1.000
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.VortexForce.Vortex Force Amount = 200.0
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.WindForce.Alignment Falloff Start / End = (Vector2f)
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.WindForce.Frequency = 1.0
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.WindForce.Friction = 1.0
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.WindForce.Friction Distance Limit = 10.0
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.WindForce.Normal Friction Mask = 0.0
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.WindForce.Offset By Time = X=0.000 Y=0.000 Z=-100.000
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.WindForce.Position = (NiagaraPosition)
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.WindForce.Scale = 0.5
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.WindForce.Turbulence Flow Loop Duration = 3.0
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.WindForce.Wind Speed = X=0.000 Y=0.000 Z=-100.000
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.WindForce.Wind Speed Scale = 1.0
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.EmitterState.Loop Delay = 0.0
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.EmitterState.Loop Duration = 0.0
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.EmitterState.MaxDistance = 5000.0
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.EmitterState.MinDistance = 0.0
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.SpawnParticlesInGrid.Spawn Group = 0
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.SpawnParticlesInGrid.Spawn Time = 0.0
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.SpawnParticlesInGrid.X Count = 10
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.SpawnParticlesInGrid.Y Count = 10
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.SpawnParticlesInGrid.Z Count = 10
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.SpawnRate.Spawn Probability = 1.0
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.SpawnRate.SpawnGroup = 0
+NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.SpawnRate.SpawnRate = 1000.0
+NIAGARA_AUDIT system /Game/TimeReveal/FX/NS_WatchOrbit.NS_WatchOrbit MISSING
+NIAGARA_AUDIT system /Game/TimeReveal/FX/NS_TimePortal.NS_TimePortal MISSING
+[2026.09.14-09.01.41:055][207]LogAutomationController: LogTemp: NIAGARA_AUDIT system /Game/FreeNiagaraPack/Effects/NS_ActiveAtom.NS_ActiveAtom fixedBounds=dynamic warmup=0.00 exposed=[] [log]
+[2026.09.14-09.01.41:055][207]LogAutomationController: LogTemp: NIAGARA_AUDIT   emitter Ring enabled=1 sim=GPU local=0 boundsMode=1 fixed=IsValid=true, Min=(X=-1000.000 Y=-1000.000 Z=-1000.000), Max=(X=1000.000 Y=1000.000 Z=1000.000) persistentIDs=0 interpSpawn=1 maxParticlesEst=0 [log]
+[2026.09.14-09.01.41:055][207]LogAutomationController: LogTemp: NIAGARA_AUDIT     renderer NiagaraSpriteRendererProperties enabled=1 /Niagara/DefaultAssets/DefaultSpriteMaterial.DefaultSpriteMaterial align=0 facing=0 sortMode=0 [log]
+[2026.09.14-09.01.41:055][207]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring.InitializeParticle.Color = (R=1.000000,G=1.000000,B=1.000000,A=1.000000) [log]
+[2026.09.14-09.01.41:055][207]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring.InitializeParticle.Lifetime Max = 8.0 [log]
+[2026.09.14-09.01.41:055][207]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring.InitializeParticle.Lifetime Min = 4.0 [log]
+[2026.09.14-09.01.41:055][207]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring.InitializeParticle.Mass Max = 1.25 [log]
+[2026.09.14-09.01.41:055][207]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring.InitializeParticle.Mass Min = 0.75 [log]
+[2026.09.14-09.01.41:055][207]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring.InitializeParticle.Position Offset = X=0.000 Y=0.000 Z=0.000 [log]
+[2026.09.14-09.01.41:055][207]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring.InitializeParticle.Sprite Rotation Angle Max = 360.0 [log]
+[2026.09.14-09.01.41:055][207]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring.InitializeParticle.Sprite Rotation Angle Min = 0.0 [log]
+[2026.09.14-09.01.41:055][207]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring.InitializeParticle.Uniform Sprite Size Max = 12.0 [log]
+[2026.09.14-09.01.41:055][207]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring.InitializeParticle.Uniform Sprite Size Min = 1.0 [log]
+[2026.09.14-09.01.41:055][207]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring.TorusLocation.Handle Radius = -0.164691 [log]
+[2026.09.14-09.01.41:055][207]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring.TorusLocation.Knot Helix Loops = 2 [log]
+[2026.09.14-09.01.41:055][207]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring.TorusLocation.Knot Ring Loops = 5 [log]
+[2026.09.14-09.01.41:055][207]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring.TorusLocation.Large Radius = 1000.0 [log]
+[2026.09.14-09.01.41:055][207]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring.TorusLocation.Non Uniform Scale = X=1.000 Y=1.000 Z=1.000 [log]
+[2026.09.14-09.01.41:055][207]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring.TorusLocation.Normalized Angle Around Torus Axis = 0.0 [log]
+[2026.09.14-09.01.41:055][207]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring.TorusLocation.Offset = X=0.000 Y=0.000 Z=0.000 [log]
+[2026.09.14-09.01.41:055][207]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring.TorusLocation.Radius Position = 1.0 [log]
+[2026.09.14-09.01.41:055][207]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring.TorusLocation.Random Seed = 0 [log]
+[2026.09.14-09.01.41:055][207]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring.TorusLocation.Spawn Group Mask = 0 [log]
+[2026.09.14-09.01.41:055][207]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring.TorusLocation.Surface Position = 0.0 [log]
+[2026.09.14-09.01.41:055][207]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring.TorusLocation.Torus Axis = X=0.000 Y=90.000 Z=90.000 [log]
+[2026.09.14-09.01.41:055][207]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring.TorusLocation.Torus Knot Tube Radius = 10.0 [log]
+[2026.09.14-09.01.41:055][207]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring.TorusLocation.U Distribution = 0.0 [log]
+[2026.09.14-09.01.41:055][207]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring.TorusLocation.U Position = 0.336364 [log]
+[2026.09.14-09.01.41:055][207]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring.TorusLocation.V Distribution = 0.0 [log]
+[2026.09.14-09.01.41:055][207]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring.TorusLocation.V Position = -0.945455 [log]
+[2026.09.14-09.01.41:055][207]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring.Color.Scale Alpha = 1.0 [log]
+[2026.09.14-09.01.41:056][207]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring.Color.Scale Color = X=1.000 Y=1.000 Z=1.000 [log]
+[2026.09.14-09.01.41:056][207]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring.Drag.Drag = 1.0 [log]
+[2026.09.14-09.01.41:056][207]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring.Drag.Rotational Drag = 1.0 [log]
+[2026.09.14-09.01.41:056][207]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring.FloatFromCurve.Scale Curve = 1.0 [log]
+[2026.09.14-09.01.41:056][207]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring.ScaleColor.Scale RGB = X=1.000 Y=1.000 Z=1.000 [log]
+[2026.09.14-09.01.41:056][207]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring.ScaleColor.Scale RGBA = (Vector4f) [log]
+[2026.09.14-09.01.41:056][207]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring.SolveForcesAndVelocity.Acceleration Limit = 9999.0 [log]
+[2026.09.14-09.01.41:056][207]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring.SolveForcesAndVelocity.Manually Enable Rotational Solver = (NiagaraBool) [log]
+[2026.09.14-09.01.41:056][207]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring.SolveForcesAndVelocity.Mesh Orientation = (Quat4f) [log]
+[2026.09.14-09.01.41:056][207]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring.SolveForcesAndVelocity.Rotational Force = X=0.000 Y=0.000 Z=0.000 [log]
+[2026.09.14-09.01.41:056][207]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring.SolveForcesAndVelocity.Rotational Velocity = X=0.000 Y=0.000 Z=0.000 [log]
+[2026.09.14-09.01.41:056][207]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring.SolveForcesAndVelocity.Speed Limit = 1000.0 [log]
+[2026.09.14-09.01.41:056][207]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring.VortexForce.Influence Falloff Radius = 100.0 [log]
+[2026.09.14-09.01.41:056][207]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring.VortexForce.Origin Pull Amount = 0.0 [log]
+[2026.09.14-09.01.41:056][207]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring.VortexForce.Vortex Axis = X=0.000 Y=0.000 Z=1.000 [log]
+[2026.09.14-09.01.41:056][207]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring.VortexForce.Vortex Force Amount = 200.0 [log]
+[2026.09.14-09.01.41:056][207]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring.VortexForce.Vortex Influence Position = (NiagaraPosition) [log]
+[2026.09.14-09.01.41:056][207]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring.VortexForce.Vortex Origin = (NiagaraPosition) [log]
+[2026.09.14-09.01.41:056][207]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring.VortexForce.Vortex Origin Offset = X=0.000 Y=0.000 Z=0.000 [log]
+[2026.09.14-09.01.41:056][207]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring.EmitterState.Loop Delay = 0.0 [log]
+[2026.09.14-09.01.41:056][207]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring.EmitterState.Loop Duration = 2.0 [log]
+[2026.09.14-09.01.41:056][207]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring.EmitterState.MaxDistance = 5000.0 [log]
+[2026.09.14-09.01.41:056][207]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring.EmitterState.MinDistance = 0.0 [log]
+[2026.09.14-09.01.41:056][207]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring.SpawnRate.Spawn Probability = 1.0 [log]
+[2026.09.14-09.01.41:056][207]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring.SpawnRate.SpawnGroup = 0 [log]
+[2026.09.14-09.01.41:056][207]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring.SpawnRate.SpawnRate = 5000.0 [log]
+[2026.09.14-09.01.41:056][207]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring.Color.Scale Alpha = 1.0 [log]
+[2026.09.14-09.01.41:056][207]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring.InitializeParticle.Color = (R=1.000000,G=1.000000,B=1.000000,A=1.000000) [log]
+[2026.09.14-09.01.41:056][207]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring.InitializeParticle.Lifetime Max = 8.0 [log]
+[2026.09.14-09.01.41:056][207]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring.InitializeParticle.Lifetime Min = 4.0 [log]
+[2026.09.14-09.01.41:056][207]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring.InitializeParticle.Mass Max = 1.25 [log]
+[2026.09.14-09.01.41:056][207]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring.InitializeParticle.Mass Min = 0.75 [log]
+[2026.09.14-09.01.41:056][207]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring.InitializeParticle.Position Offset = X=0.000 Y=0.000 Z=0.000 [log]
+[2026.09.14-09.01.41:056][207]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring.InitializeParticle.Sprite Rotation Angle Max = 360.0 [log]
+[2026.09.14-09.01.41:056][207]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring.InitializeParticle.Sprite Rotation Angle Min = 0.0 [log]
+[2026.09.14-09.01.41:056][207]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring.InitializeParticle.Uniform Sprite Size Max = 12.0 [log]
+[2026.09.14-09.01.41:056][207]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring.InitializeParticle.Uniform Sprite Size Min = 1.0 [log]
+[2026.09.14-09.01.41:056][207]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring.TorusLocation.Handle Radius = -0.164691 [log]
+[2026.09.14-09.01.41:056][207]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring.TorusLocation.Knot Helix Loops = 2 [log]
+[2026.09.14-09.01.41:056][207]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring.TorusLocation.Knot Ring Loops = 5 [log]
+[2026.09.14-09.01.41:056][207]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring.TorusLocation.Large Radius = 1000.0 [log]
+[2026.09.14-09.01.41:056][207]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring.TorusLocation.Non Uniform Scale = X=1.000 Y=1.000 Z=1.000 [log]
+[2026.09.14-09.01.41:056][207]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring.TorusLocation.Normalized Angle Around Torus Axis = 0.0 [log]
+[2026.09.14-09.01.41:056][207]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring.TorusLocation.Offset = X=0.000 Y=0.000 Z=0.000 [log]
+[2026.09.14-09.01.41:056][207]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring.TorusLocation.Radius Position = 1.0 [log]
+[2026.09.14-09.01.41:056][207]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring.TorusLocation.Random Seed = 0 [log]
+[2026.09.14-09.01.41:056][207]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring.TorusLocation.Spawn Group Mask = 0 [log]
+[2026.09.14-09.01.41:056][207]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring.TorusLocation.Surface Position = 0.0 [log]
+[2026.09.14-09.01.41:056][207]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring.TorusLocation.Torus Axis = X=0.000 Y=90.000 Z=90.000 [log]
+[2026.09.14-09.01.41:056][207]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring.TorusLocation.Torus Knot Tube Radius = 10.0 [log]
+[2026.09.14-09.01.41:056][207]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring.TorusLocation.U Distribution = 0.0 [log]
+[2026.09.14-09.01.41:056][207]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring.TorusLocation.U Position = 0.336364 [log]
+[2026.09.14-09.01.41:056][207]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring.TorusLocation.V Distribution = 0.0 [log]
+[2026.09.14-09.01.41:056][207]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring.TorusLocation.V Position = -0.945455 [log]
+[2026.09.14-09.01.41:056][207]LogAutomationController: LogTemp: NIAGARA_AUDIT   emitter Ring001 enabled=1 sim=GPU local=0 boundsMode=1 fixed=IsValid=true, Min=(X=-1000.000 Y=-1000.000 Z=-1000.000), Max=(X=1000.000 Y=1000.000 Z=1000.000) persistentIDs=0 interpSpawn=1 maxParticlesEst=0 [log]
+[2026.09.14-09.01.41:056][207]LogAutomationController: LogTemp: NIAGARA_AUDIT     renderer NiagaraSpriteRendererProperties enabled=1 /Niagara/DefaultAssets/DefaultSpriteMaterial.DefaultSpriteMaterial align=0 facing=0 sortMode=0 [log]
+[2026.09.14-09.01.41:056][207]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring001.InitializeParticle.Color = (R=1.000000,G=1.000000,B=1.000000,A=1.000000) [log]
+[2026.09.14-09.01.41:056][207]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring001.InitializeParticle.Lifetime Max = 8.0 [log]
+[2026.09.14-09.01.41:056][207]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring001.InitializeParticle.Lifetime Min = 4.0 [log]
+[2026.09.14-09.01.41:056][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring001.InitializeParticle.Mass Max = 1.25 [log]
+[2026.09.14-09.01.41:056][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring001.InitializeParticle.Mass Min = 0.75 [log]
+[2026.09.14-09.01.41:056][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring001.InitializeParticle.Position Offset = X=0.000 Y=0.000 Z=0.000 [log]
+[2026.09.14-09.01.41:056][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring001.InitializeParticle.Sprite Rotation Angle Max = 360.0 [log]
+[2026.09.14-09.01.41:056][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring001.InitializeParticle.Sprite Rotation Angle Min = 0.0 [log]
+[2026.09.14-09.01.41:057][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring001.InitializeParticle.Uniform Sprite Size Max = 12.0 [log]
+[2026.09.14-09.01.41:057][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring001.InitializeParticle.Uniform Sprite Size Min = 1.0 [log]
+[2026.09.14-09.01.41:057][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring001.TorusLocation.Handle Radius = -0.164691 [log]
+[2026.09.14-09.01.41:057][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring001.TorusLocation.Knot Helix Loops = 2 [log]
+[2026.09.14-09.01.41:057][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring001.TorusLocation.Knot Ring Loops = 5 [log]
+[2026.09.14-09.01.41:057][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring001.TorusLocation.Large Radius = 1000.0 [log]
+[2026.09.14-09.01.41:057][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring001.TorusLocation.Non Uniform Scale = X=1.000 Y=1.000 Z=1.000 [log]
+[2026.09.14-09.01.41:057][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring001.TorusLocation.Normalized Angle Around Torus Axis = 0.0 [log]
+[2026.09.14-09.01.41:057][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring001.TorusLocation.Offset = X=0.000 Y=0.000 Z=0.000 [log]
+[2026.09.14-09.01.41:057][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring001.TorusLocation.Radius Position = 1.0 [log]
+[2026.09.14-09.01.41:057][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring001.TorusLocation.Random Seed = 0 [log]
+[2026.09.14-09.01.41:057][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring001.TorusLocation.Spawn Group Mask = 0 [log]
+[2026.09.14-09.01.41:057][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring001.TorusLocation.Surface Position = 0.0 [log]
+[2026.09.14-09.01.41:057][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring001.TorusLocation.Torus Axis = X=0.000 Y=-90.000 Z=90.000 [log]
+[2026.09.14-09.01.41:057][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring001.TorusLocation.Torus Knot Tube Radius = 10.0 [log]
+[2026.09.14-09.01.41:057][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring001.TorusLocation.U Distribution = 0.0 [log]
+[2026.09.14-09.01.41:057][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring001.TorusLocation.U Position = 0.336364 [log]
+[2026.09.14-09.01.41:057][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring001.TorusLocation.V Distribution = 0.0 [log]
+[2026.09.14-09.01.41:057][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring001.TorusLocation.V Position = -0.945455 [log]
+[2026.09.14-09.01.41:057][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring001.Color.Scale Alpha = 1.0 [log]
+[2026.09.14-09.01.41:057][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring001.Color.Scale Color = X=1.000 Y=1.000 Z=1.000 [log]
+[2026.09.14-09.01.41:057][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring001.Drag.Drag = 1.0 [log]
+[2026.09.14-09.01.41:057][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring001.Drag.Rotational Drag = 1.0 [log]
+[2026.09.14-09.01.41:057][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring001.FloatFromCurve.Scale Curve = 1.0 [log]
+[2026.09.14-09.01.41:057][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring001.ScaleColor.Scale RGB = X=1.000 Y=1.000 Z=1.000 [log]
+[2026.09.14-09.01.41:057][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring001.ScaleColor.Scale RGBA = (Vector4f) [log]
+[2026.09.14-09.01.41:057][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring001.SolveForcesAndVelocity.Acceleration Limit = 9999.0 [log]
+[2026.09.14-09.01.41:057][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring001.SolveForcesAndVelocity.Manually Enable Rotational Solver = (NiagaraBool) [log]
+[2026.09.14-09.01.41:057][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring001.SolveForcesAndVelocity.Mesh Orientation = (Quat4f) [log]
+[2026.09.14-09.01.41:057][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring001.SolveForcesAndVelocity.Rotational Force = X=0.000 Y=0.000 Z=0.000 [log]
+[2026.09.14-09.01.41:057][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring001.SolveForcesAndVelocity.Rotational Velocity = X=0.000 Y=0.000 Z=0.000 [log]
+[2026.09.14-09.01.41:057][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring001.SolveForcesAndVelocity.Speed Limit = 1000.0 [log]
+[2026.09.14-09.01.41:057][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring001.VortexForce.Influence Falloff Radius = 100.0 [log]
+[2026.09.14-09.01.41:057][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring001.VortexForce.Origin Pull Amount = 0.0 [log]
+[2026.09.14-09.01.41:057][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring001.VortexForce.Vortex Axis = X=0.000 Y=0.000 Z=1.000 [log]
+[2026.09.14-09.01.41:057][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring001.VortexForce.Vortex Force Amount = -200.0 [log]
+[2026.09.14-09.01.41:057][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring001.VortexForce.Vortex Influence Position = (NiagaraPosition) [log]
+[2026.09.14-09.01.41:057][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring001.VortexForce.Vortex Origin = (NiagaraPosition) [log]
+[2026.09.14-09.01.41:057][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring001.VortexForce.Vortex Origin Offset = X=0.000 Y=0.000 Z=0.000 [log]
+[2026.09.14-09.01.41:057][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring001.EmitterState.Loop Delay = 0.0 [log]
+[2026.09.14-09.01.41:057][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring001.EmitterState.Loop Duration = 2.0 [log]
+[2026.09.14-09.01.41:057][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring001.EmitterState.MaxDistance = 5000.0 [log]
+[2026.09.14-09.01.41:057][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring001.EmitterState.MinDistance = 0.0 [log]
+[2026.09.14-09.01.41:057][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring001.SpawnRate.Spawn Probability = 1.0 [log]
+[2026.09.14-09.01.41:057][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring001.SpawnRate.SpawnGroup = 0 [log]
+[2026.09.14-09.01.41:057][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring001.SpawnRate.SpawnRate = 5000.0 [log]
+[2026.09.14-09.01.41:057][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring001.InitializeParticle.Color = (R=1.000000,G=1.000000,B=1.000000,A=1.000000) [log]
+[2026.09.14-09.01.41:057][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring001.InitializeParticle.Lifetime Max = 8.0 [log]
+[2026.09.14-09.01.41:057][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring001.InitializeParticle.Lifetime Min = 4.0 [log]
+[2026.09.14-09.01.41:057][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring001.InitializeParticle.Mass Max = 1.25 [log]
+[2026.09.14-09.01.41:057][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring001.InitializeParticle.Mass Min = 0.75 [log]
+[2026.09.14-09.01.41:057][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring001.InitializeParticle.Position Offset = X=0.000 Y=0.000 Z=0.000 [log]
+[2026.09.14-09.01.41:057][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring001.InitializeParticle.Sprite Rotation Angle Max = 360.0 [log]
+[2026.09.14-09.01.41:057][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring001.InitializeParticle.Sprite Rotation Angle Min = 0.0 [log]
+[2026.09.14-09.01.41:058][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring001.TorusLocation.Offset = X=0.000 Y=0.000 Z=0.000 [log]
+[2026.09.14-09.01.41:058][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring001.TorusLocation.Radius Position = 1.0 [log]
+[2026.09.14-09.01.41:058][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring001.TorusLocation.Random Seed = 0 [log]
+[2026.09.14-09.01.41:058][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring001.TorusLocation.Spawn Group Mask = 0 [log]
+[2026.09.14-09.01.41:058][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring001.TorusLocation.Surface Position = 0.0 [log]
+[2026.09.14-09.01.41:058][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring001.TorusLocation.Torus Axis = X=0.000 Y=-90.000 Z=90.000 [log]
+[2026.09.14-09.01.41:058][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring001.TorusLocation.Torus Knot Tube Radius = 10.0 [log]
+[2026.09.14-09.01.41:058][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring001.TorusLocation.U Distribution = 0.0 [log]
+[2026.09.14-09.01.41:058][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring001.TorusLocation.U Position = 0.336364 [log]
+[2026.09.14-09.01.41:058][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring001.TorusLocation.V Distribution = 0.0 [log]
+[2026.09.14-09.01.41:058][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring001.TorusLocation.V Position = -0.945455 [log]
+[2026.09.14-09.01.41:058][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring001.VortexForce.Influence Falloff Radius = 100.0 [log]
+[2026.09.14-09.01.41:058][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring001.VortexForce.Origin Pull Amount = 0.0 [log]
+[2026.09.14-09.01.41:058][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring001.VortexForce.Vortex Axis = X=0.000 Y=0.000 Z=1.000 [log]
+[2026.09.14-09.01.41:058][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring001.VortexForce.Vortex Force Amount = -200.0 [log]
+[2026.09.14-09.01.41:058][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring001.VortexForce.Vortex Influence Position = (NiagaraPosition) [log]
+[2026.09.14-09.01.41:058][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring001.VortexForce.Vortex Origin = (NiagaraPosition) [log]
+[2026.09.14-09.01.41:058][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring001.VortexForce.Vortex Origin Offset = X=0.000 Y=0.000 Z=0.000 [log]
+[2026.09.14-09.01.41:058][208]LogAutomationController: LogTemp: NIAGARA_AUDIT   emitter Ring002 enabled=1 sim=GPU local=0 boundsMode=1 fixed=IsValid=true, Min=(X=-1000.000 Y=-1000.000 Z=-1000.000), Max=(X=1000.000 Y=1000.000 Z=1000.000) persistentIDs=0 interpSpawn=1 maxParticlesEst=0 [log]
+[2026.09.14-09.01.41:058][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     renderer NiagaraSpriteRendererProperties enabled=1 /Niagara/DefaultAssets/DefaultSpriteMaterial.DefaultSpriteMaterial align=0 facing=0 sortMode=0 [log]
+[2026.09.14-09.01.41:058][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring002.InitializeParticle.Color = (R=1.000000,G=1.000000,B=1.000000,A=1.000000) [log]
+[2026.09.14-09.01.41:058][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring002.InitializeParticle.Lifetime Max = 8.0 [log]
+[2026.09.14-09.01.41:058][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring002.InitializeParticle.Lifetime Min = 4.0 [log]
+[2026.09.14-09.01.41:058][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring002.InitializeParticle.Mass Max = 1.25 [log]
+[2026.09.14-09.01.41:058][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring002.InitializeParticle.Mass Min = 0.75 [log]
+[2026.09.14-09.01.41:058][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring002.InitializeParticle.Position Offset = X=0.000 Y=0.000 Z=0.000 [log]
+[2026.09.14-09.01.41:058][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring002.InitializeParticle.Sprite Rotation Angle Max = 360.0 [log]
+[2026.09.14-09.01.41:058][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring002.InitializeParticle.Sprite Rotation Angle Min = 0.0 [log]
+[2026.09.14-09.01.41:058][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring002.InitializeParticle.Uniform Sprite Size Max = 12.0 [log]
+[2026.09.14-09.01.41:058][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring002.InitializeParticle.Uniform Sprite Size Min = 1.0 [log]
+[2026.09.14-09.01.41:058][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring002.TorusLocation.Handle Radius = -0.164691 [log]
+[2026.09.14-09.01.41:058][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring002.TorusLocation.Knot Helix Loops = 2 [log]
+[2026.09.14-09.01.41:058][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring002.TorusLocation.Knot Ring Loops = 5 [log]
+[2026.09.14-09.01.41:058][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring002.TorusLocation.Large Radius = 1000.0 [log]
+[2026.09.14-09.01.41:058][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring002.TorusLocation.Non Uniform Scale = X=1.000 Y=1.000 Z=1.000 [log]
+[2026.09.14-09.01.41:058][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring002.TorusLocation.Normalized Angle Around Torus Axis = 0.0 [log]
+[2026.09.14-09.01.41:058][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring002.TorusLocation.Offset = X=0.000 Y=0.000 Z=0.000 [log]
+[2026.09.14-09.01.41:058][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring002.TorusLocation.Radius Position = 1.0 [log]
+[2026.09.14-09.01.41:058][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring002.TorusLocation.Random Seed = 0 [log]
+[2026.09.14-09.01.41:058][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring002.TorusLocation.Spawn Group Mask = 0 [log]
+[2026.09.14-09.01.41:058][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring002.TorusLocation.Surface Position = 0.0 [log]
+[2026.09.14-09.01.41:058][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring002.TorusLocation.Torus Axis = X=0.000 Y=0.000 Z=90.000 [log]
+[2026.09.14-09.01.41:058][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring002.TorusLocation.Torus Knot Tube Radius = 10.0 [log]
+[2026.09.14-09.01.41:058][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring002.TorusLocation.U Distribution = 0.0 [log]
+[2026.09.14-09.01.41:058][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring002.TorusLocation.U Position = 0.336364 [log]
+[2026.09.14-09.01.41:058][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring002.TorusLocation.V Distribution = 0.0 [log]
+[2026.09.14-09.01.41:058][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring002.TorusLocation.V Position = -0.945455 [log]
+[2026.09.14-09.01.41:058][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring002.Color.Scale Alpha = 1.0 [log]
+[2026.09.14-09.01.41:058][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring002.Color.Scale Color = X=1.000 Y=1.000 Z=1.000 [log]
+[2026.09.14-09.01.41:058][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring002.Drag.Drag = 1.0 [log]
+[2026.09.14-09.01.41:058][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring002.Drag.Rotational Drag = 1.0 [log]
+[2026.09.14-09.01.41:058][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring002.FloatFromCurve.Scale Curve = 1.0 [log]
+[2026.09.14-09.01.41:058][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring002.ScaleColor.Scale RGB = X=1.000 Y=1.000 Z=1.000 [log]
+[2026.09.14-09.01.41:058][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring002.ScaleColor.Scale RGBA = (Vector4f) [log]
+[2026.09.14-09.01.41:058][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring002.SolveForcesAndVelocity.Acceleration Limit = 9999.0 [log]
+[2026.09.14-09.01.41:058][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring002.SolveForcesAndVelocity.Manually Enable Rotational Solver = (NiagaraBool) [log]
+[2026.09.14-09.01.41:058][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring002.SolveForcesAndVelocity.Mesh Orientation = (Quat4f) [log]
+[2026.09.14-09.01.41:058][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring002.SolveForcesAndVelocity.Rotational Force = X=0.000 Y=0.000 Z=0.000 [log]
+[2026.09.14-09.01.41:058][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring002.SolveForcesAndVelocity.Rotational Velocity = X=0.000 Y=0.000 Z=0.000 [log]
+[2026.09.14-09.01.41:058][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring002.SolveForcesAndVelocity.Speed Limit = 1000.0 [log]
+[2026.09.14-09.01.41:058][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring002.VortexForce.Influence Falloff Radius = 100.0 [log]
+[2026.09.14-09.01.41:058][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring002.VortexForce.Origin Pull Amount = 0.0 [log]
+[2026.09.14-09.01.41:058][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring002.VortexForce.Vortex Axis = X=0.000 Y=0.000 Z=1.000 [log]
+[2026.09.14-09.01.41:058][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring002.VortexForce.Vortex Force Amount = 200.0 [log]
+[2026.09.14-09.01.41:058][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring002.VortexForce.Vortex Influence Position = (NiagaraPosition) [log]
+[2026.09.14-09.01.41:058][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring002.VortexForce.Vortex Origin = (NiagaraPosition) [log]
+[2026.09.14-09.01.41:058][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring002.VortexForce.Vortex Origin Offset = X=0.000 Y=0.000 Z=0.000 [log]
+[2026.09.14-09.01.41:058][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring002.EmitterState.Loop Delay = 0.0 [log]
+[2026.09.14-09.01.41:058][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring002.EmitterState.Loop Duration = 2.0 [log]
+[2026.09.14-09.01.41:058][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring002.EmitterState.MaxDistance = 5000.0 [log]
+[2026.09.14-09.01.41:058][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring002.EmitterState.MinDistance = 0.0 [log]
+[2026.09.14-09.01.41:059][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring002.SpawnRate.Spawn Probability = 1.0 [log]
+[2026.09.14-09.01.41:059][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring002.SpawnRate.SpawnGroup = 0 [log]
+[2026.09.14-09.01.41:059][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring002.SpawnRate.SpawnRate = 5000.0 [log]
+[2026.09.14-09.01.41:059][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring002.Color.Scale Alpha = 1.0 [log]
+[2026.09.14-09.01.41:059][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring002.Color.Scale Color = X=1.000 Y=1.000 Z=1.000 [log]
+[2026.09.14-09.01.41:059][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring002.Drag.Drag = 1.0 [log]
+[2026.09.14-09.01.41:059][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring002.Drag.Rotational Drag = 1.0 [log]
+[2026.09.14-09.01.41:059][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring002.FloatFromCurve.Scale Curve = 1.0 [log]
+[2026.09.14-09.01.41:059][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring002.InitializeParticle.Color = (R=1.000000,G=1.000000,B=1.000000,A=1.000000) [log]
+[2026.09.14-09.01.41:059][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring002.InitializeParticle.Lifetime Max = 8.0 [log]
+[2026.09.14-09.01.41:059][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring002.InitializeParticle.Lifetime Min = 4.0 [log]
+[2026.09.14-09.01.41:059][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring002.InitializeParticle.Mass Max = 1.25 [log]
+[2026.09.14-09.01.41:059][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring002.InitializeParticle.Mass Min = 0.75 [log]
+[2026.09.14-09.01.41:059][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring002.InitializeParticle.Position Offset = X=0.000 Y=0.000 Z=0.000 [log]
+[2026.09.14-09.01.41:059][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring002.InitializeParticle.Sprite Rotation Angle Max = 360.0 [log]
+[2026.09.14-09.01.41:059][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring002.InitializeParticle.Sprite Rotation Angle Min = 0.0 [log]
+[2026.09.14-09.01.41:059][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring002.InitializeParticle.Uniform Sprite Size Max = 12.0 [log]
+[2026.09.14-09.01.41:059][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring002.InitializeParticle.Uniform Sprite Size Min = 1.0 [log]
+[2026.09.14-09.01.41:059][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring002.ScaleColor.Scale RGB = X=1.000 Y=1.000 Z=1.000 [log]
+[2026.09.14-09.01.41:059][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring002.ScaleColor.Scale RGBA = (Vector4f) [log]
+[2026.09.14-09.01.41:059][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring002.SolveForcesAndVelocity.Acceleration Limit = 9999.0 [log]
+[2026.09.14-09.01.41:059][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring002.SolveForcesAndVelocity.Manually Enable Rotational Solver = (NiagaraBool) [log]
+[2026.09.14-09.01.41:059][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring002.SolveForcesAndVelocity.Mesh Orientation = (Quat4f) [log]
+[2026.09.14-09.01.41:059][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring002.SolveForcesAndVelocity.Rotational Force = X=0.000 Y=0.000 Z=0.000 [log]
+[2026.09.14-09.01.41:059][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring002.SolveForcesAndVelocity.Rotational Velocity = X=0.000 Y=0.000 Z=0.000 [log]
+[2026.09.14-09.01.41:059][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring002.SolveForcesAndVelocity.Speed Limit = 1000.0 [log]
+[2026.09.14-09.01.41:059][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring002.TorusLocation.Handle Radius = -0.164691 [log]
+[2026.09.14-09.01.41:059][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring002.TorusLocation.Knot Helix Loops = 2 [log]
+[2026.09.14-09.01.41:059][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring002.TorusLocation.Knot Ring Loops = 5 [log]
+[2026.09.14-09.01.41:059][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring002.TorusLocation.Large Radius = 1000.0 [log]
+[2026.09.14-09.01.41:059][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring002.TorusLocation.Non Uniform Scale = X=1.000 Y=1.000 Z=1.000 [log]
+[2026.09.14-09.01.41:059][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring002.TorusLocation.Normalized Angle Around Torus Axis = 0.0 [log]
+[2026.09.14-09.01.41:059][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring002.TorusLocation.Offset = X=0.000 Y=0.000 Z=0.000 [log]
+[2026.09.14-09.01.41:059][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring002.TorusLocation.Radius Position = 1.0 [log]
+[2026.09.14-09.01.41:059][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring002.TorusLocation.Random Seed = 0 [log]
+[2026.09.14-09.01.41:059][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring002.TorusLocation.Spawn Group Mask = 0 [log]
+[2026.09.14-09.01.41:059][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring002.TorusLocation.Surface Position = 0.0 [log]
+[2026.09.14-09.01.41:059][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring002.TorusLocation.Torus Axis = X=0.000 Y=0.000 Z=90.000 [log]
+[2026.09.14-09.01.41:059][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring002.TorusLocation.Torus Knot Tube Radius = 10.0 [log]
+[2026.09.14-09.01.41:059][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring002.TorusLocation.U Distribution = 0.0 [log]
+[2026.09.14-09.01.41:059][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring002.TorusLocation.U Position = 0.336364 [log]
+[2026.09.14-09.01.41:059][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring002.TorusLocation.V Distribution = 0.0 [log]
+[2026.09.14-09.01.41:059][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring002.TorusLocation.V Position = -0.945455 [log]
+[2026.09.14-09.01.41:059][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring002.VortexForce.Influence Falloff Radius = 100.0 [log]
+[2026.09.14-09.01.41:059][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring002.VortexForce.Origin Pull Amount = 0.0 [log]
+[2026.09.14-09.01.41:059][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring002.VortexForce.Vortex Axis = X=0.000 Y=0.000 Z=1.000 [log]
+[2026.09.14-09.01.41:059][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring002.VortexForce.Vortex Force Amount = 200.0 [log]
+[2026.09.14-09.01.41:059][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring002.VortexForce.Vortex Influence Position = (NiagaraPosition) [log]
+[2026.09.14-09.01.41:059][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring002.VortexForce.Vortex Origin = (NiagaraPosition) [log]
+[2026.09.14-09.01.41:059][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Ring002.VortexForce.Vortex Origin Offset = X=0.000 Y=0.000 Z=0.000 [log]
+[2026.09.14-09.01.41:059][208]LogAutomationController: LogTemp: NIAGARA_AUDIT   emitter Singularity_Point_ enabled=1 sim=GPU local=0 boundsMode=1 fixed=IsValid=true, Min=(X=-1000.000 Y=-1000.000 Z=-1000.000), Max=(X=1000.000 Y=1000.000 Z=1000.000) persistentIDs=0 interpSpawn=1 maxParticlesEst=0 [log]
+[2026.09.14-09.01.41:059][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     renderer NiagaraSpriteRendererProperties enabled=1 /Niagara/DefaultAssets/DefaultSpriteMaterial.DefaultSpriteMaterial align=0 facing=0 sortMode=0 [log]
+[2026.09.14-09.01.41:059][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Singularity_Point_.InitializeParticle.Color = (R=1.000000,G=1.000000,B=1.000000,A=1.000000) [log]
+[2026.09.14-09.01.41:059][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Singularity_Point_.InitializeParticle.Lifetime Max = 8.0 [log]
+[2026.09.14-09.01.41:059][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Singularity_Point_.InitializeParticle.Lifetime Min = 4.0 [log]
+[2026.09.14-09.01.41:059][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Singularity_Point_.InitializeParticle.Mass Max = 1.25 [log]
+[2026.09.14-09.01.41:059][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Singularity_Point_.InitializeParticle.Mass Min = 0.75 [log]
+[2026.09.14-09.01.41:059][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Singularity_Point_.InitializeParticle.Position Offset = X=0.000 Y=0.000 Z=0.000 [log]
+[2026.09.14-09.01.41:059][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Singularity_Point_.InitializeParticle.Sprite Rotation Angle Max = 360.0 [log]
+[2026.09.14-09.01.41:059][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Singularity_Point_.InitializeParticle.Sprite Rotation Angle Min = 0.0 [log]
+[2026.09.14-09.01.41:059][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Singularity_Point_.InitializeParticle.Uniform Sprite Size Max = 12.0 [log]
+[2026.09.14-09.01.41:059][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Singularity_Point_.InitializeParticle.Uniform Sprite Size Min = 1.0 [log]
+[2026.09.14-09.01.41:059][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Singularity_Point_.SphereLocation.Non Uniform Scale = X=1.000 Y=1.000 Z=1.000 [log]
+[2026.09.14-09.01.41:059][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Singularity_Point_.SphereLocation.Offset = X=0.000 Y=0.000 Z=0.000 [log]
+[2026.09.14-09.01.41:059][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Singularity_Point_.SphereLocation.Random Seed = 0 [log]
+[2026.09.14-09.01.41:059][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Singularity_Point_.SphereLocation.Spawn Group Mask = 0 [log]
+[2026.09.14-09.01.41:060][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Singularity_Point_.SphereLocation.Sphere Orientation Axis = X=1.000 Y=0.000 Z=0.000 [log]
+[2026.09.14-09.01.41:060][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Singularity_Point_.SphereLocation.Sphere Radius = 100.0 [log]
+[2026.09.14-09.01.41:060][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Singularity_Point_.SphereLocation.Surface Only Band Thickness = 0.0 [log]
+[2026.09.14-09.01.41:060][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Singularity_Point_.Color.Scale Alpha = 1.0 [log]
+[2026.09.14-09.01.41:060][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Singularity_Point_.Color.Scale Color = X=1.000 Y=1.000 Z=1.000 [log]
+[2026.09.14-09.01.41:060][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Singularity_Point_.Drag.Drag = 1.0 [log]
+[2026.09.14-09.01.41:060][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Singularity_Point_.Drag.Rotational Drag = 1.0 [log]
+[2026.09.14-09.01.41:060][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Singularity_Point_.FloatFromCurve.Scale Curve = 1.0 [log]
+[2026.09.14-09.01.41:060][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Singularity_Point_.ScaleColor.Scale RGB = X=1.000 Y=1.000 Z=1.000 [log]
+[2026.09.14-09.01.41:060][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Singularity_Point_.ScaleColor.Scale RGBA = (Vector4f) [log]
+[2026.09.14-09.01.41:060][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Singularity_Point_.SolveForcesAndVelocity.Acceleration Limit = 9999.0 [log]
+[2026.09.14-09.01.41:060][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Singularity_Point_.SolveForcesAndVelocity.Manually Enable Rotational Solver = (NiagaraBool) [log]
+[2026.09.14-09.01.41:060][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Singularity_Point_.SolveForcesAndVelocity.Mesh Orientation = (Quat4f) [log]
+[2026.09.14-09.01.41:060][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Singularity_Point_.SolveForcesAndVelocity.Rotational Force = X=0.000 Y=0.000 Z=0.000 [log]
+[2026.09.14-09.01.41:060][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Singularity_Point_.SolveForcesAndVelocity.Rotational Velocity = X=0.000 Y=0.000 Z=0.000 [log]
+[2026.09.14-09.01.41:060][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Singularity_Point_.SolveForcesAndVelocity.Speed Limit = 1000.0 [log]
+[2026.09.14-09.01.41:060][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Singularity_Point_.SpringForce.Attachment Point Velocity = X=0.000 Y=0.000 Z=0.000 [log]
+[2026.09.14-09.01.41:060][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Singularity_Point_.SpringForce.Dampening Coefficient = 1.0 [log]
+[2026.09.14-09.01.41:060][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Singularity_Point_.SpringForce.Desired Minimum Separation Distance = 5.0 [log]
+[2026.09.14-09.01.41:060][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Singularity_Point_.SpringForce.Force Strength = 1.0 [log]
+[2026.09.14-09.01.41:060][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Singularity_Point_.SpringForce.Spring Tightness = 50.0 [log]
+[2026.09.14-09.01.41:060][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Singularity_Point_.EmitterState.Loop Delay = 0.0 [log]
+[2026.09.14-09.01.41:060][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Singularity_Point_.EmitterState.Loop Duration = 2.0 [log]
+[2026.09.14-09.01.41:060][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Singularity_Point_.EmitterState.MaxDistance = 5000.0 [log]
+[2026.09.14-09.01.41:060][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Singularity_Point_.EmitterState.MinDistance = 0.0 [log]
+[2026.09.14-09.01.41:060][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Singularity_Point_.SpawnRate.Spawn Probability = 1.0 [log]
+[2026.09.14-09.01.41:060][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Singularity_Point_.SpawnRate.SpawnGroup = 0 [log]
+[2026.09.14-09.01.41:060][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Singularity_Point_.SpawnRate.SpawnRate = 1000.0 [log]
+[2026.09.14-09.01.41:060][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Singularity_Point_.InitializeParticle.Color = (R=1.000000,G=1.000000,B=1.000000,A=1.000000) [log]
+[2026.09.14-09.01.41:060][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Singularity_Point_.InitializeParticle.Lifetime Max = 8.0 [log]
+[2026.09.14-09.01.41:060][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Singularity_Point_.InitializeParticle.Lifetime Min = 4.0 [log]
+[2026.09.14-09.01.41:060][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Singularity_Point_.InitializeParticle.Mass Max = 1.25 [log]
+[2026.09.14-09.01.41:060][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Singularity_Point_.InitializeParticle.Mass Min = 0.75 [log]
+[2026.09.14-09.01.41:060][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Singularity_Point_.InitializeParticle.Position Offset = X=0.000 Y=0.000 Z=0.000 [log]
+[2026.09.14-09.01.41:060][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Singularity_Point_.InitializeParticle.Sprite Rotation Angle Max = 360.0 [log]
+[2026.09.14-09.01.41:060][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Singularity_Point_.InitializeParticle.Sprite Rotation Angle Min = 0.0 [log]
+[2026.09.14-09.01.41:060][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Singularity_Point_.InitializeParticle.Uniform Sprite Size Max = 12.0 [log]
+[2026.09.14-09.01.41:060][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Singularity_Point_.InitializeParticle.Uniform Sprite Size Min = 1.0 [log]
+[2026.09.14-09.01.41:060][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Singularity_Point_.SphereLocation.Non Uniform Scale = X=1.000 Y=1.000 Z=1.000 [log]
+[2026.09.14-09.01.41:060][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Singularity_Point_.SphereLocation.Offset = X=0.000 Y=0.000 Z=0.000 [log]
+[2026.09.14-09.01.41:060][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Singularity_Point_.SphereLocation.Random Seed = 0 [log]
+[2026.09.14-09.01.41:060][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Singularity_Point_.SphereLocation.Spawn Group Mask = 0 [log]
+[2026.09.14-09.01.41:060][208]LogAutomationController: LogTemp: NIAGARA_AUDIT system /Game/FreeNiagaraPack/Effects/NS_Worm-Hole.NS_Worm-Hole fixedBounds=dynamic warmup=0.00 exposed=[] [log]
+[2026.09.14-09.01.41:060][208]LogAutomationController: LogTemp: NIAGARA_AUDIT   emitter Worm-Hole_Up enabled=1 sim=GPU local=0 boundsMode=1 fixed=IsValid=true, Min=(X=-1000.000 Y=-1000.000 Z=-1000.000), Max=(X=1000.000 Y=1000.000 Z=1000.000) persistentIDs=0 interpSpawn=1 maxParticlesEst=0 [log]
+[2026.09.14-09.01.41:060][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     renderer NiagaraSpriteRendererProperties enabled=1 /Niagara/DefaultAssets/DefaultSpriteMaterial.DefaultSpriteMaterial align=0 facing=0 sortMode=0 [log]
+[2026.09.14-09.01.41:060][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.GridLocation.Offset = X=0.000 Y=0.000 Z=0.000 [log]
+[2026.09.14-09.01.41:060][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.GridLocation.Random Placement Seed = 0 [log]
+[2026.09.14-09.01.41:060][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.GridLocation.Randomize Placement Within Cell = X=1.000 Y=1.000 Z=1.000 [log]
+[2026.09.14-09.01.41:060][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.GridLocation.XYZ Dimensions = X=100.000 Y=100.000 Z=10.000 [log]
+[2026.09.14-09.01.41:060][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.InitializeParticle.Color = (R=1.000000,G=1.000000,B=1.000000,A=1.000000) [log]
+[2026.09.14-09.01.41:060][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.InitializeParticle.Lifetime = 1.0 [log]
+[2026.09.14-09.01.41:060][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.InitializeParticle.Lifetime Max = 10.0 [log]
+[2026.09.14-09.01.41:060][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.InitializeParticle.Lifetime Min = 8.0 [log]
+[2026.09.14-09.01.41:060][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.InitializeParticle.Mass Max = 1.25 [log]
+[2026.09.14-09.01.41:060][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.InitializeParticle.Mass Min = 0.75 [log]
+[2026.09.14-09.01.41:060][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.InitializeParticle.Position Offset = X=0.000 Y=0.000 Z=0.000 [log]
+[2026.09.14-09.01.41:060][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.InitializeParticle.Sprite Rotation Angle Max = 360.0 [log]
+[2026.09.14-09.01.41:060][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.InitializeParticle.Sprite Rotation Angle Min = 0.0 [log]
+[2026.09.14-09.01.41:060][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.InitializeParticle.Uniform Sprite Size Max = 4.0 [log]
+[2026.09.14-09.01.41:060][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.InitializeParticle.Uniform Sprite Size Min = 2.0 [log]
+[2026.09.14-09.01.41:060][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.Color.Scale Alpha = 1.0 [log]
+[2026.09.14-09.01.41:060][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.Color.Scale Color = X=1.000 Y=1.000 Z=1.000 [log]
+[2026.09.14-09.01.41:060][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.CurlNoiseForce.Curl Noise Cone Mask Angle = 45.0 [log]
+[2026.09.14-09.01.41:061][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.CurlNoiseForce.Curl Noise Cone Mask Falloff Angle = 45.0 [log]
+[2026.09.14-09.01.41:061][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.CurlNoiseForce.Noise Frequency = 11.479915 [log]
+[2026.09.14-09.01.41:061][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.CurlNoiseForce.Noise Strength = 67.442795 [log]
+[2026.09.14-09.01.41:061][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.CurlNoiseForce.Pan Noise Field = X=0.000 Y=0.000 Z=0.000 [log]
+[2026.09.14-09.01.41:061][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.CurlNoiseForce.Random Seed = 11 [log]
+[2026.09.14-09.01.41:061][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.CurlNoiseForce.Randomization Vector = X=0.650 Y=0.125 Z=0.370 [log]
+[2026.09.14-09.01.41:061][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.Drag.Drag = 1.0 [log]
+[2026.09.14-09.01.41:061][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.Drag.Rotational Drag = 1.0 [log]
+[2026.09.14-09.01.41:061][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.Drag001.Drag = 1.0 [log]
+[2026.09.14-09.01.41:061][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.Drag001.Rotational Drag = 1.0 [log]
+[2026.09.14-09.01.41:061][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.PointAttractionForce.Attraction Radius = 500.0 [log]
+[2026.09.14-09.01.41:061][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.PointAttractionForce.Attraction Strength = -50.0 [log]
+[2026.09.14-09.01.41:061][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.PointAttractionForce.Attractor Position = (NiagaraPosition) [log]
+[2026.09.14-09.01.41:061][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.PointAttractionForce.Attractor Position Offset = X=0.000 Y=0.000 Z=0.000 [log]
+[2026.09.14-09.01.41:061][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.PointAttractionForce.Falloff Exponent = 0.5 [log]
+[2026.09.14-09.01.41:061][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.PointAttractionForce.Kill Radius = 4.0 [log]
+[2026.09.14-09.01.41:061][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.PointAttractionForce.Position To Attract = (NiagaraPosition) [log]
+[2026.09.14-09.01.41:061][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.SolveForcesAndVelocity.Acceleration Limit = 9999.0 [log]
+[2026.09.14-09.01.41:061][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.SolveForcesAndVelocity.Manually Enable Rotational Solver = (NiagaraBool) [log]
+[2026.09.14-09.01.41:061][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.SolveForcesAndVelocity.Mesh Orientation = (Quat4f) [log]
+[2026.09.14-09.01.41:061][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.SolveForcesAndVelocity.Rotational Force = X=0.000 Y=0.000 Z=0.000 [log]
+[2026.09.14-09.01.41:061][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.SolveForcesAndVelocity.Rotational Velocity = X=0.000 Y=0.000 Z=0.000 [log]
+[2026.09.14-09.01.41:061][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.SolveForcesAndVelocity.Speed Limit = 1000.0 [log]
+[2026.09.14-09.01.41:061][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.VortexForce.Influence Falloff Radius = 100.0 [log]
+[2026.09.14-09.01.41:061][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.VortexForce.Origin Pull Amount = 0.0 [log]
+[2026.09.14-09.01.41:061][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.VortexForce.Vortex Axis = X=0.000 Y=0.000 Z=1.000 [log]
+[2026.09.14-09.01.41:061][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.VortexForce.Vortex Force Amount = 200.0 [log]
+[2026.09.14-09.01.41:061][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.WindForce.Alignment Falloff Start / End = (Vector2f) [log]
+[2026.09.14-09.01.41:061][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.WindForce.Frequency = 1.0 [log]
+[2026.09.14-09.01.41:061][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.WindForce.Friction = 1.0 [log]
+[2026.09.14-09.01.41:061][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.WindForce.Friction Distance Limit = 10.0 [log]
+[2026.09.14-09.01.41:061][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.WindForce.Normal Friction Mask = 0.0 [log]
+[2026.09.14-09.01.41:061][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.WindForce.Offset By Time = X=0.000 Y=0.000 Z=-100.000 [log]
+[2026.09.14-09.01.41:061][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.WindForce.Position = (NiagaraPosition) [log]
+[2026.09.14-09.01.41:061][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.WindForce.Scale = 0.5 [log]
+[2026.09.14-09.01.41:061][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.WindForce.Turbulence Flow Loop Duration = 3.0 [log]
+[2026.09.14-09.01.41:061][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.WindForce.Wind Speed = X=0.000 Y=0.000 Z=100.000 [log]
+[2026.09.14-09.01.41:061][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.WindForce.Wind Speed Scale = 1.0 [log]
+[2026.09.14-09.01.41:061][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.EmitterState.Loop Delay = 0.0 [log]
+[2026.09.14-09.01.41:061][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.EmitterState.Loop Duration = 0.0 [log]
+[2026.09.14-09.01.41:061][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.EmitterState.MaxDistance = 5000.0 [log]
+[2026.09.14-09.01.41:061][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.EmitterState.MinDistance = 0.0 [log]
+[2026.09.14-09.01.41:061][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.SpawnParticlesInGrid.Spawn Group = 0 [log]
+[2026.09.14-09.01.41:061][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.SpawnParticlesInGrid.Spawn Time = 0.0 [log]
+[2026.09.14-09.01.41:061][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.SpawnParticlesInGrid.X Count = 10 [log]
+[2026.09.14-09.01.41:061][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.SpawnParticlesInGrid.Y Count = 10 [log]
+[2026.09.14-09.01.41:061][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.SpawnParticlesInGrid.Z Count = 10 [log]
+[2026.09.14-09.01.41:061][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.SpawnRate.Spawn Probability = 1.0 [log]
+[2026.09.14-09.01.41:061][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.SpawnRate.SpawnGroup = 0 [log]
+[2026.09.14-09.01.41:061][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.SpawnRate.SpawnRate = 1000.0 [log]
+[2026.09.14-09.01.41:061][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.Color.Scale Alpha = 1.0 [log]
+[2026.09.14-09.01.41:061][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.Color.Scale Color = X=1.000 Y=1.000 Z=1.000 [log]
+[2026.09.14-09.01.41:061][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.CurlNoiseForce.Curl Noise Cone Mask Angle = 45.0 [log]
+[2026.09.14-09.01.41:061][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.GridLocation.Offset = X=0.000 Y=0.000 Z=0.000 [log]
+[2026.09.14-09.01.41:061][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.GridLocation.Random Placement Seed = 0 [log]
+[2026.09.14-09.01.41:061][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.GridLocation.Randomize Placement Within Cell = X=1.000 Y=1.000 Z=1.000 [log]
+[2026.09.14-09.01.41:061][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.GridLocation.XYZ Dimensions = X=100.000 Y=100.000 Z=10.000 [log]
+[2026.09.14-09.01.41:061][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.InitializeParticle.Color = (R=1.000000,G=1.000000,B=1.000000,A=1.000000) [log]
+[2026.09.14-09.01.41:061][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.InitializeParticle.Lifetime = 1.0 [log]
+[2026.09.14-09.01.41:061][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.InitializeParticle.Lifetime Max = 10.0 [log]
+[2026.09.14-09.01.41:061][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.InitializeParticle.Lifetime Min = 8.0 [log]
+[2026.09.14-09.01.41:061][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.InitializeParticle.Mass Max = 1.25 [log]
+[2026.09.14-09.01.41:061][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.InitializeParticle.Mass Min = 0.75 [log]
+[2026.09.14-09.01.41:061][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.InitializeParticle.Position Offset = X=0.000 Y=0.000 Z=0.000 [log]
+[2026.09.14-09.01.41:061][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.InitializeParticle.Sprite Rotation Angle Max = 360.0 [log]
+[2026.09.14-09.01.41:061][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.InitializeParticle.Sprite Rotation Angle Min = 0.0 [log]
+[2026.09.14-09.01.41:061][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.InitializeParticle.Uniform Sprite Size Max = 4.0 [log]
+[2026.09.14-09.01.41:061][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.InitializeParticle.Uniform Sprite Size Min = 2.0 [log]
+[2026.09.14-09.01.41:062][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.PointAttractionForce.Attractor Position = (NiagaraPosition) [log]
+[2026.09.14-09.01.41:062][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.PointAttractionForce.Attractor Position Offset = X=0.000 Y=0.000 Z=0.000 [log]
+[2026.09.14-09.01.41:062][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.PointAttractionForce.Falloff Exponent = 0.5 [log]
+[2026.09.14-09.01.41:062][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.PointAttractionForce.Kill Radius = 4.0 [log]
+[2026.09.14-09.01.41:062][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.PointAttractionForce.Position To Attract = (NiagaraPosition) [log]
+[2026.09.14-09.01.41:062][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.SolveForcesAndVelocity.Acceleration Limit = 9999.0 [log]
+[2026.09.14-09.01.41:062][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.SolveForcesAndVelocity.Manually Enable Rotational Solver = (NiagaraBool) [log]
+[2026.09.14-09.01.41:062][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.SolveForcesAndVelocity.Mesh Orientation = (Quat4f) [log]
+[2026.09.14-09.01.41:062][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.SolveForcesAndVelocity.Rotational Force = X=0.000 Y=0.000 Z=0.000 [log]
+[2026.09.14-09.01.41:062][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.SolveForcesAndVelocity.Rotational Velocity = X=0.000 Y=0.000 Z=0.000 [log]
+[2026.09.14-09.01.41:062][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.SolveForcesAndVelocity.Speed Limit = 1000.0 [log]
+[2026.09.14-09.01.41:062][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.VortexForce.Influence Falloff Radius = 100.0 [log]
+[2026.09.14-09.01.41:062][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.VortexForce.Origin Pull Amount = 0.0 [log]
+[2026.09.14-09.01.41:062][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.VortexForce.Vortex Axis = X=0.000 Y=0.000 Z=1.000 [log]
+[2026.09.14-09.01.41:062][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.VortexForce.Vortex Force Amount = 200.0 [log]
+[2026.09.14-09.01.41:062][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.WindForce.Alignment Falloff Start / End = (Vector2f) [log]
+[2026.09.14-09.01.41:062][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.WindForce.Frequency = 1.0 [log]
+[2026.09.14-09.01.41:062][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.WindForce.Friction = 1.0 [log]
+[2026.09.14-09.01.41:062][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.WindForce.Friction Distance Limit = 10.0 [log]
+[2026.09.14-09.01.41:062][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.WindForce.Normal Friction Mask = 0.0 [log]
+[2026.09.14-09.01.41:062][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.WindForce.Offset By Time = X=0.000 Y=0.000 Z=-100.000 [log]
+[2026.09.14-09.01.41:062][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.WindForce.Position = (NiagaraPosition) [log]
+[2026.09.14-09.01.41:062][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.WindForce.Scale = 0.5 [log]
+[2026.09.14-09.01.41:062][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.WindForce.Turbulence Flow Loop Duration = 3.0 [log]
+[2026.09.14-09.01.41:062][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.WindForce.Wind Speed = X=0.000 Y=0.000 Z=100.000 [log]
+[2026.09.14-09.01.41:062][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Up.WindForce.Wind Speed Scale = 1.0 [log]
+[2026.09.14-09.01.41:062][208]LogAutomationController: LogTemp: NIAGARA_AUDIT   emitter Worm-Hole_Down enabled=1 sim=GPU local=0 boundsMode=1 fixed=IsValid=true, Min=(X=-1000.000 Y=-1000.000 Z=-1000.000), Max=(X=1000.000 Y=1000.000 Z=1000.000) persistentIDs=0 interpSpawn=1 maxParticlesEst=0 [log]
+[2026.09.14-09.01.41:062][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     renderer NiagaraSpriteRendererProperties enabled=1 /Niagara/DefaultAssets/DefaultSpriteMaterial.DefaultSpriteMaterial align=0 facing=0 sortMode=0 [log]
+[2026.09.14-09.01.41:062][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.GridLocation.Offset = X=0.000 Y=0.000 Z=0.000 [log]
+[2026.09.14-09.01.41:062][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.GridLocation.Random Placement Seed = 0 [log]
+[2026.09.14-09.01.41:062][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.GridLocation.Randomize Placement Within Cell = X=1.000 Y=1.000 Z=1.000 [log]
+[2026.09.14-09.01.41:062][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.GridLocation.XYZ Dimensions = X=100.000 Y=100.000 Z=10.000 [log]
+[2026.09.14-09.01.41:062][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.InitializeParticle.Color = (R=1.000000,G=1.000000,B=1.000000,A=1.000000) [log]
+[2026.09.14-09.01.41:062][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.InitializeParticle.Lifetime = 1.0 [log]
+[2026.09.14-09.01.41:062][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.InitializeParticle.Lifetime Max = 10.0 [log]
+[2026.09.14-09.01.41:062][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.InitializeParticle.Lifetime Min = 8.0 [log]
+[2026.09.14-09.01.41:062][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.InitializeParticle.Mass Max = 1.25 [log]
+[2026.09.14-09.01.41:062][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.InitializeParticle.Mass Min = 0.75 [log]
+[2026.09.14-09.01.41:062][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.InitializeParticle.Position Offset = X=0.000 Y=0.000 Z=0.000 [log]
+[2026.09.14-09.01.41:062][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.InitializeParticle.Sprite Rotation Angle Max = 360.0 [log]
+[2026.09.14-09.01.41:062][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.InitializeParticle.Sprite Rotation Angle Min = 0.0 [log]
+[2026.09.14-09.01.41:062][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.InitializeParticle.Uniform Sprite Size Max = 4.0 [log]
+[2026.09.14-09.01.41:062][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.InitializeParticle.Uniform Sprite Size Min = 2.0 [log]
+[2026.09.14-09.01.41:062][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.Color.Scale Alpha = 1.0 [log]
+[2026.09.14-09.01.41:063][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.Color.Scale Color = X=1.000 Y=1.000 Z=1.000 [log]
+[2026.09.14-09.01.41:063][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.CurlNoiseForce.Curl Noise Cone Mask Angle = 45.0 [log]
+[2026.09.14-09.01.41:063][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.CurlNoiseForce.Curl Noise Cone Mask Falloff Angle = 45.0 [log]
+[2026.09.14-09.01.41:063][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.CurlNoiseForce.Noise Frequency = 11.479915 [log]
+[2026.09.14-09.01.41:063][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.CurlNoiseForce.Noise Strength = 67.442795 [log]
+[2026.09.14-09.01.41:063][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.CurlNoiseForce.Pan Noise Field = X=0.000 Y=0.000 Z=0.000 [log]
+[2026.09.14-09.01.41:063][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.CurlNoiseForce.Random Seed = 11 [log]
+[2026.09.14-09.01.41:063][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.CurlNoiseForce.Randomization Vector = X=0.650 Y=0.125 Z=0.370 [log]
+[2026.09.14-09.01.41:063][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.Drag.Drag = 1.0 [log]
+[2026.09.14-09.01.41:063][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.Drag.Rotational Drag = 1.0 [log]
+[2026.09.14-09.01.41:063][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.Drag001.Drag = 1.0 [log]
+[2026.09.14-09.01.41:063][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.Drag001.Rotational Drag = 1.0 [log]
+[2026.09.14-09.01.41:063][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.PointAttractionForce.Attraction Radius = 500.0 [log]
+[2026.09.14-09.01.41:063][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.PointAttractionForce.Attraction Strength = -50.0 [log]
+[2026.09.14-09.01.41:063][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.PointAttractionForce.Attractor Position = (NiagaraPosition) [log]
+[2026.09.14-09.01.41:063][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.PointAttractionForce.Attractor Position Offset = X=0.000 Y=0.000 Z=0.000 [log]
+[2026.09.14-09.01.41:063][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.PointAttractionForce.Falloff Exponent = 0.5 [log]
+[2026.09.14-09.01.41:063][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.PointAttractionForce.Kill Radius = 4.0 [log]
+[2026.09.14-09.01.41:063][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.PointAttractionForce.Position To Attract = (NiagaraPosition) [log]
+[2026.09.14-09.01.41:063][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.SolveForcesAndVelocity.Acceleration Limit = 9999.0 [log]
+[2026.09.14-09.01.41:063][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.SolveForcesAndVelocity.Manually Enable Rotational Solver = (NiagaraBool) [log]
+[2026.09.14-09.01.41:063][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.SolveForcesAndVelocity.Mesh Orientation = (Quat4f) [log]
+[2026.09.14-09.01.41:063][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.SolveForcesAndVelocity.Rotational Force = X=0.000 Y=0.000 Z=0.000 [log]
+[2026.09.14-09.01.41:063][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.SolveForcesAndVelocity.Rotational Velocity = X=0.000 Y=0.000 Z=0.000 [log]
+[2026.09.14-09.01.41:063][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.SolveForcesAndVelocity.Speed Limit = 1000.0 [log]
+[2026.09.14-09.01.41:063][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.VortexForce.Influence Falloff Radius = 100.0 [log]
+[2026.09.14-09.01.41:063][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.VortexForce.Origin Pull Amount = 0.0 [log]
+[2026.09.14-09.01.41:063][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.VortexForce.Vortex Axis = X=0.000 Y=0.000 Z=1.000 [log]
+[2026.09.14-09.01.41:063][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.VortexForce.Vortex Force Amount = 200.0 [log]
+[2026.09.14-09.01.41:063][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.WindForce.Alignment Falloff Start / End = (Vector2f) [log]
+[2026.09.14-09.01.41:063][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.WindForce.Frequency = 1.0 [log]
+[2026.09.14-09.01.41:063][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.WindForce.Friction = 1.0 [log]
+[2026.09.14-09.01.41:063][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.WindForce.Friction Distance Limit = 10.0 [log]
+[2026.09.14-09.01.41:063][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.WindForce.Normal Friction Mask = 0.0 [log]
+[2026.09.14-09.01.41:063][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.WindForce.Offset By Time = X=0.000 Y=0.000 Z=-100.000 [log]
+[2026.09.14-09.01.41:063][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.WindForce.Position = (NiagaraPosition) [log]
+[2026.09.14-09.01.41:063][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.WindForce.Scale = 0.5 [log]
+[2026.09.14-09.01.41:063][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.WindForce.Turbulence Flow Loop Duration = 3.0 [log]
+[2026.09.14-09.01.41:063][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.WindForce.Wind Speed = X=0.000 Y=0.000 Z=-100.000 [log]
+[2026.09.14-09.01.41:063][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.WindForce.Wind Speed Scale = 1.0 [log]
+[2026.09.14-09.01.41:063][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.EmitterState.Loop Delay = 0.0 [log]
+[2026.09.14-09.01.41:063][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.EmitterState.Loop Duration = 0.0 [log]
+[2026.09.14-09.01.41:063][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.EmitterState.MaxDistance = 5000.0 [log]
+[2026.09.14-09.01.41:063][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.EmitterState.MinDistance = 0.0 [log]
+[2026.09.14-09.01.41:063][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.SpawnParticlesInGrid.Spawn Group = 0 [log]
+[2026.09.14-09.01.41:063][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.SpawnParticlesInGrid.Spawn Time = 0.0 [log]
+[2026.09.14-09.01.41:063][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.SpawnParticlesInGrid.X Count = 10 [log]
+[2026.09.14-09.01.41:063][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.SpawnParticlesInGrid.Y Count = 10 [log]
+[2026.09.14-09.01.41:063][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.SpawnParticlesInGrid.Z Count = 10 [log]
+[2026.09.14-09.01.41:063][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.SpawnRate.Spawn Probability = 1.0 [log]
+[2026.09.14-09.01.41:063][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.SpawnRate.SpawnGroup = 0 [log]
+[2026.09.14-09.01.41:063][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.SpawnRate.SpawnRate = 1000.0 [log]
+[2026.09.14-09.01.41:063][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.Color.Scale Alpha = 1.0 [log]
+[2026.09.14-09.01.41:063][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.GridLocation.Offset = X=0.000 Y=0.000 Z=0.000 [log]
+[2026.09.14-09.01.41:063][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.GridLocation.Random Placement Seed = 0 [log]
+[2026.09.14-09.01.41:063][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.GridLocation.Randomize Placement Within Cell = X=1.000 Y=1.000 Z=1.000 [log]
+[2026.09.14-09.01.41:063][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.GridLocation.XYZ Dimensions = X=100.000 Y=100.000 Z=10.000 [log]
+[2026.09.14-09.01.41:063][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.InitializeParticle.Color = (R=1.000000,G=1.000000,B=1.000000,A=1.000000) [log]
+[2026.09.14-09.01.41:063][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.InitializeParticle.Lifetime = 1.0 [log]
+[2026.09.14-09.01.41:063][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.InitializeParticle.Lifetime Max = 10.0 [log]
+[2026.09.14-09.01.41:063][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.InitializeParticle.Lifetime Min = 8.0 [log]
+[2026.09.14-09.01.41:063][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.InitializeParticle.Mass Max = 1.25 [log]
+[2026.09.14-09.01.41:063][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.InitializeParticle.Mass Min = 0.75 [log]
+[2026.09.14-09.01.41:063][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.InitializeParticle.Position Offset = X=0.000 Y=0.000 Z=0.000 [log]
+[2026.09.14-09.01.41:063][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.InitializeParticle.Sprite Rotation Angle Max = 360.0 [log]
+[2026.09.14-09.01.41:063][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.InitializeParticle.Sprite Rotation Angle Min = 0.0 [log]
+[2026.09.14-09.01.41:064][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.InitializeParticle.Uniform Sprite Size Max = 4.0 [log]
+[2026.09.14-09.01.41:064][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.InitializeParticle.Uniform Sprite Size Min = 2.0 [log]
+[2026.09.14-09.01.41:064][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.PointAttractionForce.Attraction Radius = 500.0 [log]
+[2026.09.14-09.01.41:064][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.PointAttractionForce.Attraction Strength = -50.0 [log]
+[2026.09.14-09.01.41:064][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.PointAttractionForce.Attractor Position = (NiagaraPosition) [log]
+[2026.09.14-09.01.41:064][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.PointAttractionForce.Attractor Position Offset = X=0.000 Y=0.000 Z=0.000 [log]
+[2026.09.14-09.01.41:064][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.PointAttractionForce.Falloff Exponent = 0.5 [log]
+[2026.09.14-09.01.41:064][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.PointAttractionForce.Kill Radius = 4.0 [log]
+[2026.09.14-09.01.41:064][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.PointAttractionForce.Position To Attract = (NiagaraPosition) [log]
+[2026.09.14-09.01.41:064][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.SolveForcesAndVelocity.Acceleration Limit = 9999.0 [log]
+[2026.09.14-09.01.41:064][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.SolveForcesAndVelocity.Manually Enable Rotational Solver = (NiagaraBool) [log]
+[2026.09.14-09.01.41:064][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.SolveForcesAndVelocity.Mesh Orientation = (Quat4f) [log]
+[2026.09.14-09.01.41:064][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.SolveForcesAndVelocity.Rotational Force = X=0.000 Y=0.000 Z=0.000 [log]
+[2026.09.14-09.01.41:064][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.SolveForcesAndVelocity.Rotational Velocity = X=0.000 Y=0.000 Z=0.000 [log]
+[2026.09.14-09.01.41:064][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.SolveForcesAndVelocity.Speed Limit = 1000.0 [log]
+[2026.09.14-09.01.41:064][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.VortexForce.Influence Falloff Radius = 100.0 [log]
+[2026.09.14-09.01.41:064][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.VortexForce.Origin Pull Amount = 0.0 [log]
+[2026.09.14-09.01.41:064][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.VortexForce.Vortex Axis = X=0.000 Y=0.000 Z=1.000 [log]
+[2026.09.14-09.01.41:064][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.VortexForce.Vortex Force Amount = 200.0 [log]
+[2026.09.14-09.01.41:064][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.WindForce.Alignment Falloff Start / End = (Vector2f) [log]
+[2026.09.14-09.01.41:064][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.WindForce.Frequency = 1.0 [log]
+[2026.09.14-09.01.41:064][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.WindForce.Friction = 1.0 [log]
+[2026.09.14-09.01.41:064][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.WindForce.Friction Distance Limit = 10.0 [log]
+[2026.09.14-09.01.41:064][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.WindForce.Normal Friction Mask = 0.0 [log]
+[2026.09.14-09.01.41:064][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.WindForce.Offset By Time = X=0.000 Y=0.000 Z=-100.000 [log]
+[2026.09.14-09.01.41:064][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.WindForce.Position = (NiagaraPosition) [log]
+[2026.09.14-09.01.41:064][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.WindForce.Scale = 0.5 [log]
+[2026.09.14-09.01.41:064][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.WindForce.Turbulence Flow Loop Duration = 3.0 [log]
+[2026.09.14-09.01.41:064][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.WindForce.Wind Speed = X=0.000 Y=0.000 Z=-100.000 [log]
+[2026.09.14-09.01.41:064][208]LogAutomationController: LogTemp: NIAGARA_AUDIT     ri Constants.Worm-Hole_Down.WindForce.Wind Speed Scale = 1.0 [log]
+[2026.09.14-09.01.41:064][208]LogAutomationController: LogTemp: NIAGARA_AUDIT system /Game/TimeReveal/FX/NS_WatchOrbit.NS_WatchOrbit MISSING [log]
+[2026.09.14-09.01.41:064][208]LogAutomationController: LogTemp: NIAGARA_AUDIT system /Game/TimeReveal/FX/NS_TimePortal.NS_TimePortal MISSING [log]

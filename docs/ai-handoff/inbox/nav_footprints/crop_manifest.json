@@ -1,0 +1,175 @@
+{
+  "source": "docs/ai-handoff/inbox/nav_footprints/src/02_footprint_asset_sheet.png",
+  "outputs": {
+    "T_Footprint_Left": {
+      "sheet_core_rect": [
+        275,
+        108,
+        388,
+        247
+      ],
+      "sheet_crop_rect": [
+        247,
+        80,
+        416,
+        275
+      ],
+      "core_px": [
+        113,
+        139
+      ],
+      "canvas": 512,
+      "scale": 2.5784,
+      "core_fill_of_canvas": 0.7,
+      "glow_colour_rgb": [
+        217,
+        171,
+        112
+      ],
+      "attenuation_px": [
+        18,
+        28
+      ],
+      "fragments_removed_px": 0,
+      "uv_up": "toes (row 0 = tip of the middle toe)",
+      "alpha_min_max": [
+        0,
+        254
+      ],
+      "opaque_frac": 0.1787,
+      "semi_frac": 0.2787
+    },
+    "T_Footprint_Right": {
+      "sheet_core_rect": [
+        279,
+        302,
+        390,
+        437
+      ],
+      "sheet_crop_rect": [
+        251,
+        274,
+        418,
+        465
+      ],
+      "core_px": [
+        111,
+        135
+      ],
+      "canvas": 512,
+      "scale": 2.6548,
+      "core_fill_of_canvas": 0.7,
+      "glow_colour_rgb": [
+        216,
+        171,
+        114
+      ],
+      "attenuation_px": [
+        18,
+        28
+      ],
+      "fragments_removed_px": 973,
+      "uv_up": "toes (row 0 = tip of the middle toe)",
+      "alpha_min_max": [
+        0,
+        254
+      ],
+      "opaque_frac": 0.1785,
+      "semi_frac": 0.2813
+    },
+    "T_NavForwardChevron": {
+      "sheet_core_rect": [
+        1208,
+        673,
+        1266,
+        742
+      ],
+      "sheet_crop_rect": [
+        1180,
+        645,
+        1294,
+        770
+      ],
+      "core_px": [
+        58,
+        69
+      ],
+      "canvas": 128,
+      "scale": 1.1501,
+      "core_fill_of_canvas": 0.62,
+      "glow_colour_rgb": [
+        186,
+        139,
+        88
+      ],
+      "attenuation_px": [
+        18,
+        28
+      ],
+      "fragments_removed_px": 0,
+      "uv_up": "chevron points to row 0 (forward)",
+      "alpha_min_max": [
+        0,
+        249
+      ],
+      "opaque_frac": 0.0,
+      "semi_frac": 0.7716
+    },
+    "T_NavArrivalRing": {
+      "regenerated_from_radial_profile": true,
+      "profile_len_px": 112,
+      "canvas": 512,
+      "radius_fill_of_canvas": 0.92,
+      "glow_colour_rgb": [
+        179,
+        130,
+        78
+      ],
+      "sheet_profile": {
+        "row_y": 736,
+        "x_from": 1089,
+        "x_to": 1201
+      },
+      "tail_fade_px": [
+        98,
+        111
+      ],
+      "interior_alpha_scale": 0.5,
+      "band_peak_radius_px": 84,
+      "alpha_min_max": [
+        0,
+        235
+      ],
+      "opaque_frac": 0.0,
+      "semi_frac": 0.6069
+    },
+    "T_Footprint_Glow": {
+      "regenerated_from_radial_profile": true,
+      "profile_len_px": 168,
+      "canvas": 256,
+      "radius_fill_of_canvas": 1.0,
+      "glow_colour_rgb": [
+        215,
+        156,
+        91
+      ],
+      "sheet_profile": {
+        "row_y": 953,
+        "x_from": 268,
+        "x_to": 100
+      },
+      "alpha_min_max": [
+        0,
+        163
+      ],
+      "opaque_frac": 0.0,
+      "semi_frac": 0.6686
+    }
+  },
+  "notes": [
+    "Both footprints are real crops (left_M / right_M differ in detail); no UV mirroring.",
+    "Sheet section 03 floor circles and section 02 sequences are references only — not exported.",
+    "Ring and glow are regenerated as true circles from the sheet's horizontal profile (the sheet draws them as perspective ellipses with labels 6-7 px underneath).",
+    "'도착' / '12 m' text is rendered by widgets, not baked into textures."
+  ]
+}
